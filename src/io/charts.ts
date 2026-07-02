@@ -13,8 +13,6 @@ import type { Kline } from '../types.js';
 
 export interface ChartOptions {
   height?: number;
-  width?: number;
-  format?: 'ascii' | 'svg';
   showLabels?: boolean;
 }
 
@@ -26,13 +24,6 @@ export function priceSparkline(klines: Kline[], opts: ChartOptions = {}): string
   const closes = klines.map(k => k.close);
   return asciichart.plot(closes, {
     height: opts.height ?? 10,
-    format: opts.format ?? 'ascii',
-    colors: [
-      asciichart.green,
-      asciichart.blue,
-      asciichart.magenta,
-      asciichart.cyan,
-    ],
   });
 }
 
@@ -45,7 +36,6 @@ export function dualSparkline(klines: Kline[], opts: ChartOptions = {}): string 
 
   return asciichart.plot([closes, volumes], {
     height: opts.height ?? 12,
-    format: opts.format ?? 'ascii',
     colors: [
       asciichart.green,
       asciichart.cyan,
@@ -63,7 +53,6 @@ export function multiMaSparkline(klines: Kline[], opts: ChartOptions = {}): stri
 
   return asciichart.plot([closes, ema20, ema50], {
     height: opts.height ?? 12,
-    format: opts.format ?? 'ascii',
     colors: [
       asciichart.green,
       asciichart.yellow,
