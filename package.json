@@ -1,6 +1,6 @@
 {
   "name": "@sam/hermes-crypto-radar",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Hermes Agent plugin — Crypto market radar: multi-chain token tracking, technical analysis, news signals, and alerting",
   "type": "module",
   "main": "./dist/cli.js",

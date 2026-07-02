@@ -47,7 +47,7 @@ program
         includeNews: opts.news,
       });
 
-      const output = displayRadar(result, {
+      const output = await displayRadar(result, {
         format: opts.format as OutputFormat,
         quiet: opts.quiet ?? false,
       });
@@ -153,7 +153,7 @@ program
         format: opts.format as OutputFormat,
         sortBy: 'signal',
       });
-      const output = displayRadar(result, { format: opts.format as OutputFormat });
+      const output = await displayRadar(result, { format: opts.format as OutputFormat });
       if (output) console.log(output);
     } catch (err) {
       console.error(`[ERROR] Signal generation failed:`, err instanceof Error ? err.message : err);
@@ -174,7 +174,7 @@ program
         format: opts.format as OutputFormat,
         includeTech: false,
       });
-      const output = displayRadar(result, { format: opts.format as OutputFormat });
+      const output = await displayRadar(result, { format: opts.format as OutputFormat });
       if (output) console.log(output);
     } catch (err) {
       console.error(`[ERROR] News fetch failed:`, err instanceof Error ? err.message : err);

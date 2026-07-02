@@ -13,6 +13,8 @@ import type {
 import { getTokensByChain, getBinancePair } from './tokens.js';
 import type { TokenDef } from './tokens.js';
 import { fetchAllTickers, fetchKlines } from './binance.js';
+import { fetchSimplePrices } from './coingecko.js';
+import type { CoinGeckoPrice } from './coingecko.js';
 import { computeAllIndicators } from './indicators.js';
 import { fetchAndMatchNews } from './news.js';
 import { computeSignals } from './signals.js';
@@ -307,10 +309,10 @@ function toNewsCSV(match: NewsMatch): string {
 }
 
 /** Display radar output based on format */
-export function displayRadar(
+export async function displayRadar(
   result: Awaited<ReturnType<typeof runRadar>>,
   options: RadarOptions,
-): string {
+): Promise<string> {
   const format = options.format ?? 'table';
 
   if (format === 'json') {
@@ -333,11 +335,17 @@ export function displayRadar(
   }
 
   if (format === 'xlsx') {
-    const filePath = 'crypto-radar-export.xlsx';
-    exportToXlsx(result.tickers, filePath).catch((err: unknown) => {
+    try {
+      const config = loadConfig();
+      const fileName = `crypto-radar-${result.run.runId.toLowerCase()}.xlsx`;
+      const filePath = path.resolve(config.dataDir, fileName);
+      if (!fs.existsSync(config.dataDir)) fs.mkdirSync(config.dataDir, { recursive: true });
+      await exportToXlsx(result.tickers, filePath);
+      return `[XLSX export: ${filePath} — ${result.tickers.length} tokens]`;
+    } catch (err) {
       logger.error('XLSX export failed', { error: err instanceof Error ? err.message : String(err) });
-    });
-    return `[XLSX export written to ${filePath} — ${result.tickers.length} tokens]`;
+      return `[XLSX export failed: ${err instanceof Error ? err.message : 'unknown error'}]`;
+    }
   }
 
   // Default: table

@@ -11,7 +11,7 @@
 //
 // Dependencies: exceljs
 
-import * as ExcelJS from 'exceljs';
+import ExcelJS from 'exceljs';
 import type { EnrichedTicker } from './types.js';
 import { CSV_HEADER } from './output.js';
 
