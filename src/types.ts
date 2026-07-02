@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 /** Blockchain chain identifier */
-export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'dogecoin' | 'cardano' | 'multi';
+export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'dogecoin' | 'cardano' | 'sui' | 'aptos' | 'sei' | 'celestia' | 'injective' | 'thorchain' | 'cosmos' | 'multi';
 
 /** Supported output formats */
 export type OutputFormat = 'csv' | 'json' | 'md' | 'table' | 'xlsx';

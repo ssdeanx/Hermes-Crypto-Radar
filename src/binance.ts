@@ -67,7 +67,7 @@ function getPairs(): string[] {
 
 /**
  * Fetch 24hr ticker for all tracked tokens from Binance.
- * Returns a map of symbol -> ticker.
+ * @returns A map of symbol -> ticker
  */
 export async function fetchAllTickers(): Promise<Map<string, BinanceTicker>> {
   const pairs = getPairs();
@@ -85,6 +85,8 @@ export async function fetchAllTickers(): Promise<Map<string, BinanceTicker>> {
 
 /**
  * Fetch single ticker by pair.
+ * @param pair Trading pair e.g. 'SOLUSDT'
+ * @returns The Binance ticker data
  */
 export async function fetchTicker(pair: string): Promise<BinanceTicker> {
   const url = `${BASE_URL}/api/v3/ticker/24hr?symbol=${pair}`;
@@ -97,6 +99,7 @@ export async function fetchTicker(pair: string): Promise<BinanceTicker> {
  * @param pair Trading pair e.g. 'SOLUSDT'
  * @param interval Kline interval (default: '1h')
  * @param limit Number of candles (default: 100)
+ * @returns Array of parsed Kline objects
  */
 export async function fetchKlines(
   pair: string,
@@ -124,6 +127,7 @@ export async function fetchKlines(
 
 /**
  * Fetch exchange info to get trading pairs and precision.
+ * @returns Exchange info with symbol details
  */
 export async function fetchExchangeInfo(): Promise<{
   symbols: Array<{ symbol: string; status: string; baseAsset: string; quoteAsset: string }>;
@@ -135,6 +139,9 @@ export async function fetchExchangeInfo(): Promise<{
 
 /**
  * Fetch depth / order book for a pair.
+ * @param pair Trading pair e.g. 'SOLUSDT'
+ * @param limit Depth level (default: 20)
+ * @returns Order book bids and asks
  */
 export async function fetchDepth(pair: string, limit = 20): Promise<{
   bids: [string, string][];

@@ -56,7 +56,7 @@ export class HealthMonitor {
       uptime: Math.floor((Date.now() - _startTime) / 1000),
       checks: this.checks,
       details: {
-        tokensTracked: 32,
+        tokensTracked: 40,
         nodeVersion: process.version,
         platform: process.platform,
         memoryUsage: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',

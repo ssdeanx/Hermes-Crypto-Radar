@@ -250,8 +250,8 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   }
 
   if (!options.noLog) {
-    appendToLog(tickers, config.dataDir, 'crypto-radar-log.csv', csvHeader(), toCSV);
-    appendToLog(newsMatches, config.dataDir, 'crypto-radar-news.csv',
+    await appendToLog(tickers, config.dataDir, 'crypto-radar-log.csv', csvHeader(), toCSV);
+    await appendToLog(newsMatches, config.dataDir, 'crypto-radar-news.csv',
       NEWS_CSV_HEADER, toNewsCSV);
   }
 
@@ -261,28 +261,22 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   return { tickers, technicals, newsMatches, signals, aggregatedSignals, run };
 }
 
-function appendToLog<T>(
+async function appendToLog<T>(
   items: T[],
   dataDir: string,
   fileName: string,
   header: string,
   formatter: (item: T) => string,
-): void {
+): Promise<void> {
   try {
     if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
     const filePath = path.join(dataDir, fileName);
     checkLogRotation(filePath);
     const tmpPath = filePath + '.tmp';
     const exists = fs.existsSync(filePath);
-    const stream = fs.createWriteStream(tmpPath, { flags: 'a' });
-    if (!exists) stream.write(header + '\n');
-    for (const item of items) stream.write(formatter(item) + '\n');
-    stream.end();
-    stream.on('finish', () => { fs.renameSync(tmpPath, filePath); });
-    stream.on('error', (err) => {
-      logger.error('Failed to write log (tmp)', { file: fileName, error: String(err) });
-      try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch { /* ignore */ }
-    });
+    const content = (exists ? '' : header + '\n') + items.map(item => formatter(item)).join('\n') + '\n';
+    await fs.promises.writeFile(tmpPath, content);
+    fs.renameSync(tmpPath, filePath);
   } catch (err) {
     logger.error('Failed to write log', { file: fileName, error: String(err) });
   }

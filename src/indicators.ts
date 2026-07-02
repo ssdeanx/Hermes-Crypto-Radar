@@ -4,12 +4,24 @@
 
 import type { Kline, TechnicalIndicators, BBandsResult, MACDResult } from './types.js';
 
+/**
+ * Simple Moving Average.
+ * @param values Input price array
+ * @param period Window length
+ * @returns SMA value or null if insufficient data
+ */
 export function sma(values: number[], period: number): number | null {
   if (!values || values.length < period) return null;
   const window = values.slice(-period);
   return window.reduce((a, b) => a + b, 0) / period;
 }
 
+/**
+ * Exponential Moving Average.
+ * @param values Input price array
+ * @param period EMA period
+ * @returns EMA value or null if insufficient data
+ */
 export function ema(values: number[], period: number): number | null {
   if (!values || values.length < period) return null;
   const k = 2 / (period + 1);
@@ -20,6 +32,12 @@ export function ema(values: number[], period: number): number | null {
   return emaVal;
 }
 
+/**
+ * Compute an EMA series for all positions.
+ * @param values Input price array
+ * @param period EMA period
+ * @returns Array of EMA values (null for first period-1 positions)
+ */
 export function emaSeries(values: number[], period: number): (number | null)[] {
   if (!values || values.length < period) return new Array(values.length).fill(null);
   const k = 2 / (period + 1);
@@ -31,6 +49,12 @@ export function emaSeries(values: number[], period: number): (number | null)[] {
   return result;
 }
 
+/**
+ * Compute Relative Strength Index.
+ * @param closes Closing price array
+ * @param period RSI period (default: 14)
+ * @returns RSI value (0-100) or null if insufficient data
+ */
 export function computeRSI(closes: number[], period = 14): number | null {
   if (!closes || closes.length < period + 1) return null;
   let gains = 0, losses = 0;
@@ -52,6 +76,15 @@ export function computeRSI(closes: number[], period = 14): number | null {
   return 100 - (100 / (1 + avgGain / avgLoss));
 }
 
+/**
+ * Compute Money Flow Index.
+ * @param highs High price array
+ * @param lows Low price array
+ * @param closes Close price array
+ * @param volumes Volume array
+ * @param period MFI period (default: 14)
+ * @returns MFI value (0-100) or null if insufficient data
+ */
 export function computeMFI(
   highs: number[], lows: number[], closes: number[], volumes: number[], period = 14,
 ): number | null {
@@ -75,6 +108,11 @@ export function computeMFI(
   return 100 - (100 / (1 + posMF / negMF));
 }
 
+/**
+ * Compute MACD (Moving Average Convergence Divergence).
+ * @param closes Closing price array
+ * @returns MACDResult with macd, signal, and histogram, or nulls if insufficient data
+ */
 export function computeMACD(closes: number[]): MACDResult {
   if (!closes || closes.length < 26) {
     return { macd: null, signal: null, histogram: null } as any;
@@ -92,6 +130,13 @@ export function computeMACD(closes: number[]): MACDResult {
   return { macd, signal, histogram: macd - signal };
 }
 
+/**
+ * Compute Bollinger Bands.
+ * @param closes Closing price array
+ * @param period BB period (default: 20)
+ * @param multiplier Standard deviation multiplier (default: 2)
+ * @returns BBandsResult or null if insufficient data
+ */
 export function computeBB(closes: number[], period = 20, multiplier = 2): BBandsResult | null {
   if (!closes || closes.length < period) return null;
   const window = closes.slice(-period);
@@ -106,6 +151,14 @@ export function computeBB(closes: number[], period = 20, multiplier = 2): BBands
   return { upper, middle, lower, width, position };
 }
 
+/**
+ * Compute Average True Range percentage.
+ * @param highs High price array
+ * @param lows Low price array
+ * @param closes Close price array
+ * @param period ATR period (default: 14)
+ * @returns ATR as a percentage of current close, or null if insufficient data
+ */
 export function computeATR(
   highs: number[], lows: number[], closes: number[], period = 14,
 ): number | null {
@@ -126,6 +179,11 @@ export function computeATR(
   return currentClose > 0 ? (atr / currentClose) * 100 : null;
 }
 
+/**
+ * Compute volume trend (recent 7 vs prior 7 periods).
+ * @param volumes Volume array
+ * @returns Ratio change (e.g. 0.2 = +20%), or null if insufficient data
+ */
 export function computeVolTrend(volumes: number[]): number | null {
   if (!volumes || volumes.length < 14) return null;
   const recent = volumes.slice(-7);
@@ -136,6 +194,11 @@ export function computeVolTrend(volumes: number[]): number | null {
   return (recentAvg / olderAvg) - 1;
 }
 
+/**
+ * Compute all technical indicators for a given set of klines.
+ * @param klines Array of Kline data
+ * @returns TechnicalIndicators with all computed values
+ */
 export function computeAllIndicators(klines: Kline[]): TechnicalIndicators {
   const closes = klines.map(k => k.close);
   const highs = klines.map(k => k.high);
@@ -159,6 +222,12 @@ export function computeAllIndicators(klines: Kline[]): TechnicalIndicators {
   };
 }
 
+/**
+ * Compute On-Balance Volume.
+ * @param closes Closing price array
+ * @param volumes Volume array
+ * @returns OBV value, or null if fewer than 2 data points
+ */
 export function computeOBV(closes: number[], volumes: number[]): number | null {
   if (closes.length < 2) return null;
   let obv = 0;
@@ -169,6 +238,11 @@ export function computeOBV(closes: number[], volumes: number[]): number | null {
   return obv;
 }
 
+/**
+ * Compute current volume vs 20-period average volume ratio.
+ * @param volumes Volume array
+ * @returns Ratio change (e.g. 0.5 = +50%), or null if insufficient data
+ */
 export function computeVolVsAvg(volumes: number[]): number | null {
   if (!volumes || volumes.length < 20) return null;
   const currentVolume = volumes[volumes.length - 1]!;

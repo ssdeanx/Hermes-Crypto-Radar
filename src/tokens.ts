@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import type { TokenDef, Chain } from './types.js';
+import { loadConfig } from './core/config.js';
 
 /**
  * Master token registry.
@@ -50,6 +51,15 @@ const TOKENS: Record<string, TokenDef> = {
   'dogecoin':    { id: 'dogecoin',    sym: 'DOGE', name: 'Dogecoin',     chain: 'multi', chains: ['dogecoin'], coingeckoId: 'dogecoin' },
   'xrp':         { id: 'xrp',         sym: 'XRP',  name: 'XRP',          chain: 'multi', chains: ['xrp'],      coingeckoId: 'ripple' },
   'cardano':     { id: 'cardano',     sym: 'ADA',  name: 'Cardano',      chain: 'multi', chains: ['cardano'],  coingeckoId: 'cardano' },
+
+  // ── Layer-1 & Cross-chain (Phase C) ──
+  'sui':                 { id: 'sui',                 sym: 'SUI',  name: 'Sui',            chain: 'multi', chains: ['sui'],        coingeckoId: 'sui' },
+  'aptos':               { id: 'aptos',               sym: 'APT',  name: 'Aptos',          chain: 'multi', chains: ['aptos'],      coingeckoId: 'aptos' },
+  'sei-network':         { id: 'sei-network',         sym: 'SEI',  name: 'Sei',            chain: 'multi', chains: ['sei'],        coingeckoId: 'sei-network' },
+  'celestia':            { id: 'celestia',            sym: 'TIA',  name: 'Celestia',       chain: 'multi', chains: ['celestia'],   coingeckoId: 'celestia' },
+  'injective-protocol':  { id: 'injective-protocol',  sym: 'INJ',  name: 'Injective',      chain: 'multi', chains: ['injective'],  coingeckoId: 'injective-protocol' },
+  'thorchain':           { id: 'thorchain',           sym: 'RUNE', name: 'THORChain',      chain: 'multi', chains: ['thorchain'],  coingeckoId: 'thorchain' },
+  'cosmos':              { id: 'cosmos',              sym: 'ATOM', name: 'Cosmos',         chain: 'multi', chains: ['cosmos'],     coingeckoId: 'cosmos' },
 };
 
 /** All token IDs */
@@ -57,9 +67,18 @@ export function getTokenIds(): string[] {
   return Object.keys(TOKENS);
 }
 
-/** All tokens as an array */
+/** All tokens as an array, optionally filtered by config token whitelist */
 export function getTokenList(): TokenDef[] {
-  return Object.values(TOKENS);
+  const all = Object.values(TOKENS);
+  try {
+    const config = loadConfig();
+    if (config.tokens && config.tokens.length > 0) {
+      return all.filter(t => config.tokens!.includes(t.id));
+    }
+  } catch {
+    // If config hasn't been loaded yet, return unfiltered
+  }
+  return all;
 }
 
 /** Lookup a token by ID */

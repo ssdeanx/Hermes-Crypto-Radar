@@ -43,6 +43,8 @@ export interface RadarConfig {
     binance: boolean;
     coinGecko: boolean;
   };
+  /** Optional token whitelist — if set, only these token IDs are scanned */
+  tokens?: string[];
 }
 
 const DEFAULTS: RadarConfig = {
@@ -113,6 +115,7 @@ export function loadConfig(configPath?: string): RadarConfig {
   if (envMap.log_level) base.logLevel = envMap.log_level;
   if (envMap.data_dir) base.dataDir = envMap.data_dir;
   if (envMap.rate_limit_max) base.rateLimitMax = parseInt(envMap.rate_limit_max, 10);
+  if (envMap.tokens) base.tokens = envMap.tokens.split(',').map(t => t.trim());
 
   _instance = base;
   return base;
