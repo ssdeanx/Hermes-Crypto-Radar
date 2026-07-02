@@ -1,7 +1,7 @@
 # 🛰️ Hermes Crypto Radar — SPEC
 
 > **Project:** Hermes Agent Plugin — Multi-chain crypto market radar  
-> **Status:** v1.0.0 · MVP  
+> **Status:** v1.1.0 · Stable  
 > **Versioning:** [SemVer](https://semver.org/) — all changes tracked in this spec
 
 ---
@@ -86,15 +86,15 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 
 | Chain | Tokens |
 |-------|--------|
-| **Solana** (13) | SOL, JUP, JTO, RAY, PYTH, BONK, KMNO, PUMP, RENDER, ORCA, FIDA, WIF, BOME, AUDIO |
+| **Solana** (14) | SOL, JUP, JTO, RAY, PYTH, BONK, KMNO, PUMP, RENDER, ORCA, FIDA, WIF, BOME, AUDIO |
 | **Polygon/DeFi** (13) | POL, SUSHI, UNI, AAVE, CRV, LINK, QUICK, BAL, LDO, BAT, COMP, ZRO, GRT |
-| **Multi** (7) | BTC, ETH, BNB, XRP, DOGE, ADA |
+| **Multi** (6) | BTC, ETH, BNB, XRP, DOGE, ADA |
 
 ### 3.2 Expansion Plan
 
 | Phase | Additions | Priority |
 |-------|-----------|----------|
-| v1.1 | SUI, APT, SEI, TIA (new L1s) | High |
+| v1.2 | SUI, APT, SEI, TIA (new L1s) | High |
 | v1.2 | INJ, RUNE, ATOM (cross-chain) | Medium |
 | v1.3 | Top 50 by volume (dynamic detection) | Medium |
 | v2.0 | User-configurable token list (config file) | High |
@@ -118,9 +118,9 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | Hermes plugin | ✅ | 4 tools, JSON output, `check_fn` gating |
 | Multi-chain | ✅ | Solana + Polygon + broad-market separation |
 | Output formats | ✅ | Terminal table, CSV, JSON, Markdown, XLSX (Excel/Sheets) |
-| **CoinGecko data source** | 🔜 | Free API module created, not yet wired into scan pipeline |
-| **XLSX export** | ✅ | Excel/Google Sheets native export via exceljs, `--format xlsx` |
-| **CI pipeline** | 🔜 | GitHub Actions workflow defined, pending org repo setup |
+| **CoinGecko data source** | ✅ | Free API wired into scan pipeline via `--alt-source` flag, fallback for missing tokens | v1.1 |
+| **XLSX export** | ✅ | Excel/Google Sheets native export via exceljs, `--format xlsx` | v1.1 |
+| **CI pipeline** | ✅ | GitHub Actions builds on Node 20 & 22, runs tests, verifies dist | v1.1 |
 | **Terminal sparkline charts** | ✅ | ASCII price charts via asciichart, configurable lookback/period |
 | **SVG chart generation** | ✅ | Self-contained SVG price charts, multi-panel with RSI |
 | **3-strategy signal engine** | ✅ | Momentum, Mean Reversion, Trend Following — weighted confidence voting |
@@ -137,18 +137,14 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | Feature | Status | Details | Target |
 |---------|--------|---------|--------|
 | Multi-timeframe analysis | 🔜 | 15m, 1h, 4h, 1d klines + strategy eval per timeframe | v1.2 |
-| CoinGecko data source | 🔜 | Fallback/alternative prices via free CoinGecko API | v1.1 |
-| XLSX export | 🔜 | Excel/Google Sheets native export | v1.1 |
-| CI pipeline | 🔜 | GitHub Actions: build, test, lint on every PR | v1.1 |
-| User-config token list | 🔜 | `radar.config.json` per user | v1.1 |
 | WebSocket live prices | 🔜 | Binance WS for real-time updates | v1.2 |
 | Portfolio tracking | 🔜 | User-defined holdings → P&L | v1.2 |
 | Price alerts | 🔜 | Threshold-based notification via Hermes gateway | v1.2 |
 | DEX data (Jupiter) | 🔜 | Solana DEX prices via Jupiter API | v1.2 |
 | Backtesting engine | 🔜 | Test strategies against historical data | v1.3 |
 | On-chain metrics | 🔜 | TVL, volume, fees via DeFiLlama | v1.3 |
-| Sentiment analysis | 🔜 | AI-powered news sentiment scoring | v1.3 |
-| Strategy config UI | 🔜 | Adjust weights/params via config file | v1.1 |
+| User-config token list | 🔜 | `radar.config.json` per user | v1.2 |
+| Strategy config UI | 🔜 | Adjust weights/params via config file | v1.2 |
 | Hermes chart tool | 🔜 | SVG charts delivered as agent visual responses | v1.1 |
 | Plugin marketplace publish | 🔜 | Publish to `hermes skills publish` | v1.1 |
 
@@ -454,7 +450,7 @@ To get the plugin listed on the Hermes map/registry:
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2026-07-02 | Initial release — 32 tokens, Binance prices, tech indicators, news, signals, 4 Hermes tools, CSV/JSON/MD output |
-| 1.1.0 | 2026-07-02 | News domain extraction fix, SOURCE_TIERS bug fix, multi-line CSV quoting, XLSX export, CoinGecko API module, kline caching (eliminated double-fetch), dead dep cleanup, SPEC docs overhaul, vitest test suite (28 tests), CI pipeline, unused dep removal (pino, zod, csv-parse) |
+| 1.1.0 | 2026-07-02 | News domain extraction fix, SOURCE_TIERS bug fix, multi-line CSV quoting, XLSX export, CoinGecko API + pipeline wiring, kline caching, dead dep cleanup, SPEC/README docs overhaul, vitest test suite (58 tests), CI pipeline, deterministic integration tests, XLSX error handling, XRP CoinGecko ID fix |
 
 ---
 

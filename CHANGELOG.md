@@ -11,14 +11,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **XLSX export** — `--format xlsx` generates native Excel workbooks via `exceljs` with frozen headers, auto-column-width, and conditional green/red coloring on `priceChangePercent`. Importable into Excel, Google Sheets, Apple Numbers, and LibreOffice Calc.
-- **CoinGecko API module** — `src/coingecko.ts` provides `fetchSimplePrices()` and `fetchMarketData()` for alternative/fallback price data. Module created, ready for pipeline wiring.
-- **CI pipeline** — GitHub Actions workflow (`.github/workflows/ci.yml`) builds on Node 20 & 22, runs test suite, and verifies dist output.
-- **Vitest test suite** — 28 unit tests across 4 test files:
+- **CoinGecko API module + pipeline wiring** — `src/coingecko.ts` provides `fetchSimplePrices()` and `fetchMarketData()`. Wired into `radar.ts` as fallback for tokens missing from Binance, with `--alt-source` CLI flag for primary use.
+- **CI pipeline** — GitHub Actions workflow (`.github/workflows/ci.yml`) builds on Node 20 & 22, runs test suite, and verifies dist output. Active on push/PR to main.
+- **Vitest test suite** — 58 tests across 5 test files:
   - `indicators.test.ts` (15 tests): RSI, MACD, BB, ATR, SMA, EMA, MFI, volume trend
   - `signals.test.ts` (8 tests): composite scoring, alerts (DIP/PUMP/overbought/oversold), news contribution
   - `engine.test.ts` (8 tests): strategy direction voting, confidence scoring, failure handling, cross-strategy aggregation
-  - `output.test.ts` (8 tests): CSV, JSON, Markdown, terminal table, signal report formatting
-  - Coverage reporter configured (v8, lcov, HTML)
+  - `output.test.ts` (13 tests): CSV, JSON, Markdown, terminal table, signal report, edge cases
+  - `binance.integration.test.ts` (5 tests): mock ticker/kline fetch, full pipeline, rate-limit retry
 - **NEWS_CSV_HEADER shared constant** — `src/output.ts` now exports a canonical news CSV header, imported by `radar.ts` to prevent schema drift between write path and data definition.
 - **Kline caching** — Per-run `Map<string, Kline[]>` eliminates the double-fetch of klines (was: fetched once for indicators, again for strategy engine; now: fetched once, cached, reused). ~50% reduction in API calls per scan.
 
@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SOURCE_TIERS bug** — News relevance scoring was keying on `token.name` to look up source tiers, causing ALL tokens to receive the default 0.8 multiplier instead of the correct source-specific weight (e.g., CoinTelegraph=1.0, NullTX=0.4). Fixed to key on `feed.name` via new `sourceName` parameter on `matchToken()`.
 - **News domain extraction** — RSS feeds returning relative URLs or empty link fields silently produced empty `domain` values, corrupting the CSV. Fixed with fallback to `source.toLowerCase() + '.com'`.
 - **CSV multi-line quoting** — News descriptions containing embedded newlines produced malformed CSV rows. Fixed by stripping `\r`/`\n` to spaces before quoting.
+- **Integration test flakiness** — `Math.random()` in mock klines caused non-deterministic RSI/MACD assertions. Replaced with deterministic sine-wave fixture.
+- **XLSX crash on write failure** — `displayRadar` awaited `exportToXlsx` without error handling, crashing CLI on write errors. Wrapped in try-catch with graceful fallback message.
+- **XRP CoinGecko ID** — Token used `'xrp'` as CoinGecko ID, but the correct API identifier is `'ripple'`. Fixed coingeckoId to enable correct price lookups.
 
 ### Performance
 - **Kline caching** — eliminated redundant API calls. Before: one `fetchKlines()` per token for indicators (step 2) + one per token for strategy engine (step 5) = 60 API calls for 30 tokens. After: one per token = 30 API calls. Both fetches now use `limit=200` (was 100 vs 200) for consistent data.
