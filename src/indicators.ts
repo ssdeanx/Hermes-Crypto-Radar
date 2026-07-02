@@ -4,14 +4,12 @@
 
 import type { Kline, TechnicalIndicators, BBandsResult, MACDResult } from './types.js';
 
-/** Compute SMA for a given period */
 export function sma(values: number[], period: number): number | null {
   if (!values || values.length < period) return null;
   const window = values.slice(-period);
   return window.reduce((a, b) => a + b, 0) / period;
 }
 
-/** Compute EMA for a given period */
 export function ema(values: number[], period: number): number | null {
   if (!values || values.length < period) return null;
   const k = 2 / (period + 1);
@@ -22,7 +20,6 @@ export function ema(values: number[], period: number): number | null {
   return emaVal;
 }
 
-/** Compute full EMA series (for MACD) */
 export function emaSeries(values: number[], period: number): (number | null)[] {
   if (!values || values.length < period) return new Array(values.length).fill(null);
   const k = 2 / (period + 1);
@@ -34,7 +31,6 @@ export function emaSeries(values: number[], period: number): (number | null)[] {
   return result;
 }
 
-/** Compute RSI (Relative Strength Index) */
 export function computeRSI(closes: number[], period = 14): number | null {
   if (!closes || closes.length < period + 1) return null;
   let gains = 0, losses = 0;
@@ -56,7 +52,6 @@ export function computeRSI(closes: number[], period = 14): number | null {
   return 100 - (100 / (1 + avgGain / avgLoss));
 }
 
-/** Compute MFI (Money Flow Index) */
 export function computeMFI(
   highs: number[], lows: number[], closes: number[], volumes: number[], period = 14,
 ): number | null {
@@ -80,7 +75,6 @@ export function computeMFI(
   return 100 - (100 / (1 + posMF / negMF));
 }
 
-/** Compute MACD */
 export function computeMACD(closes: number[]): MACDResult {
   if (!closes || closes.length < 26) {
     return { macd: null, signal: null, histogram: null } as any;
@@ -98,7 +92,6 @@ export function computeMACD(closes: number[]): MACDResult {
   return { macd, signal, histogram: macd - signal };
 }
 
-/** Compute Bollinger Bands */
 export function computeBB(closes: number[], period = 20, multiplier = 2): BBandsResult | null {
   if (!closes || closes.length < period) return null;
   const window = closes.slice(-period);
@@ -113,7 +106,6 @@ export function computeBB(closes: number[], period = 20, multiplier = 2): BBands
   return { upper, middle, lower, width, position };
 }
 
-/** Compute ATR (Average True Range) as % of close */
 export function computeATR(
   highs: number[], lows: number[], closes: number[], period = 14,
 ): number | null {
@@ -134,7 +126,6 @@ export function computeATR(
   return currentClose > 0 ? (atr / currentClose) * 100 : null;
 }
 
-/** Compute volume trend (recent 7d vs prior 7d) */
 export function computeVolTrend(volumes: number[]): number | null {
   if (!volumes || volumes.length < 14) return null;
   const recent = volumes.slice(-7);
@@ -145,20 +136,16 @@ export function computeVolTrend(volumes: number[]): number | null {
   return (recentAvg / olderAvg) - 1;
 }
 
-/** Compute all technical indicators from kline data */
 export function computeAllIndicators(klines: Kline[]): TechnicalIndicators {
   const closes = klines.map(k => k.close);
   const highs = klines.map(k => k.high);
   const lows = klines.map(k => k.low);
   const volumes = klines.map(k => k.volume);
   const currentClose = closes[closes.length - 1] ?? 0;
-
-  // Price vs EMA50
   const ema50 = ema(closes, 50);
   const priceVsEma50 = ema50 !== null && ema50 > 0
     ? ((currentClose - ema50) / ema50) * 100
     : null;
-
   return {
     rsi: computeRSI(closes),
     mfi: computeMFI(highs, lows, closes, volumes),
@@ -167,5 +154,25 @@ export function computeAllIndicators(klines: Kline[]): TechnicalIndicators {
     atrPct: computeATR(highs, lows, closes),
     volTrend: computeVolTrend(volumes),
     priceVsEma50,
+    obv: computeOBV(closes, volumes),
+    volVsAvg: computeVolVsAvg(volumes),
   };
+}
+
+export function computeOBV(closes: number[], volumes: number[]): number | null {
+  if (closes.length < 2) return null;
+  let obv = 0;
+  for (let i = 1; i < closes.length; i++) {
+    if (closes[i]! > closes[i - 1]!) obv += volumes[i]!;
+    else if (closes[i]! < closes[i - 1]!) obv -= volumes[i]!;
+  }
+  return obv;
+}
+
+export function computeVolVsAvg(volumes: number[]): number | null {
+  if (!volumes || volumes.length < 20) return null;
+  const currentVolume = volumes[volumes.length - 1]!;
+  const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
+  if (avgVolume === 0) return null;
+  return (currentVolume / avgVolume) - 1;
 }

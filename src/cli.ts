@@ -4,7 +4,7 @@
 
 import { Command } from 'commander';
 import { runRadar, displayRadar } from './radar.js';
-import type { Chain, SortMode, OutputFormat } from './types.js';
+import type { Chain, SortMode, OutputFormat, KlineInterval } from './types.js';
 import { getTokenList } from './tokens.js';
 import { fetchKlines } from './binance.js';
 import { getBinancePair } from './tokens.js';
@@ -34,6 +34,7 @@ program
   .option('--no-log', 'Skip data logging to CSV')
   .option('--no-tech', 'Skip technical indicator computation')
   .option('--no-news', 'Skip news fetching')
+  .option('--period <interval>', 'Kline interval: 15m|1h|4h|1d (default: all)')
   .action(async (opts) => {
     try {
       const result = await runRadar({
@@ -45,6 +46,7 @@ program
         noLog: opts.noLog === false ? false : undefined,
         includeTech: opts.tech,
         includeNews: opts.news,
+        period: opts.period as KlineInterval | undefined,
       });
 
       const output = await displayRadar(result, {

@@ -1,14 +1,10 @@
 // ═══════════════════════════════════════════════════════════════════════
 // Hermes Crypto Radar — Radar Engine
 // ═══════════════════════════════════════════════════════════════════════
-//
-// Enterprise-grade market radar: fetches live prices, enriches with
-// technical indicators, matches news, runs strategy engine, generates
-// signals, and logs to multiple output formats.
 
 import type {
   BinanceTicker, EnrichedTicker, TechnicalIndicators,
-  NewsMatch, TokenSignal, RadarOptions, RadarRun,
+  NewsMatch, TokenSignal, RadarOptions, RadarRun, KlineInterval,
 } from './types.js';
 import { getTokensByChain, getBinancePair } from './tokens.js';
 import type { TokenDef } from './tokens.js';
@@ -26,14 +22,16 @@ import { StrategyEngine } from './analysis/engine.js';
 import type { AggregatedSignal } from './analysis/strategies.js';
 import { toTable, toMarkdownReport, toSignalReport, toCSV, csvHeader, NEWS_CSV_HEADER } from './output.js';
 import { exportToXlsx } from './xlsx-export.js';
+import { checkLogRotation } from './core/log-rotation.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 const LOCK_FILE = path.resolve('radar.lock');
 const STATE_FILE = path.resolve('crypto-radar-state.json');
+const DEFAULT_INTERVALS: KlineInterval[] = ['15m', '1h', '4h', '1d'];
 
 let _runCounter = 0;
-const _cache = new Cache(300_000);  // 5 min default
+const _cache = new Cache(300_000);
 
 function getRunId(): string {
   _runCounter++;
@@ -54,9 +52,6 @@ function toET(d: Date): string {
   }).replace(',', '');
 }
 
-/**
- * Enrich a raw Binance ticker with computed fields.
- */
 function enrichTicker(
   raw: BinanceTicker,
   token: TokenDef,
@@ -73,31 +68,22 @@ function enrichTicker(
   const weightedAvgPrice = parseFloat(raw.weightedAvgPrice);
   const quoteVolume = parseFloat(raw.quoteVolume);
   const volume = parseFloat(raw.volume);
-
   const bidQty = parseFloat(raw.bidQty);
   const askQty = parseFloat(raw.askQty);
   const spreadPct = bidPrice > 0 ? ((askPrice - bidPrice) / bidPrice) * 100 : 0;
-
   const vwapDistPct = weightedAvgPrice > 0
-    ? ((lastPrice - weightedAvgPrice) / weightedAvgPrice) * 100
-    : 0;
-
+    ? ((lastPrice - weightedAvgPrice) / weightedAvgPrice) * 100 : 0;
   const range = highPrice - lowPrice;
   const rangePosPct = range > 0 ? (lastPrice - lowPrice) / range : 0.5;
-
   const bookImbalance = (bidQty + askQty) > 0
-    ? (bidQty - askQty) / (bidQty + askQty)
-    : 0;
-
+    ? (bidQty - askQty) / (bidQty + askQty) : 0;
   const priceChangePercent = parseFloat(raw.priceChangePercent);
   const momentum = priceChangePercent * (quoteVolume > 10e6 ? 1.2 : 1.0);
-
   const alerts: string[] = [];
   if (priceChangePercent <= -5) alerts.push('DIP');
   if (priceChangePercent >= 5) alerts.push('PUMP');
   if (quoteVolume >= 10e6) alerts.push('HI-VOL');
   if (spreadPct >= 1) alerts.push('WIDE');
-
   return {
     runId, tsUtc, dateEt: toET(new Date()),
     symbol: token.sym, chain: token.chain, tokenId: token.id, tokenName: token.name,
@@ -111,13 +97,9 @@ function enrichTicker(
   };
 }
 
-/**
- * Run a full radar scan with enterprise-grade processing:
- * prices → enrich → technicals → news → strategies → signals → log
- */
 export async function runRadar(options: RadarOptions = {}): Promise<{
   tickers: EnrichedTicker[];
-  technicals: Map<string, TechnicalIndicators>;
+  technicals: Map<string, Map<string, TechnicalIndicators>>;
   newsMatches: NewsMatch[];
   signals: TokenSignal[];
   aggregatedSignals: AggregatedSignal[];
@@ -128,23 +110,21 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   const tsUtc = toISOUTC(new Date());
   const config: RadarConfig = loadConfig();
   const log = logger.child({ runId });
+  const intervals: KlineInterval[] = options.period ? [options.period] : DEFAULT_INTERVALS;
 
-  log.info('Starting radar scan', { filter: options.filter, chain: options.chain });
+  log.info('Starting radar scan', { filter: options.filter, chain: options.chain, intervals });
 
-  // 1. Fetch prices (cached for 30s to prevent rapid re-fetches)
   const cacheKey = `tickers:${options.chain ?? 'all'}:${options.filter?.join(',') ?? ''}`;
   let rawTickers = _cache.get<Map<string, BinanceTicker>>(cacheKey);
   if (!rawTickers) {
     rawTickers = await fetchAllTickers();
-    _cache.set(cacheKey, rawTickers, 30_000); // 30s cache
+    _cache.set(cacheKey, rawTickers, 300_000);
   }
 
   const tokens = options.chain ? getTokensByChain(options.chain) : getTokensByChain(undefined);
   const filteredTokens = options.filter && options.filter.length > 0
-    ? tokens.filter(t => options.filter!.includes(t.sym))
-    : tokens;
+    ? tokens.filter(t => options.filter!.includes(t.sym)) : tokens;
 
-  // Enrich
   const tickers: EnrichedTicker[] = [];
   for (const token of filteredTokens) {
     const pair = getBinancePair(token);
@@ -152,7 +132,6 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     if (raw) tickers.push(enrichTicker(raw, token, runId, tsUtc));
   }
 
-  // Sort
   if (options.sortBy) {
     const sortKey = options.sortBy === 'change' ? 'priceChangePercent' as const
       : options.sortBy === 'volume' ? 'quoteVolume' as const
@@ -162,34 +141,44 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     else tickers.sort((a, b) => b[sortKey] - a[sortKey]);
   }
 
-  // 2. Technical indicators — cache klines to avoid double-fetch
-  const technicals = new Map<string, TechnicalIndicators>();
+  const technicals = new Map<string, Map<string, TechnicalIndicators>>();
   const klineCache = new Map<string, Awaited<ReturnType<typeof fetchKlines>>>();
-  const KLINE_INTERVAL = '1h';
   const KLINE_LIMIT = 200;
 
   if (options.includeTech !== false) {
-    log.info(`Computing technical indicators for ${tickers.length} tokens...`);
-    for (const t of tickers) {
-      try {
-        const pair = getBinancePair(
-          getTokensByChain(t.chain).find(tk => tk.sym === t.symbol) ?? {
-            id: t.tokenId, sym: t.symbol, name: t.tokenName, chain: t.chain,
-          } as TokenDef,
-        );
-        const cacheKey = `${pair}:${KLINE_INTERVAL}`;
-        if (!klineCache.has(cacheKey)) {
-          klineCache.set(cacheKey, await fetchKlines(pair, KLINE_INTERVAL, KLINE_LIMIT));
+    log.info(`Computing technical indicators for ${tickers.length} tokens across ${intervals.length} intervals...`);
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < tickers.length; i += BATCH_SIZE) {
+      const batch = tickers.slice(i, i + BATCH_SIZE);
+      await Promise.all(batch.map(async (t) => {
+        try {
+          const pair = getBinancePair(
+            getTokensByChain(t.chain).find(tk => tk.sym === t.symbol) ?? {
+              id: t.tokenId, sym: t.symbol, name: t.tokenName, chain: t.chain,
+            } as TokenDef,
+          );
+          const perTokenTechs = new Map<string, TechnicalIndicators>();
+          await Promise.all(intervals.map(async (interval) => {
+            const ck = `${pair}:${interval}`;
+            if (!klineCache.has(ck)) {
+              klineCache.set(ck, await fetchKlines(pair, interval, KLINE_LIMIT));
+            }
+            const klines = klineCache.get(ck)!;
+            const tech = computeAllIndicators(klines);
+            perTokenTechs.set(interval, tech);
+            if (interval === '1h') {
+              if (tech.obv != null) t.obv = tech.obv;
+              if (tech.volVsAvg != null) t.volVsAvg = tech.volVsAvg;
+            }
+          }));
+          technicals.set(t.symbol, perTokenTechs);
+        } catch (err) {
+          log.warn(`Failed to compute indicators for ${t.symbol}`, { error: err instanceof Error ? err.message : String(err) });
         }
-        const klines = klineCache.get(cacheKey)!;
-        technicals.set(t.symbol, computeAllIndicators(klines));
-      } catch (err) {
-        log.warn(`Failed to compute indicators for ${t.symbol}`, { error: err instanceof Error ? err.message : String(err) });
-      }
+      }));
     }
   }
 
-  // 3. News (cached for 5 min)
   let newsMatches: NewsMatch[] = [];
   if (options.includeNews !== false) {
     const newsCacheKey = `news:${runId}`;
@@ -207,30 +196,30 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     }
   }
 
-  // 4. Legacy signals (for backward compat)
-  const signals = computeSignals(tickers, technicals, newsMatches);
+  const singleTechs = new Map<string, TechnicalIndicators>();
+  for (const [sym, perInterval] of technicals) {
+    const oneHr = perInterval.get('1h') ?? perInterval.values().next().value ?? null;
+    if (oneHr) singleTechs.set(sym, oneHr);
+  }
+  const signals = computeSignals(tickers, singleTechs, newsMatches);
 
-  // 5. Strategy engine — enterprise-grade signal aggregation
   const engine = new StrategyEngine();
   const aggregatedSignals: AggregatedSignal[] = [];
 
   for (const t of tickers) {
-    const tech = technicals.get(t.symbol) ?? null;
     const tokenNews = newsMatches.filter(n => n.symbol === t.symbol);
     const pair = getBinancePair(
       getTokensByChain(t.chain).find(tk => tk.sym === t.symbol) ?? {
         id: t.tokenId, sym: t.symbol, name: t.tokenName, chain: t.chain,
       } as TokenDef,
     );
-
-    // Try to get klines for context (reuse from technical computation)
     let closes: number[] = [];
     let highs: number[] = [];
     let lows: number[] = [];
     let volumes: number[] = [];
-
-    const cacheKey = `${pair}:${KLINE_INTERVAL}`;
-    const cachedKlines = klineCache.get(cacheKey);
+    const defaultInterval = intervals[0] ?? '1h';
+    const ck = `${pair}:${defaultInterval}`;
+    const cachedKlines = klineCache.get(ck);
     if (cachedKlines) {
       closes = cachedKlines.map(k => k.close);
       highs = cachedKlines.map(k => k.high);
@@ -238,31 +227,28 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
       volumes = cachedKlines.map(k => k.volume);
     } else {
       try {
-        const klines = await fetchKlines(pair, KLINE_INTERVAL, KLINE_LIMIT);
-        klineCache.set(cacheKey, klines);
+        const klines = await fetchKlines(pair, defaultInterval, KLINE_LIMIT);
+        klineCache.set(ck, klines);
         closes = klines.map(k => k.close);
         highs = klines.map(k => k.high);
         lows = klines.map(k => k.low);
         volumes = klines.map(k => k.volume);
-      } catch {
-        // Strategy will work without detailed kline context
-      }
+      } catch { /* proceed without */ }
     }
 
     const agg = engine.evaluate({
       ticker: t,
-      technical: tech,
+      technical: singleTechs.get(t.symbol) ?? null,
+      technicalsByInterval: technicals.get(t.symbol) ?? new Map(),
       news: tokenNews,
       klineCloses: closes,
       klineHighs: highs,
       klineLows: lows,
       klineVolumes: volumes,
     });
-
     aggregatedSignals.push(agg);
   }
 
-  // 6. Log data
   if (!options.noLog) {
     appendToLog(tickers, config.dataDir, 'crypto-radar-log.csv', csvHeader(), toCSV);
     appendToLog(newsMatches, config.dataDir, 'crypto-radar-news.csv',
@@ -271,9 +257,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
 
   const durationMs = Date.now() - startTime;
   const run: RadarRun = { runId, tsUtc, numTokens: tickers.length, numSignals: signals.length, durationMs };
-
   log.info(`Scan complete: ${tickers.length} tokens, ${durationMs}ms`);
-
   return { tickers, technicals, newsMatches, signals, aggregatedSignals, run };
 }
 
@@ -287,11 +271,18 @@ function appendToLog<T>(
   try {
     if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
     const filePath = path.join(dataDir, fileName);
+    checkLogRotation(filePath);
+    const tmpPath = filePath + '.tmp';
     const exists = fs.existsSync(filePath);
-    const stream = fs.createWriteStream(filePath, { flags: 'a' });
+    const stream = fs.createWriteStream(tmpPath, { flags: 'a' });
     if (!exists) stream.write(header + '\n');
     for (const item of items) stream.write(formatter(item) + '\n');
     stream.end();
+    stream.on('finish', () => { fs.renameSync(tmpPath, filePath); });
+    stream.on('error', (err) => {
+      logger.error('Failed to write log (tmp)', { file: fileName, error: String(err) });
+      try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+    });
   } catch (err) {
     logger.error('Failed to write log', { file: fileName, error: String(err) });
   }
@@ -302,67 +293,57 @@ function toNewsCSV(match: NewsMatch): string {
   const cleanDescription = match.description.replace(/\r?\n|\r/g, ' ').replace(/"/g, '""');
   return [
     match.runId, match.tsUtc, match.symbol,
-    `"${cleanHeadline}"`,
-    `"${cleanDescription}"`,
+    `"${cleanHeadline}"`, `"${cleanDescription}"`,
     match.source, match.domain, match.relevance,
   ].join(',');
 }
 
-/** Display radar output based on format */
 export async function displayRadar(
   result: Awaited<ReturnType<typeof runRadar>>,
   options: RadarOptions,
 ): Promise<string> {
   const format = options.format ?? 'table';
-
   if (format === 'json') {
     return JSON.stringify({
-      tickers: result.tickers,
-      signals: result.signals,
-      aggregatedSignals: result.aggregatedSignals,
-      run: result.run,
+      tickers: result.tickers, signals: result.signals,
+      aggregatedSignals: result.aggregatedSignals, run: result.run,
     }, null, 2);
   }
-
   if (format === 'csv') {
     const lines = [csvHeader()];
     for (const t of result.tickers) lines.push(toCSV(t));
     return lines.join('\n');
   }
-
   if (format === 'md') {
-    return toMarkdownReport(result.tickers, result.technicals, result.newsMatches);
+    const singleTechs = new Map<string, TechnicalIndicators>();
+    for (const [sym, perInterval] of result.technicals) {
+      const oneHr = perInterval.get('1h') ?? perInterval.values().next().value ?? null;
+      if (oneHr) singleTechs.set(sym, oneHr);
+    }
+    return toMarkdownReport(result.tickers, singleTechs, result.newsMatches);
   }
-
   if (format === 'xlsx') {
     try {
       const config = loadConfig();
-      const fileName = `crypto-radar-${result.run.runId.toLowerCase()}.xlsx`;
-      const filePath = path.resolve(config.dataDir, fileName);
+      const fn = `crypto-radar-${result.run.runId.toLowerCase()}.xlsx`;
+      const fp = path.resolve(config.dataDir, fn);
       if (!fs.existsSync(config.dataDir)) fs.mkdirSync(config.dataDir, { recursive: true });
-      await exportToXlsx(result.tickers, filePath);
-      return `[XLSX export: ${filePath} — ${result.tickers.length} tokens]`;
+      await exportToXlsx(result.tickers, fp);
+      return `[XLSX export: ${fp} — ${result.tickers.length} tokens]`;
     } catch (err) {
       logger.error('XLSX export failed', { error: err instanceof Error ? err.message : String(err) });
       return `[XLSX export failed: ${err instanceof Error ? err.message : 'unknown error'}]`;
     }
   }
-
-  // Default: table
   if (options.quiet) return '';
-
   let output = toTable(result.tickers, result.aggregatedSignals);
-
   if (result.signals.length > 0) {
     output += '\n\n═══ Top Signals ═══\n';
-    const topSignals = [...result.signals]
-      .sort((a, b) => b.compositeScore - a.compositeScore)
-      .slice(0, 5);
+    const topSignals = [...result.signals].sort((a, b) => b.compositeScore - a.compositeScore).slice(0, 5);
     for (const s of topSignals) {
       output += `\n${s.symbol} (${s.chain}) ${s.compositeScore}/100  [M:${s.momentumScore} T:${s.technicalScore} N:${s.newsScore}]`;
       if (s.alerts.length > 0) output += `  ${s.alerts.slice(0, 3).join(', ')}`;
     }
   }
-
   return output;
 }
