@@ -89,7 +89,19 @@ export function loadConfig(configPath?: string): RadarConfig {
 
   const base = JSON.parse(JSON.stringify(DEFAULTS)) as RadarConfig;
 
-  // 1. File overrides
+  // 1. Auto-discover config file from well-known paths
+  const autoPaths = configPath
+    ? [configPath]
+    : ['radar.config.json', resolve('radar.config.json')];
+
+  for (const path of autoPaths) {
+    if (existsSync(path)) {
+      configPath = path;
+      break;
+    }
+  }
+
+  // 2. File overrides (if provided or discovered)
   if (configPath && existsSync(configPath)) {
     try {
       const raw = readFileSync(configPath, 'utf-8');

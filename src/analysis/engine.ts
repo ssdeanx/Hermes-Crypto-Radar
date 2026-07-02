@@ -50,7 +50,7 @@ export class StrategyEngine {
    * @returns AggregatedSignal with direction, confidence, and alerts
    */
   evaluate(ctx: StrategyContext): AggregatedSignal {
-    const signals = this.strategies.map(s => {
+    const signals: StrategySignal[] = this.strategies.map(s => {
       try { return s.evaluate(ctx); }
       catch (err) {
         logger.error(`Strategy "${s.name}" failed`, {
