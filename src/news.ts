@@ -70,7 +70,10 @@ function parseRSS(xml: string, source: string): NewsArticle[] {
     let domain = '';
     try {
       domain = new URL(link).hostname.replace('www.', '');
-    } catch { /* ignore */ }
+    } catch {
+      // Fallback: some RSS feeds return relative URLs or empty links
+      domain = source.toLowerCase().replace(/\s+/g, '') + '.com';
+    }
 
     if (headline && description) {
       articles.push({ headline, description, source, domain, pubDate, url: link });
@@ -104,6 +107,7 @@ function matchToken(
   headline: string,
   description: string,
   token: TokenDef,
+  sourceName?: string,
 ): number {
   const hl = headline.toLowerCase();
   const desc = description.toLowerCase();
@@ -138,7 +142,7 @@ function matchToken(
   }
 
   // Boost by source tier
-  const tierWeight = SOURCE_TIERS[token.name] ?? 0.8;
+  const tierWeight = sourceName ? (SOURCE_TIERS[sourceName] ?? 0.8) : 0.8;
   relevance *= tierWeight;
 
   return relevance;
@@ -189,7 +193,7 @@ export async function fetchAndMatchNews(
         seenHeadlines.add(norm);
 
         for (const token of tokens) {
-          const relevance = matchToken(article.headline, article.description, token);
+          const relevance = matchToken(article.headline, article.description, token, feed.name);
           if (relevance < 0.5) continue;
 
           matches.push({

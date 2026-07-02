@@ -1,6 +1,6 @@
 name: crypto-radar
 version: 1.0.0
-description: "🛰️ Crypto Radar — Multi-chain token tracking, technical analysis, news signals, and alerting for Hermes Agent. Tracks 30+ tokens across Solana, Polygon, and broad-market chains via Binance data. Outputs CSV/JSON/Markdown for agent-driven signal generation and visualizations."
+description: "🛰️ Crypto Radar — Enterprise crypto market intelligence for Hermes Agent. Multi-chain token tracking (32 tokens), technical indicators (RSI/MACD/BB/ATR), news signals from 9 RSS feeds, 3-strategy signal engine (momentum/mean-reversion/trend-following), terminal+SVG charts, health monitoring, and CSV/JSON/MD logging. Built for production-grade crypto analysis."
 author: Sam
 kind: backend
 provides_tools:

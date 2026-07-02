@@ -21,6 +21,10 @@ export { RateLimiter } from './core/rate-limiter.js';
 // Charts
 export { priceSparkline, multiMaSparkline, priceSvgChart, multiPanelSvgChart } from './io/charts.js';
 
+// Alternative data sources
+export { fetchSimplePrices, fetchMarketData } from './coingecko.js';
+export type { CoinGeckoPrice, CoinGeckoMarketData } from './coingecko.js';
+
 // Strategy engine
 export { StrategyEngine } from './analysis/engine.js';
 export { MomentumStrategy } from './analysis/momentum.js';

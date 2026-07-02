@@ -25,33 +25,49 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 ## 2. Architecture
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Hermes Agent                       │
-│  ┌──────────────────────────────────────────────┐   │
-│  │           Plugin: crypto-radar               │   │
-│  │  ┌──────────┐  ┌──────────┐  ┌────────────┐ │   │
-│  │  │scan tool │  │signals   │  │news tool   │ │   │
-│  │  │          │  │tool      │  │            │ │   │
-│  │  └────┬─────┘  └────┬─────┘  └─────┬──────┘ │   │
-│  │       │             │              │         │   │
-│  │  ┌────▼─────────────▼──────────────▼──────┐  │   │
-│  │  │    plugin/__init__.py (Python bridge)   │  │   │
-│  │  │    spawns node subprocess               │  │   │
-│  │  └────────────────┬────────────────────────┘  │   │
-│  └───────────────────┼──────────────────────────┘   │
-└──────────────────────┼──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                   Hermes Agent                               │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │              Plugin: crypto-radar                     │   │
+│  │  ┌──────────┐  ┌──────────┐  ┌────────────┐         │   │
+│  │  │scan tool │  │signals   │  │news tool   │ ...      │   │
+│  │  │          │  │tool      │  │            │           │   │
+│  │  └────┬─────┘  └────┬─────┘  └─────┬──────┘         │   │
+│  │       │             │              │                 │   │
+│  │  ┌────▼─────────────▼──────────────▼──────────────┐  │   │
+│  │  │        plugin/__init__.py (Python bridge)       │  │   │
+│  │  │        spawns node subprocess                   │  │   │
+│  │  └────────────────┬────────────────────────────────┘  │   │
+│  └───────────────────┼──────────────────────────────────┘   │
+└──────────────────────┼──────────────────────────────────────┘
                        │
-              ┌────────▼────────┐
-              │  dist/cli.js    │
-              │  (Compiled TS)  │
-              │                 │
-              │  ┌────────────┐ │
-              │  │ binance.ts │ │
-              │  │ news.ts    │ │
-              │  │ signals.ts │ │
-              │  │ radar.ts   │ │
-              │  └────────────┘ │
-              └─────────────────┘
+              ┌────────▼────────────────────────┐
+              │    dist/cli.js                   │
+              │    (Compiled TS, 24 files)       │
+              │                                  │
+              │  src/                            │
+              │  ├── cli.ts        (Entry point)  │
+              │  ├── index.ts      (Public API)   │
+              │  ├── types.ts      (Type defs)    │
+              │  ├── tokens.ts     (Token registry)│
+              │  ├── binance.ts    (Binance API)   │
+              │  ├── indicators.ts (RSI, MACD, BB) │
+              │  ├── news.ts       (RSS matcher)   │
+              │  ├── signals.ts    (Scoring)       │
+              │  ├── radar.ts      (Main engine)   │
+              │  ├── output.ts     (Formatters)    │
+              │  ├── coingecko.ts  (Alt data src)  │
+              │  ├── xlsx-export.ts(Excel export)  │
+              │  ├── core/         (Config, cache, │
+              │  │                  errors, logger,│
+              │  │                  rate-limiter)  │
+              │  ├── analysis/     (Strategy eng.  │
+              │  │                  momentum, mr,  │
+              │  │                  trend-follow)  │
+              │  ├── io/           (Charts: ASCII  │
+              │  │                  + SVG)          │
+              │  └── monitor/      (Health checks) │
+              └────────────────────────────────────┘
 ```
 
 ### 2.1 Plugin Loading Flow
@@ -71,7 +87,7 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | Chain | Tokens |
 |-------|--------|
 | **Solana** (13) | SOL, JUP, JTO, RAY, PYTH, BONK, KMNO, PUMP, RENDER, ORCA, FIDA, WIF, BOME, AUDIO |
-| **Polygon/DeFi** (12) | POL, SUSHI, UNI, AAVE, CRV, LINK, QUICK, BAL, LDO, BAT, COMP, ZRO, GRT |
+| **Polygon/DeFi** (13) | POL, SUSHI, UNI, AAVE, CRV, LINK, QUICK, BAL, LDO, BAT, COMP, ZRO, GRT |
 | **Multi** (7) | BTC, ETH, BNB, XRP, DOGE, ADA |
 
 ### 3.2 Expansion Plan
@@ -98,27 +114,42 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | News fetching | ✅ | 9 RSS feeds, headline/body matching, relevance scoring, poison filtering, dedup |
 | Signal generation | ✅ | Composite score: 40% momentum + 40% technical + 20% news, alerts |
 | CSV logging | ✅ | Append-only, header-on-first-write |
-| CLI | ✅ | `scan`, `signals`, `news`, `tokens` + flags |
+| CLI | ✅ | `scan`, `signals`, `news`, `tokens`, `chart`, `health`, `configure`, `strategies` + flags |
 | Hermes plugin | ✅ | 4 tools, JSON output, `check_fn` gating |
 | Multi-chain | ✅ | Solana + Polygon + broad-market separation |
-| Output formats | ✅ | Terminal table, CSV, JSON lines, Markdown |
+| Output formats | ✅ | Terminal table, CSV, JSON, Markdown, XLSX (Excel/Sheets) |
+| **CoinGecko data source** | 🔜 | Free API module created, not yet wired into scan pipeline |
+| **XLSX export** | ✅ | Excel/Google Sheets native export via exceljs, `--format xlsx` |
+| **CI pipeline** | 🔜 | GitHub Actions workflow defined, pending org repo setup |
+| **Terminal sparkline charts** | ✅ | ASCII price charts via asciichart, configurable lookback/period |
+| **SVG chart generation** | ✅ | Self-contained SVG price charts, multi-panel with RSI |
+| **3-strategy signal engine** | ✅ | Momentum, Mean Reversion, Trend Following — weighted confidence voting |
+| **Strategy aggregation** | ✅ | Weighted vote engine, per-strategy reasons, composite confidence 0–100% |
+| **Health monitoring** | ✅ | Binance API, data directory, system resource checks, uptime tracking |
+| **Configuration system** | ✅ | JSON config file + `RADAR__*` env vars, typed defaults |
+| **Typed error classes** | ✅ | CryptoRadarError, NetworkError, RateLimitError, DataError, ConfigError |
+| **Structured logging** | ✅ | Pino-style JSON logs to stderr, levels (trace–fatal), child loggers |
+| **In-memory cache** | ✅ | TTL-based, memoize support, stats tracking, automatic expiry |
+| **Rate limiter** | ✅ | Token-bucket algorithm, configurable max/window |
 
 ### 4.2 Planned (Roadmap)
 
 | Feature | Status | Details | Target |
 |---------|--------|---------|--------|
-| Price history log | 🔜 | Append-only CSV with state tracking | v1.1 |
-| Multi-timeframe analysis | 🔜 | 15m, 1h, 4h, 1d klines | v1.1 |
+| Multi-timeframe analysis | 🔜 | 15m, 1h, 4h, 1d klines + strategy eval per timeframe | v1.2 |
+| CoinGecko data source | 🔜 | Fallback/alternative prices via free CoinGecko API | v1.1 |
+| XLSX export | 🔜 | Excel/Google Sheets native export | v1.1 |
+| CI pipeline | 🔜 | GitHub Actions: build, test, lint on every PR | v1.1 |
 | User-config token list | 🔜 | `radar.config.json` per user | v1.1 |
 | WebSocket live prices | 🔜 | Binance WS for real-time updates | v1.2 |
 | Portfolio tracking | 🔜 | User-defined holdings → P&L | v1.2 |
-| Price alerts | 🔜 | Threshold-based notification via Hermes | v1.2 |
+| Price alerts | 🔜 | Threshold-based notification via Hermes gateway | v1.2 |
 | DEX data (Jupiter) | 🔜 | Solana DEX prices via Jupiter API | v1.2 |
+| Backtesting engine | 🔜 | Test strategies against historical data | v1.3 |
 | On-chain metrics | 🔜 | TVL, volume, fees via DeFiLlama | v1.3 |
 | Sentiment analysis | 🔜 | AI-powered news sentiment scoring | v1.3 |
-| Visualizations | 🔜 | Sparkline charts, price heatmaps | v1.3 |
-| Backtesting engine | 🔜 | Test signals against historical data | v2.0 |
-| Telegram integration | 🔜 | Daily briefing delivery via Hermes gateway | v2.0 |
+| Strategy config UI | 🔜 | Adjust weights/params via config file | v1.1 |
+| Hermes chart tool | 🔜 | SVG charts delivered as agent visual responses | v1.1 |
 | Plugin marketplace publish | 🔜 | Publish to `hermes skills publish` | v1.1 |
 
 ---
@@ -216,6 +247,37 @@ Agent calls crypto_radar_scan()
 
 ---
 
+## 6b. Strategy Engine (Enterprise)
+
+The strategy engine runs **3 signal strategies** per token and aggregates them into a single composite signal with confidence scoring.
+
+### Strategy Weights
+
+| Strategy | Weight | Description |
+|----------|--------|-------------|
+| **Momentum** | 40% | Detects strong trending moves with volume confirmation and MACD alignment |
+| **Mean Reversion** | 20% | Identifies overextended prices likely to revert (RSI extremes, BB touch) |
+| **Trend Following** | 40% | Identifies established trends via EMA alignment (20/50/200) and volume |
+
+### How It Works
+
+1. Each strategy receives market context (ticker, technicals, news, klines)
+2. Each returns a signal: direction (`buy`/`sell`/`neutral`/`strong_buy`/`strong_sell`) + confidence (0.0–1.0) + human-readable reason
+3. Engine aggregates via weighted voting — direction wins by combined weight, composite confidence is weighted average
+4. Alerts are collected per-token (dip/pump, overbought/oversold, high volume, news coverage)
+
+### Signal Direction Mapping
+
+| Scenario | Direction Example |
+|----------|-------------------|
+| Momentum + Trend aligned, high confidence | `strong_buy` |
+| Momentum only, moderate confidence | `buy` |
+| Conflicting strategies | `neutral` |
+| Mean reversion + oversold | `buy` (counter-trend) |
+| All bearish | `sell` / `strong_sell` |
+
+---
+
 ## 7. Output Schema
 
 ### 7.1 CSV Log (`crypto-radar-log.csv`)
@@ -305,23 +367,42 @@ npm run clean        # Remove dist/
 ```
 hermes-crypto-radar/
 ├── src/
-│   ├── cli.ts           # CLI entry point (Commander)
-│   ├── index.ts         # Public API exports
-│   ├── types.ts         # Type definitions
-│   ├── tokens.ts        # Token registry (32 tokens)
-│   ├── binance.ts       # Binance API client
-│   ├── indicators.ts    # Technical indicators (RSI, MACD, BB, ATR)
-│   ├── news.ts          # RSS news fetcher + matcher
-│   ├── signals.ts        # Composite signal scoring
-│   ├── output.ts        # Formatters (CSV, JSON, MD, table)
-│   └── radar.ts         # Main radar engine
+│   ├── cli.ts              # CLI entry point (Commander)
+│   ├── index.ts            # Public API exports
+│   ├── types.ts            # Type definitions
+│   ├── tokens.ts           # Token registry (32 tokens + growing)
+│   ├── binance.ts          # Binance API client
+│   ├── coingecko.ts        # CoinGecko API client (alt data source)
+│   ├── indicators.ts       # Technical indicators (RSI, MACD, BB, ATR, MFI)
+│   ├── news.ts             # RSS news fetcher + matcher
+│   ├── signals.ts          # Composite signal scoring
+│   ├── output.ts           # Formatters (CSV, JSON, MD, table, XLSX)
+│   ├── radar.ts            # Main radar engine
+│   ├── xlsx-export.ts      # Excel/Sheets export via exceljs
+│   ├── core/               # Enterprise infrastructure
+│   │   ├── config.ts       # Typed config (file + env + defaults)
+│   │   ├── errors.ts       # 6 typed error classes
+│   │   ├── cache.ts        # TTL-based in-memory cache
+│   │   ├── rate-limiter.ts # Token-bucket rate limiter
+│   │   ├── logger.ts       # Structured JSON logger (6 levels)
+│   │   └── index.ts        # Core barrel exports
+│   ├── analysis/           # Strategy signal engine
+│   │   ├── strategies.ts   # Strategy interface + types
+│   │   ├── engine.ts       # Weighted voting engine
+│   │   ├── momentum.ts     # Momentum strategy (40%)
+│   │   ├── mean-reversion.ts # Mean reversion (20%)
+│   │   └── trend-following.ts # Trend following (40%)
+│   ├── io/                 # Visual output
+│   │   └── charts.ts       # ASCII sparklines + SVG chart gen
+│   └── monitor/            # System health
+│       └── health.ts       # Health checks (API, data, system)
 ├── plugin/
-│   └── __init__.py      # Hermes plugin (Python bridge)
-├── plugin.yaml          # Plugin metadata
-├── data/                # Log output directory
-├── scripts/             # Utility scripts
-├── SPEC.md              # This file
-├── README.md            # User-facing docs
+│   └── __init__.py         # Hermes plugin (Python bridge)
+├── plugin.yaml             # Plugin metadata
+├── data/                   # Log output directory
+├── .github/workflows/      # CI pipeline
+├── SPEC.md                 # This file
+├── README.md               # User-facing docs
 ├── package.json
 └── tsconfig.json
 ```
@@ -350,7 +431,8 @@ Rebuild: `npm run build`
 - **All tools return JSON** — never raw text or unstructured output
 - **All errors caught** — no unhandled rejections in production paths
 - **All network calls have timeouts + retries** — Binance 429 handling, feed timeouts
-- **Minimal deps** — TypeScript only: commander, zod, csv-parse/csv-stringify, picocolors
+- **Minimal deps** — each declared dependency is actually imported; no dead dependencies
+- **CI pipeline** — tests run on every PR via GitHub Actions; merge blocked on failing checks
 - **Hermes conventions** — tools registered via `register(ctx)`, gated by `check_fn`, `toolset` in `plugin.yaml`
 
 ---
@@ -372,6 +454,7 @@ To get the plugin listed on the Hermes map/registry:
 | Version | Date | Changes |
 |---------|------|---------|
 | 1.0.0 | 2026-07-02 | Initial release — 32 tokens, Binance prices, tech indicators, news, signals, 4 Hermes tools, CSV/JSON/MD output |
+| 1.1.0 | 2026-07-02 | News domain extraction fix, SOURCE_TIERS bug fix, multi-line CSV quoting, XLSX export, CoinGecko API module, kline caching (eliminated double-fetch), dead dep cleanup, SPEC docs overhaul, vitest test suite (28 tests), CI pipeline, unused dep removal (pino, zod, csv-parse) |
 
 ---
 

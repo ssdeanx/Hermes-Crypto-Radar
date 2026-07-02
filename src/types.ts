@@ -6,7 +6,7 @@
 export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'dogecoin' | 'cardano' | 'multi';
 
 /** Supported output formats */
-export type OutputFormat = 'csv' | 'json' | 'md' | 'table';
+export type OutputFormat = 'csv' | 'json' | 'md' | 'table' | 'xlsx';
 
 /** Sort mode for radar display */
 export type SortMode = 'alpha' | 'change' | 'volume' | 'signal' | 'momentum';

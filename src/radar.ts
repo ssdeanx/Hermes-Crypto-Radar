@@ -22,7 +22,8 @@ import { loadConfig } from './core/config.js';
 import type { RadarConfig } from './core/config.js';
 import { StrategyEngine } from './analysis/engine.js';
 import type { AggregatedSignal } from './analysis/strategies.js';
-import { toTable, toMarkdownReport, toSignalReport, toCSV, csvHeader } from './output.js';
+import { toTable, toMarkdownReport, toSignalReport, toCSV, csvHeader, NEWS_CSV_HEADER } from './output.js';
+import { exportToXlsx } from './xlsx-export.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -159,8 +160,12 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     else tickers.sort((a, b) => b[sortKey] - a[sortKey]);
   }
 
-  // 2. Technical indicators
+  // 2. Technical indicators — cache klines to avoid double-fetch
   const technicals = new Map<string, TechnicalIndicators>();
+  const klineCache = new Map<string, Awaited<ReturnType<typeof fetchKlines>>>();
+  const KLINE_INTERVAL = '1h';
+  const KLINE_LIMIT = 200;
+
   if (options.includeTech !== false) {
     log.info(`Computing technical indicators for ${tickers.length} tokens...`);
     for (const t of tickers) {
@@ -170,7 +175,11 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
             id: t.tokenId, sym: t.symbol, name: t.tokenName, chain: t.chain,
           } as TokenDef,
         );
-        const klines = await fetchKlines(pair, '1h', 100);
+        const cacheKey = `${pair}:${KLINE_INTERVAL}`;
+        if (!klineCache.has(cacheKey)) {
+          klineCache.set(cacheKey, await fetchKlines(pair, KLINE_INTERVAL, KLINE_LIMIT));
+        }
+        const klines = klineCache.get(cacheKey)!;
         technicals.set(t.symbol, computeAllIndicators(klines));
       } catch (err) {
         log.warn(`Failed to compute indicators for ${t.symbol}`, { error: err instanceof Error ? err.message : String(err) });
@@ -218,14 +227,24 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     let lows: number[] = [];
     let volumes: number[] = [];
 
-    try {
-      const klines = await fetchKlines(pair, '1h', 200);
-      closes = klines.map(k => k.close);
-      highs = klines.map(k => k.high);
-      lows = klines.map(k => k.low);
-      volumes = klines.map(k => k.volume);
-    } catch {
-      // Strategy will work without detailed kline context
+    const cacheKey = `${pair}:${KLINE_INTERVAL}`;
+    const cachedKlines = klineCache.get(cacheKey);
+    if (cachedKlines) {
+      closes = cachedKlines.map(k => k.close);
+      highs = cachedKlines.map(k => k.high);
+      lows = cachedKlines.map(k => k.low);
+      volumes = cachedKlines.map(k => k.volume);
+    } else {
+      try {
+        const klines = await fetchKlines(pair, KLINE_INTERVAL, KLINE_LIMIT);
+        klineCache.set(cacheKey, klines);
+        closes = klines.map(k => k.close);
+        highs = klines.map(k => k.high);
+        lows = klines.map(k => k.low);
+        volumes = klines.map(k => k.volume);
+      } catch {
+        // Strategy will work without detailed kline context
+      }
     }
 
     const agg = engine.evaluate({
@@ -245,7 +264,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   if (!options.noLog) {
     appendToLog(tickers, config.dataDir, 'crypto-radar-log.csv', csvHeader(), toCSV);
     appendToLog(newsMatches, config.dataDir, 'crypto-radar-news.csv',
-      'run_id,ts_utc,symbol,headline,description,source,domain,relevance', toNewsCSV);
+      NEWS_CSV_HEADER, toNewsCSV);
   }
 
   const durationMs = Date.now() - startTime;
@@ -277,10 +296,12 @@ function appendToLog<T>(
 }
 
 function toNewsCSV(match: NewsMatch): string {
+  const cleanHeadline = match.headline.replace(/\r?\n|\r/g, ' ').replace(/"/g, '""');
+  const cleanDescription = match.description.replace(/\r?\n|\r/g, ' ').replace(/"/g, '""');
   return [
     match.runId, match.tsUtc, match.symbol,
-    `"${match.headline.replace(/"/g, '""')}"`,
-    `"${match.description.replace(/"/g, '""')}"`,
+    `"${cleanHeadline}"`,
+    `"${cleanDescription}"`,
     match.source, match.domain, match.relevance,
   ].join(',');
 }
@@ -309,6 +330,14 @@ export function displayRadar(
 
   if (format === 'md') {
     return toMarkdownReport(result.tickers, result.technicals, result.newsMatches);
+  }
+
+  if (format === 'xlsx') {
+    const filePath = 'crypto-radar-export.xlsx';
+    exportToXlsx(result.tickers, filePath).catch((err: unknown) => {
+      logger.error('XLSX export failed', { error: err instanceof Error ? err.message : String(err) });
+    });
+    return `[XLSX export written to ${filePath} — ${result.tickers.length} tokens]`;
   }
 
   // Default: table

@@ -65,11 +65,8 @@ class Logger {
         appendFileSync(this.logFilePath, line + '\n');
       } catch { /* best effort */ }
     } else {
-      if (num >= 50) {
-        process.stderr.write(line + '\n');
-      } else {
-        process.stdout.write(line + '\n');
-      }
+      // Always write logs to stderr — stdout is for tool output
+      process.stderr.write(line + '\n');
     }
   }
 

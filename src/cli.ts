@@ -29,7 +29,7 @@ program
   .option('-f, --filter <symbols...>', 'Filter to specific tokens by symbol')
   .option('-c, --chain <chain>', 'Filter to chain (solana, polygon, bnb, xrp, etc.)')
   .option('--sort <mode>', 'Sort: alpha|change|volume|momentum', 'momentum')
-  .option('--format <fmt>', 'Output format: table|json|csv|md', 'table')
+  .option('--format <fmt>', 'Output format: table|json|csv|md|xlsx', 'table')
   .option('-q, --quiet', 'Suppress display output (cron-friendly)')
   .option('--no-log', 'Skip data logging to CSV')
   .option('--no-tech', 'Skip technical indicator computation')
@@ -145,7 +145,7 @@ program
   .command('signals')
   .description('Generate composite signals from latest data')
   .option('-f, --filter <symbols...>', 'Filter to specific tokens')
-  .option('--format <fmt>', 'Output format: table|json|md', 'table')
+  .option('--format <fmt>', 'Output format: table|json|md|xlsx', 'table')
   .action(async (opts) => {
     try {
       const result = await runRadar({
@@ -166,7 +166,7 @@ program
   .command('news')
   .description('Fetch and display crypto news matching tracked tokens')
   .option('-f, --filter <symbols...>', 'Filter to specific tokens')
-  .option('--format <fmt>', 'Output format: table|json|md', 'table')
+  .option('--format <fmt>', 'Output format: table|json|md|xlsx', 'table')
   .action(async (opts) => {
     try {
       const result = await runRadar({

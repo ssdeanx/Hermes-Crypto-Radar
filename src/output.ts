@@ -52,6 +52,9 @@ export function csvHeader(): string {
   return CSV_HEADER;
 }
 
+/** News CSV header — shared constant to prevent schema drift */
+export const NEWS_CSV_HEADER = 'run_id,ts_utc,symbol,headline,description,source,domain,relevance';
+
 // ── JSON Lines ──
 
 export function toJSONLine(ticker: EnrichedTicker): string {
