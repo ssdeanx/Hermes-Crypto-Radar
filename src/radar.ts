@@ -33,6 +33,11 @@ const DEFAULT_INTERVALS: KlineInterval[] = ['15m', '1h', '4h', '1d'];
 let _runCounter = 0;
 const _cache = new Cache(300_000);
 
+/** @internal Reset the radar module-level cache (for testing) */
+export function _resetTestCache(): void {
+  _cache.clear();
+}
+
 function getRunId(): string {
   _runCounter++;
   const ts = Date.now().toString(36).toUpperCase();
@@ -133,8 +138,13 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   const cacheKey = `tickers:${options.chain ?? 'all'}:${options.filter?.join(',') ?? ''}`;
   let rawTickers = _cache.get<Map<string, BinanceTicker>>(cacheKey);
   if (!rawTickers) {
-    rawTickers = await fetchAllTickers();
-    _cache.set(cacheKey, rawTickers, 300_000);
+    try {
+      rawTickers = await fetchAllTickers();
+      _cache.set(cacheKey, rawTickers, 300_000);
+    } catch (err) {
+      log.warn('Failed to fetch tickers from Binance', { error: err instanceof Error ? err.message : String(err) });
+      rawTickers = new Map();
+    }
   }
 
   const tokens = options.chain ? getTokensByChain(options.chain) : getTokensByChain(undefined);

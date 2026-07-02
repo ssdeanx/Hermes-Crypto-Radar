@@ -127,7 +127,17 @@ export function loadConfig(configPath?: string): RadarConfig {
   if (envMap.log_level) base.logLevel = envMap.log_level;
   if (envMap.data_dir) base.dataDir = envMap.data_dir;
   if (envMap.rate_limit_max) base.rateLimitMax = parseInt(envMap.rate_limit_max, 10);
-  if (envMap.tokens) base.tokens = envMap.tokens.split(',').map(t => t.trim());
+  if (envMap.tokens) {
+    // Support both JSON array: ["bitcoin","ethereum"]
+    // and comma-separated: bitcoin,ethereum
+    const raw = envMap.tokens.trim();
+    if (raw.startsWith('[')) {
+      try { base.tokens = JSON.parse(raw); }
+      catch { base.tokens = raw.replace(/[[\]"'\s]/g, '').split(',').filter(Boolean); }
+    } else {
+      base.tokens = raw.split(',').map(t => t.trim()).filter(Boolean);
+    }
+  }
 
   _instance = base;
   return base;
