@@ -10,6 +10,12 @@
 
 import type { SignalStrategy, StrategyContext, StrategySignal } from './strategies.js';
 
+/**
+ * Mean Reversion strategy.
+ *
+ * Identifies overextended prices likely to revert to the mean
+ * using RSI, Bollinger Bands, and MA distance.
+ */
 export class MeanReversionStrategy implements SignalStrategy {
   readonly name = 'mean-reversion';
   readonly description = 'Identifies overextended prices likely to revert to the mean using RSI, BB, and MA distance';

@@ -3,13 +3,16 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 /** Blockchain chain identifier */
-export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'dogecoin' | 'cardano' | 'multi';
+export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'dogecoin' | 'cardano' | 'sui' | 'aptos' | 'sei' | 'celestia' | 'injective' | 'thorchain' | 'cosmos' | 'multi';
 
 /** Supported output formats */
 export type OutputFormat = 'csv' | 'json' | 'md' | 'table' | 'xlsx';
 
 /** Sort mode for radar display */
 export type SortMode = 'alpha' | 'change' | 'volume' | 'signal' | 'momentum';
+
+/** Kline interval for multi-timeframe analysis */
+export type KlineInterval = '15m' | '1h' | '4h' | '1d';
 
 /** Token definition */
 export interface TokenDef {
@@ -52,7 +55,6 @@ export interface BinanceTicker {
 
 /** Full enriched ticker with computed indicators */
 export interface EnrichedTicker {
-  // Identity
   runId: string;
   tsUtc: string;
   dateEt: string;
@@ -60,16 +62,12 @@ export interface EnrichedTicker {
   chain: Chain;
   tokenId: string;
   tokenName: string;
-
-  // Market
   lastPrice: number;
   bidPrice: number;
   bidQty: number;
   askPrice: number;
   askQty: number;
   spreadPct: number;
-
-  // 24h Stats
   openPrice: number;
   highPrice: number;
   lowPrice: number;
@@ -77,25 +75,17 @@ export interface EnrichedTicker {
   priceChange: number;
   priceChangePercent: number;
   weightedAvgPrice: number;
-
-  // Volume
   volume: number;
   quoteVolume: number;
   count: number;
   lastQty: number;
-
-  // Position
   vwapDistPct: number;
   rangePosPct: number;
   bookImbalance: number;
-
-  // Signals
   volVsAvg: number;
   obv: number;
   momentum: number;
   alerts: string;
-
-  // Source
   source: string;
 }
 
@@ -108,6 +98,8 @@ export interface TechnicalIndicators {
   atrPct: number | null;
   volTrend: number | null;
   priceVsEma50: number | null;
+  obv: number | null;
+  volVsAvg: number | null;
 }
 
 export interface BBandsResult {
@@ -173,6 +165,8 @@ export interface RadarOptions {
   format?: OutputFormat;
   includeTech?: boolean;
   includeNews?: boolean;
+  /** Limit scan to a specific kline interval (e.g. '1h' or '4h') */
+  period?: KlineInterval;
 }
 
 /** Run metadata for a radar sweep */

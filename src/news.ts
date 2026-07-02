@@ -158,7 +158,13 @@ function normalizeHeadline(headline: string): string {
 
 /**
  * Fetch, parse, match, and score news from all RSS feeds.
- * Returns matched news items with relevance scores ≥ 0.5.
+ *
+ * Feeds are fetched concurrently (concurrency-4 batching). Returns matched news
+ * items with relevance scores >= 0.5.
+ *
+ * @param runId Unique radar run identifier
+ * @param tsUtc ISO UTC timestamp string
+ * @returns Array of matched news items
  */
 export async function fetchAndMatchNews(
   runId: string,
@@ -167,8 +173,10 @@ export async function fetchAndMatchNews(
   const matches: NewsMatch[] = [];
   const seenHeadlines = new Set<string>();
   const tokens = getTokenList();
+  const CONCURRENCY = 4;
 
-  for (const feed of NEWS_FEEDS) {
+  /** Process a single feed's articles */
+  async function processFeed(feed: FeedDef): Promise<void> {
     try {
       const ctrl = new AbortController();
       setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
@@ -178,7 +186,7 @@ export async function fetchAndMatchNews(
         headers: { 'User-Agent': 'Hermes-Crypto-Radar/1.0' },
       });
 
-      if (!res.ok) continue;
+      if (!res.ok) return;
 
       const xml = await res.text();
       const articles = parseRSS(xml, feed.name);
@@ -211,8 +219,13 @@ export async function fetchAndMatchNews(
       }
     } catch {
       // Silently skip failed feeds
-      continue;
     }
+  }
+
+  // Process feeds in batches with limited concurrency
+  for (let i = 0; i < NEWS_FEEDS.length; i += CONCURRENCY) {
+    const batch = NEWS_FEEDS.slice(i, i + CONCURRENCY);
+    await Promise.all(batch.map(feed => processFeed(feed)));
   }
 
   return matches;

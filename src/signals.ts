@@ -15,6 +15,11 @@ import { getTokenById } from './tokens.js';
  * - Momentum (40%): price change, spread, book imbalance
  * - Technical (40%): RSI, MACD, BB position, volume trend
  * - News (20%): recent relevant news volume and relevance
+ *
+ * @param tickers Array of enriched tickers
+ * @param technicals Map of symbol -> TechnicalIndicators
+ * @param newsMatches Array of news matches
+ * @returns Array of computed TokenSignal objects
  */
 export function computeSignals(
   tickers: EnrichedTicker[],

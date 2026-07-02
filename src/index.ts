@@ -7,7 +7,7 @@ export { fetchAllTickers, fetchTicker, fetchKlines, fetchDepth } from './binance
 export { fetchAndMatchNews } from './news.js';
 export { computeSignals } from './signals.js';
 export { computeAllIndicators, computeRSI, computeMACD, computeBB, computeATR } from './indicators.js';
-export { getTokenList, getTokenById, getTokenBySymbol, getTokensByChain, getBinancePair } from './tokens.js';
+export { getTokenList, getAllTokens, getTokenById, getTokenBySymbol, getTokensByChain, getBinancePair, getActiveTokenCount, resetTokenConfig, reloadTokenConfig } from './tokens.js';
 export { toTable, toCSV, toMarkdownReport, toSignalReport } from './output.js';
 
 // Enterprise core
@@ -35,6 +35,9 @@ export type { SignalStrategy, StrategyContext, StrategySignal, AggregatedSignal,
 // Health
 export { HealthMonitor } from './monitor/health.js';
 export type { HealthStatus } from './monitor/health.js';
+
+// Daemon
+export { runDaemon, isDaemonRunning, stopDaemon } from './daemon.js';
 
 export type {
   TokenDef, BinanceTicker, EnrichedTicker, TechnicalIndicators,

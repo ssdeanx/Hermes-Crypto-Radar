@@ -9,6 +9,11 @@ import type { AggregatedSignal } from './analysis/strategies.js';
 
 export const CSV_HEADER = 'run_id,ts_utc,date_et,symbol,chain,lastPrice,bidPrice,bidQty,askPrice,askQty,spreadPct,openPrice,highPrice,lowPrice,prevClosePrice,priceChangePercent,weightedAvgPrice,priceChange,volume,quoteVolume,count,lastQty,vwapDistPct,rangePosPct,bookImbalance,volVsAvg,obv,momentum,alerts,openTime,closeTime,source';
 
+/**
+ * Format an enriched ticker as a CSV line.
+ * @param ticker The enriched ticker to format
+ * @returns CSV string
+ */
 export function toCSV(ticker: EnrichedTicker): string {
   const f = (v: number | null | undefined, d = 8) => {
     if (v == null || !Number.isFinite(v)) return '';
@@ -48,6 +53,10 @@ export function toCSV(ticker: EnrichedTicker): string {
   return parts.join(',');
 }
 
+/**
+ * Get the CSV header line.
+ * @returns Header string
+ */
 export function csvHeader(): string {
   return CSV_HEADER;
 }
@@ -57,12 +66,24 @@ export const NEWS_CSV_HEADER = 'run_id,ts_utc,symbol,headline,description,source
 
 // ── JSON Lines ──
 
+/**
+ * Format an enriched ticker as a JSON line.
+ * @param ticker The enriched ticker to format
+ * @returns JSON string
+ */
 export function toJSONLine(ticker: EnrichedTicker): string {
   return JSON.stringify(ticker);
 }
 
 // ── Markdown report ──
 
+/**
+ * Generate a full markdown radar report.
+ * @param tickers Array of enriched tickers
+ * @param technicals Optional map of technical indicators by symbol
+ * @param newsMatches Optional array of news matches
+ * @returns Markdown report string
+ */
 export function toMarkdownReport(
   tickers: EnrichedTicker[],
   technicals?: Map<string, TechnicalIndicators>,
@@ -135,6 +156,12 @@ export function toMarkdownReport(
 
 // ── Terminal table ──
 
+/**
+ * Format tickers as a terminal-friendly table.
+ * @param tickers Array of enriched tickers
+ * @param aggregatedSignals Optional aggregated signals
+ * @returns Terminal table string
+ */
 export function toTable(tickers: EnrichedTicker[], aggregatedSignals?: AggregatedSignal[]): string {
   const lines: string[] = [];
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -170,6 +197,11 @@ export function toTable(tickers: EnrichedTicker[], aggregatedSignals?: Aggregate
 
 // ── Signal report ──
 
+/**
+ * Generate a signal report string sorted by composite score.
+ * @param signals Array of token signals
+ * @returns Formatted signal report
+ */
 export function toSignalReport(signals: TokenSignal[]): string {
   const sorted = [...signals].sort((a, b) => b.compositeScore - a.compositeScore);
   const lines: string[] = [];

@@ -11,6 +11,12 @@
 
 import type { SignalStrategy, StrategyContext, StrategySignal } from './strategies.js';
 
+/**
+ * Momentum strategy.
+ *
+ * Detects strong trending moves with volume confirmation
+ * and MACD alignment.
+ */
 export class MomentumStrategy implements SignalStrategy {
   readonly name = 'momentum';
   readonly description = 'Detects strong trending moves with volume confirmation and MACD alignment';

@@ -12,6 +12,12 @@
 import type { SignalStrategy, StrategyContext, StrategySignal } from './strategies.js';
 import { ema } from '../indicators.js';
 
+/**
+ * Trend Following strategy.
+ *
+ * Identifies established trends using EMA alignment, price vs MA,
+ * and volume confirmation.
+ */
 export class TrendFollowingStrategy implements SignalStrategy {
   readonly name = 'trend-following';
   readonly description = 'Identifies established trends using EMA alignment, price vs MA, and volume confirmation';

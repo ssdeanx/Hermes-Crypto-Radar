@@ -43,6 +43,8 @@ export interface RadarConfig {
     binance: boolean;
     coinGecko: boolean;
   };
+  /** Optional token whitelist — if set, only these token IDs are scanned */
+  tokens?: string[];
 }
 
 const DEFAULTS: RadarConfig = {
@@ -85,14 +87,26 @@ let _instance: RadarConfig | null = null;
 export function loadConfig(configPath?: string): RadarConfig {
   if (_instance) return _instance;
 
-  const base = { ...DEFAULTS };
+  const base = JSON.parse(JSON.stringify(DEFAULTS)) as RadarConfig;
 
-  // 1. File overrides
+  // 1. Auto-discover config file from well-known paths
+  const autoPaths = configPath
+    ? [configPath]
+    : ['radar.config.json', resolve('radar.config.json')];
+
+  for (const path of autoPaths) {
+    if (existsSync(path)) {
+      configPath = path;
+      break;
+    }
+  }
+
+  // 2. File overrides (if provided or discovered)
   if (configPath && existsSync(configPath)) {
     try {
       const raw = readFileSync(configPath, 'utf-8');
       const fileConfig = JSON.parse(raw);
-      mergeDeep(base, fileConfig);
+      mergeDeep(base as unknown as Record<string, unknown>, fileConfig);
     } catch (err) {
       throw new ConfigError('config_file', `Failed to load ${configPath}: ${err}`);
     }
@@ -113,6 +127,7 @@ export function loadConfig(configPath?: string): RadarConfig {
   if (envMap.log_level) base.logLevel = envMap.log_level;
   if (envMap.data_dir) base.dataDir = envMap.data_dir;
   if (envMap.rate_limit_max) base.rateLimitMax = parseInt(envMap.rate_limit_max, 10);
+  if (envMap.tokens) base.tokens = envMap.tokens.split(',').map(t => t.trim());
 
   _instance = base;
   return base;
