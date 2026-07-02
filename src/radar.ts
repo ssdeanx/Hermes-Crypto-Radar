@@ -335,11 +335,17 @@ export async function displayRadar(
   }
 
   if (format === 'xlsx') {
-    const config = loadConfig();
-    const fileName = `crypto-radar-${result.run.runId.toLowerCase()}.xlsx`;
-    const filePath = path.resolve(config.dataDir, fileName);
-    await exportToXlsx(result.tickers, filePath);
-    return `[XLSX export: ${filePath} — ${result.tickers.length} tokens]`;
+    try {
+      const config = loadConfig();
+      const fileName = `crypto-radar-${result.run.runId.toLowerCase()}.xlsx`;
+      const filePath = path.resolve(config.dataDir, fileName);
+      if (!fs.existsSync(config.dataDir)) fs.mkdirSync(config.dataDir, { recursive: true });
+      await exportToXlsx(result.tickers, filePath);
+      return `[XLSX export: ${filePath} — ${result.tickers.length} tokens]`;
+    } catch (err) {
+      logger.error('XLSX export failed', { error: err instanceof Error ? err.message : String(err) });
+      return `[XLSX export failed: ${err instanceof Error ? err.message : 'unknown error'}]`;
+    }
   }
 
   // Default: table

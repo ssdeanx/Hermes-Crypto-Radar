@@ -48,7 +48,7 @@ const TOKENS: Record<string, TokenDef> = {
   'bitcoin':     { id: 'bitcoin',     sym: 'BTC',  name: 'Bitcoin',      chain: 'multi', chains: ['bitcoin'],  coingeckoId: 'bitcoin' },
   'ethereum':    { id: 'ethereum',    sym: 'ETH',  name: 'Ethereum',     chain: 'multi', chains: ['ethereum'], coingeckoId: 'ethereum' },
   'dogecoin':    { id: 'dogecoin',    sym: 'DOGE', name: 'Dogecoin',     chain: 'multi', chains: ['dogecoin'], coingeckoId: 'dogecoin' },
-  'xrp':         { id: 'xrp',         sym: 'XRP',  name: 'XRP',          chain: 'multi', chains: ['xrp'],      coingeckoId: 'xrp' },
+  'xrp':         { id: 'xrp',         sym: 'XRP',  name: 'XRP',          chain: 'multi', chains: ['xrp'],      coingeckoId: 'ripple' },
   'cardano':     { id: 'cardano',     sym: 'ADA',  name: 'Cardano',      chain: 'multi', chains: ['cardano'],  coingeckoId: 'cardano' },
 };
 

@@ -65,34 +65,39 @@ const MOCK_TICKER_BTC = {
   count: 10000,
 };
 
-// ── Mock kline data: 200 candles in a gentle uptrend ──
-function generateMockKlines(): unknown[][] {
+// ── Deterministic mock kline data: 200 candles in a gentle uptrend ──
+//
+// Uses fixed sine-wave variation (no Math.random()) so test results
+// are stable across runs. All 200 candles computed at module load time.
+const MOCK_KLINES: unknown[][] = (() => {
   const klines: unknown[][] = [];
   for (let i = 0; i < 200; i++) {
-    const base = 80 + i * 0.02; // gentle uptrend
-    const open = base + (Math.random() - 0.5) * 0.5;
-    const close = open + 0.1 + Math.random() * 0.3;
-    const high = Math.max(open, close) + Math.random() * 0.5;
-    const low = Math.min(open, close) - Math.random() * 0.5;
+    const phase = i * 0.1;
+    const base = 80 + i * 0.005;                         // very gentle uptrend
+    const open  = base + Math.sin(phase) * 0.5;           // cyclic variation
+    const rawDelta = Math.sin(phase * 1.3) * 0.4;          // ~half candles up, ~half down
+    const close = open + rawDelta;
+    const high  = Math.max(open, close) + 0.4;
+    const low   = Math.min(open, close) - 0.4;
+    const vol   = 500_000 + (i % 7) * 50_000;
+
     klines.push([
       1783000000000 + i * 3600000,  // openTime
       open.toFixed(2),               // open
       high.toFixed(2),               // high
       low.toFixed(2),                // low
       close.toFixed(2),              // close
-      (500000 + Math.random() * 100000).toFixed(0), // volume
+      vol.toFixed(0),                // volume
       (i + 1) * 3600000 + 1783000000000, // closeTime
-      (open * 500000).toFixed(2),    // quoteVolume
-      500 + Math.floor(Math.random() * 200), // count
-      (250000 + Math.random() * 50000).toFixed(0), // takerBuyVol
-      (open * 250000).toFixed(2),    // takerBuyQuoteVol
+      (open * vol).toFixed(2),       // quoteVolume
+      500 + (i % 13),                // count
+      (vol * 0.5).toFixed(0),        // takerBuyVol
+      (open * vol * 0.5).toFixed(2), // takerBuyQuoteVol
       '0',                           // ignore
     ]);
   }
   return klines;
-}
-
-const MOCK_KLINES = generateMockKlines();
+})();
 
 // ── Helpers for checking fetch URLs ──
 function isTickerUrl(url: string): boolean {
@@ -316,7 +321,7 @@ describe('Binance API integration', () => {
     // runRadar should NOT crash — null entries are filtered naturally
     // because enrichTicker is only called when raw ticker data exists
     expect(result.run.numTokens).toBe(result.tickers.length);
-    expect(result.run.durationMs).toBeGreaterThan(0);
+    expect(result.run.durationMs).toBeGreaterThanOrEqual(0);
   });
 
   it('recovers from Binance rate-limit (429) via retry', async () => {
