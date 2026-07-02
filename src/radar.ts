@@ -52,6 +52,14 @@ function toET(d: Date): string {
   }).replace(',', '');
 }
 
+/**
+ * Enrich a raw Binance ticker with computed fields.
+ * @param raw Raw Binance ticker data
+ * @param token Token definition
+ * @param runId Radar run identifier
+ * @param tsUtc ISO UTC timestamp
+ * @returns Enriched ticker with computed fields (spread, VWAP distance, etc.)
+ */
 function enrichTicker(
   raw: BinanceTicker,
   token: TokenDef,
@@ -97,6 +105,14 @@ function enrichTicker(
   };
 }
 
+/**
+ * Execute a full radar scan: fetch live tickers from Binance, compute
+ * technical indicators for configured intervals, match news, generate
+ * signals, and evaluate strategy engine.
+ *
+ * @param options Scan options (filter, chain, sortBy, format, etc.)
+ * @returns Radar results including tickers, technicals, news, signals, and aggregated signals
+ */
 export async function runRadar(options: RadarOptions = {}): Promise<{
   tickers: EnrichedTicker[];
   technicals: Map<string, Map<string, TechnicalIndicators>>;
@@ -292,6 +308,15 @@ function toNewsCSV(match: NewsMatch): string {
   ].join(',');
 }
 
+/**
+ * Format and display radar results according to the specified output format.
+ *
+ * Supports: table (default), json, csv, md, xlsx, and quiet modes.
+ *
+ * @param result Radar scan result from runRadar()
+ * @param options Radar options (format, quiet, etc.)
+ * @returns Formatted output string
+ */
 export async function displayRadar(
   result: Awaited<ReturnType<typeof runRadar>>,
   options: RadarOptions,

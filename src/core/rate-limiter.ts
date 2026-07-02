@@ -8,6 +8,11 @@ export class RateLimiter {
   private tokens: number;
   private lastRefill: number;
 
+  /**
+   * Create a token-bucket rate limiter.
+   * @param maxTokens Maximum tokens in the bucket
+   * @param refillIntervalMs Time in ms to fully refill the bucket
+   */
   constructor(maxTokens: number, refillIntervalMs: number) {
     this.maxTokens = maxTokens;
     this.refillIntervalMs = refillIntervalMs;

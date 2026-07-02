@@ -24,6 +24,12 @@ const TF_WEIGHTS: Record<string, number> = {
   '1d':  0.35,
 };
 
+/**
+ * Strategy engine that aggregates signals from multiple strategies
+ * into a single composite signal per token.
+ *
+ * Supports single-timeframe and multi-timeframe evaluation.
+ */
 export class StrategyEngine {
   private strategies: SignalStrategy[];
   private weights: Map<string, number>;
@@ -36,6 +42,13 @@ export class StrategyEngine {
     this.weights = new Map(weights.map(w => [w.name, w.weight]));
   }
 
+  /**
+   * Evaluate all strategies for the given context.
+   * Returns an aggregated signal across all strategies.
+   *
+   * @param ctx Strategy context with ticker, technicals, news, and kline data
+   * @returns AggregatedSignal with direction, confidence, and alerts
+   */
   evaluate(ctx: StrategyContext): AggregatedSignal {
     const signals = this.strategies.map(s => {
       try { return s.evaluate(ctx); }
@@ -54,7 +67,7 @@ export class StrategyEngine {
   }
 
   private aggregateMultiTF(
-    _baseSignals: StrategySignal[],
+    _baseSignals: ReturnType<SignalStrategy['evaluate']>[],
     ctx: StrategyContext,
     techByInterval: Map<string, TechnicalIndicators>,
   ): AggregatedSignal {
@@ -153,6 +166,10 @@ export class StrategyEngine {
     };
   }
 
+  /**
+   * Get info about all registered strategies and their weights.
+   * @returns Array of strategy info objects
+   */
   getStrategyInfo(): Array<{ name: string; description: string; timeframe: string; weight: number }> {
     return this.strategies.map(s => ({
       name: s.name, description: s.description, timeframe: s.timeframe,

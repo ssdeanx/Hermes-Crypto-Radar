@@ -13,6 +13,7 @@ import { HealthMonitor } from './monitor/health.js';
 import { loadConfig, writeDefaultConfig } from './core/config.js';
 import { logger } from './core/logger.js';
 import { StrategyEngine } from './analysis/engine.js';
+import { runDaemon, isDaemonRunning, stopDaemon } from './daemon.js';
 
 const program = new Command();
 
@@ -228,6 +229,31 @@ program
 // ── strategies command weights update ──
 // Note: getStrategyInfo() is patched onto engine for CLI info
 // We need a way to expose weights — extend StrategyEngine
+
+// ── daemon command ──
+program
+  .command('daemon')
+  .description('Start/stop/status warm daemon for sub-50ms tool calls')
+  .option('--port <port>', 'HTTP port for health endpoint', String(9877))
+  .option('--refresh <sec>', 'Cache refresh interval in seconds', String(300))
+  .option('--status', 'Check if daemon is running')
+  .option('--stop', 'Stop running daemon')
+  .action(async (opts) => {
+    if (opts.status) {
+      const running = isDaemonRunning();
+      console.log(`Daemon: ${running ? '✅ RUNNING' : '⏹️  STOPPED'}`);
+      process.exit(running ? 0 : 1);
+    }
+    if (opts.stop) {
+      const stopped = stopDaemon();
+      console.log(stopped ? '⏹️  Daemon stopped' : '❌ No running daemon found');
+      process.exit(stopped ? 0 : 1);
+    }
+    // Start foreground
+    if (opts.port) process.env.RADAR__DAEMON_PORT = opts.port;
+    if (opts.refresh) process.env.RADAR__REFRESH_SEC = opts.refresh;
+    await runDaemon();
+  });
 
 // Default to scan if no command given
 if (process.argv.length <= 2) {

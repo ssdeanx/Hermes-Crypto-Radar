@@ -5,8 +5,13 @@
 import type { BinanceTicker, Kline, Chain } from './types.js';
 import { getTokenList, getBinancePair } from './tokens.js';
 import type { TokenDef } from './tokens.js';
+import { CircuitBreaker } from './core/circuit-breaker.js';
+import { logger } from './core/logger.js';
 
 const BASE_URL = 'https://data-api.binance.vision';
+
+/** Global circuit breaker for Binance API calls — 3 failures → 60s cool-down */
+const binanceBreaker = new CircuitBreaker({ name: 'binance', failureThreshold: 3, cooldownMs: 60_000 });
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 3;
 
@@ -70,17 +75,19 @@ function getPairs(): string[] {
  * @returns A map of symbol -> ticker
  */
 export async function fetchAllTickers(): Promise<Map<string, BinanceTicker>> {
-  const pairs = getPairs();
-  const symbols = pairs.map(s => `"${s}"`).join(',');
-  const url = `${BASE_URL}/api/v3/ticker/24hr?symbols=[${symbols}]`;
+  return binanceBreaker.call(async () => {
+    const pairs = getPairs();
+    const symbols = pairs.map(s => `"${s}"`).join(',');
+    const url = `${BASE_URL}/api/v3/ticker/24hr?symbols=[${symbols}]`;
 
-  const res = await fetchWithRetry(url);
-  const data = (await res.json()) as BinanceTicker[];
-  const map = new Map<string, BinanceTicker>();
-  for (const ticker of data) {
-    map.set(ticker.symbol, ticker);
-  }
-  return map;
+    const res = await fetchWithRetry(url);
+    const data = (await res.json()) as BinanceTicker[];
+    const map = new Map<string, BinanceTicker>();
+    for (const ticker of data) {
+      map.set(ticker.symbol, ticker);
+    }
+    return map;
+  }, async () => new Map());
 }
 
 /**
@@ -106,23 +113,25 @@ export async function fetchKlines(
   interval = '1h',
   limit = 100,
 ): Promise<Kline[]> {
-  const url = `${BASE_URL}/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`;
-  const res = await fetchWithRetry(url);
-  const data = (await res.json()) as unknown[][];
-  return data.map(k => ({
-    openTime:     Number(k[0]),
-    open:         Number(k[1]),
-    high:         Number(k[2]),
-    low:          Number(k[3]),
-    close:        Number(k[4]),
-    volume:       Number(k[5]),
-    closeTime:    Number(k[6]),
-    quoteVolume:  Number(k[7]),
-    count:        Number(k[8]),
-    takerBuyVol:  Number(k[9]),
-    takerBuyQuoteVol: Number(k[10]),
-    ignore:       Number(k[11]),
-  }));
+  return binanceBreaker.call(async () => {
+    const url = `${BASE_URL}/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`;
+    const res = await fetchWithRetry(url);
+    const data = (await res.json()) as unknown[][];
+    return data.map(k => ({
+      openTime:     Number(k[0]),
+      open:         Number(k[1]),
+      high:         Number(k[2]),
+      low:          Number(k[3]),
+      close:        Number(k[4]),
+      volume:       Number(k[5]),
+      closeTime:    Number(k[6]),
+      quoteVolume:  Number(k[7]),
+      count:        Number(k[8]),
+      takerBuyVol:  Number(k[9]),
+      takerBuyQuoteVol: Number(k[10]),
+      ignore:       Number(k[11]),
+    }));
+  }, async () => []);
 }
 
 /**

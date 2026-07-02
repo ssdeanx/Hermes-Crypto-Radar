@@ -2,6 +2,7 @@ import type { EnrichedTicker, TechnicalIndicators, NewsMatch } from '../types.js
 
 export type SignalDirection = 'buy' | 'sell' | 'neutral' | 'strong_buy' | 'strong_sell';
 
+/** Individual strategy evaluation result. */
 export interface StrategySignal {
   strategy: string;
   direction: SignalDirection;
@@ -11,6 +12,7 @@ export interface StrategySignal {
   timeframe: string;
 }
 
+/** Aggregated signal combining multiple strategy evaluations. */
 export interface AggregatedSignal {
   symbol: string;
   tokenName: string;
@@ -25,6 +27,7 @@ export interface AggregatedSignal {
   compositeReason?: string;
 }
 
+/** Context passed to each strategy's evaluate method. */
 export interface StrategyContext {
   ticker: EnrichedTicker;
   technical: TechnicalIndicators | null;
@@ -36,6 +39,7 @@ export interface StrategyContext {
   klineVolumes: number[];
 }
 
+/** Interface all signal strategies must implement. */
 export interface SignalStrategy {
   readonly name: string;
   readonly description: string;
@@ -43,6 +47,7 @@ export interface SignalStrategy {
   evaluate(ctx: StrategyContext): StrategySignal;
 }
 
+/** Weighted strategy configuration. */
 export interface StrategyWeight {
   name: string;
   weight: number;

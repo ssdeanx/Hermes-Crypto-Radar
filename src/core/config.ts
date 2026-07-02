@@ -87,14 +87,14 @@ let _instance: RadarConfig | null = null;
 export function loadConfig(configPath?: string): RadarConfig {
   if (_instance) return _instance;
 
-  const base = { ...DEFAULTS };
+  const base = JSON.parse(JSON.stringify(DEFAULTS)) as RadarConfig;
 
   // 1. File overrides
   if (configPath && existsSync(configPath)) {
     try {
       const raw = readFileSync(configPath, 'utf-8');
       const fileConfig = JSON.parse(raw);
-      mergeDeep(base, fileConfig);
+      mergeDeep(base as unknown as Record<string, unknown>, fileConfig);
     } catch (err) {
       throw new ConfigError('config_file', `Failed to load ${configPath}: ${err}`);
     }

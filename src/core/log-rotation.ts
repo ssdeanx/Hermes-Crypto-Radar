@@ -16,6 +16,13 @@ const DEFAULT_OPTIONS: LogRotationOptions = {
   maxArchives: 5,
 };
 
+/**
+ * Rotate a log file when it exceeds the configured size threshold.
+ * Compresses the current file to .1.gz and shifts existing archives.
+ *
+ * @param filePath Path to the log file
+ * @param options Optional rotation settings (maxSizeBytes, maxArchives)
+ */
 export function rotateLogFile(
   filePath: string,
   options?: Partial<LogRotationOptions>,
@@ -43,6 +50,13 @@ export function rotateLogFile(
   }
 }
 
+/**
+ * Convenience wrapper for rotateLogFile.
+ * Delegates to rotateLogFile with the same signature.
+ *
+ * @param filePath Path to the log file
+ * @param options Optional rotation settings
+ */
 export function checkLogRotation(
   filePath: string,
   options?: Partial<LogRotationOptions>,

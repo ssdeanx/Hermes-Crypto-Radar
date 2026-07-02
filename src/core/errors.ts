@@ -2,6 +2,9 @@
 // Hermes Crypto Radar — Typed Error Classes
 // ═══════════════════════════════════════════════════════════════════════
 
+/**
+ * Base error for all Crypto Radar errors.
+ */
 export class CryptoRadarError extends Error {
   public readonly code: string;
   public readonly recoverable: boolean;
@@ -16,6 +19,9 @@ export class CryptoRadarError extends Error {
   }
 }
 
+/**
+ * Network-level error (timeout, HTTP failure, DNS).
+ */
 export class NetworkError extends CryptoRadarError {
   public readonly wrappedCause: unknown;
 
@@ -29,6 +35,9 @@ export class NetworkError extends CryptoRadarError {
   }
 }
 
+/**
+ * Rate-limit error from an API provider.
+ */
 export class RateLimitError extends CryptoRadarError {
   public readonly retryAfterMs: number;
 
@@ -42,6 +51,9 @@ export class RateLimitError extends CryptoRadarError {
   }
 }
 
+/**
+ * Data validation / parsing error.
+ */
 export class DataError extends CryptoRadarError {
   constructor(source: string, reason: string) {
     super('DATA_ERROR', `Invalid data from ${source}: ${reason}`, {
@@ -52,6 +64,9 @@ export class DataError extends CryptoRadarError {
   }
 }
 
+/**
+ * Configuration error (missing/invalid settings).
+ */
 export class ConfigError extends CryptoRadarError {
   constructor(key: string, message: string) {
     super('CONFIG_ERROR', `Configuration error [${key}]: ${message}`, {
@@ -62,6 +77,9 @@ export class ConfigError extends CryptoRadarError {
   }
 }
 
+/**
+ * Cache operation error.
+ */
 export class CacheError extends CryptoRadarError {
   constructor(operation: string, reason: string) {
     super('CACHE_ERROR', `Cache ${operation} failed: ${reason}`, {
@@ -72,6 +90,9 @@ export class CacheError extends CryptoRadarError {
   }
 }
 
+/**
+ * Signal strategy evaluation error.
+ */
 export class SignalError extends CryptoRadarError {
   constructor(strategy: string, reason: string) {
     super('SIGNAL_ERROR', `Signal strategy "${strategy}" error: ${reason}`, {

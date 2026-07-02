@@ -14,6 +14,11 @@ const DEFAULT_OPTIONS: CircuitBreakerOptions = {
   name: 'unknown',
 };
 
+/**
+ * Circuit breaker pattern for resilient API calls.
+ * Prevents repeated calls to a failing service and allows
+ * recovery after a cooldown period.
+ */
 export class CircuitBreaker {
   private state: CircuitState = 'CLOSED';
   private failureCount = 0;
@@ -24,15 +29,31 @@ export class CircuitBreaker {
     this.options = { ...DEFAULT_OPTIONS, ...options };
   }
 
+  /**
+   * Get current circuit breaker state.
+   * @returns 'CLOSED', 'OPEN', or 'HALF_OPEN'
+   */
   getState(): CircuitState {
     this.maybeHalfOpen();
     return this.state;
   }
 
+  /**
+   * Get current failure count.
+   * @returns Number of consecutive failures
+   */
   getFailureCount(): number {
     return this.failureCount;
   }
 
+  /**
+   * Execute a function through the circuit breaker.
+   * If the circuit is OPEN, either serves a fallback or throws.
+   *
+   * @param fn Primary async function
+   * @param fallback Optional fallback async function
+   * @returns Result of fn or fallback
+   */
   async call<T>(fn: () => Promise<T>, fallback?: () => Promise<T>): Promise<T> {
     this.maybeHalfOpen();
     if (this.state === 'OPEN') {
@@ -57,11 +78,17 @@ export class CircuitBreaker {
     }
   }
 
+  /**
+   * Manually record a failure (useful when call() is not used).
+   */
   recordFailure(): void {
     this.failureCount++;
     if (this.failureCount >= this.options.failureThreshold) this.trip();
   }
 
+  /**
+   * Reset the circuit breaker to CLOSED state.
+   */
   reset(): void {
     this.state = 'CLOSED';
     this.failureCount = 0;

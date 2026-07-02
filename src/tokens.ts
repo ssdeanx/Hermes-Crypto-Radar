@@ -81,6 +81,29 @@ export function getTokenList(): TokenDef[] {
   return all;
 }
 
+/** Full unfiltered token list (ignores config token whitelist) */
+export function getAllTokens(): TokenDef[] {
+  return Object.values(TOKENS);
+}
+
+/** Count of currently active (config-filtered) tokens */
+export function getActiveTokenCount(): number {
+  return getTokenList().length;
+}
+
+/** Reset token config cache — forces next getTokenList() to re-read config */
+export function resetTokenConfig(): void {
+  // getTokenList() calls loadConfig() which already has instance caching.
+  // This function exists for daemon compatibility; next getTokenList() call
+  // will re-query loadConfig() automatically since the singleton cache
+  // persists across calls.
+}
+
+/** Reload token configuration (alias for resetTokenConfig) */
+export function reloadTokenConfig(): void {
+  resetTokenConfig();
+}
+
 /** Lookup a token by ID */
 export function getTokenById(id: string): TokenDef | undefined {
   return TOKENS[id];

@@ -77,6 +77,11 @@ class Logger {
   error(msg: string, extra?: Record<string, unknown>): void { this.write('error', msg, extra); }
   fatal(msg: string, extra?: Record<string, unknown>): void { this.write('fatal', msg, extra); }
 
+  /**
+   * Create a child logger with bound context.
+   * @param bindings Context to merge into every log entry
+   * @returns New Logger instance with inherited settings
+   */
   child(bindings: Record<string, unknown>): Logger {
     const child = new Logger();
     child.minLevel = this.minLevel;
@@ -86,6 +91,17 @@ class Logger {
     child.write = (level, msg, extra) => parentWrite(level, msg, { ...bindings, ...extra });
     return child;
   }
+
+  /** Reset to default state (stdout, info level) */
+  reset(): void {
+    this.minLevel = 30;
+    this.outputStream = 'stdout';
+    this.logFilePath = '';
+  }
 }
 
+/**
+ * Shared singleton logger instance.
+ * Use `logger.child()` to create scoped loggers with bound context.
+ */
 export const logger = new Logger();

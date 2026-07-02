@@ -57,7 +57,7 @@ export class Cache {
     this.store.clear();
   }
 
-  /** Get cache stats. */
+  /** Get cache stats (purges expired entries first). */
   stats(): { size: number; keys: string[] } {
     // Purge expired first
     for (const key of Array.from(this.store.keys())) {
