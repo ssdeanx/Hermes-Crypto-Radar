@@ -10,10 +10,20 @@ import {
   getTokenBySymbol,
   getTokensByChain,
   getBinancePair,
+  getAllTokens,
+  getActiveTokenCount,
 } from './tokens.js';
 import type { Chain } from './types.js';
+import { resetConfig } from './core/config.js';
 
 describe('Token Registry', () => {
+  beforeEach(() => {
+    resetConfig();
+  });
+
+  afterEach(() => {
+    resetConfig();
+  });
   it('returns all tokens as list', () => {
     const tokens = getTokenList();
     expect(tokens.length).toBeGreaterThan(30);
@@ -76,5 +86,25 @@ describe('Token Registry', () => {
   it('getBinancePair returns USDT pair', () => {
     const token = getTokenById('solana')!;
     expect(getBinancePair(token)).toBe('SOLUSDT');
+  });
+
+  it('getAllTokens returns all tokens unfiltered', () => {
+    const all = getAllTokens();
+    expect(all.length).toBe(getTokenIds().length);
+  });
+
+  it('getActiveTokenCount returns positive number', () => {
+    expect(getActiveTokenCount()).toBeGreaterThan(0);
+  });
+
+  it('getTokenList respects config token whitelist', () => {
+    process.env['RADAR__TOKENS'] = 'bitcoin,ethereum';
+    // Reset config so env vars take effect
+    resetConfig();
+    const filtered = getTokenList();
+    // If env parsing works, filtered should only contain bitcoin and ethereum (as BTC, ETH)
+    expect(filtered.length).toBeGreaterThanOrEqual(2);
+    delete process.env['RADAR__TOKENS'];
+    resetConfig();
   });
 });

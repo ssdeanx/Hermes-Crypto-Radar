@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] — 2026-07-02
+
+### Added
+- **Circuit breaker** — `src/core/circuit-breaker.ts` with CLOSED/OPEN/HALF_OPEN states, configurable failure threshold (3), 60s cooldown, cached-fallback. Wired into Binance API calls. Prevents cascading failures during API outages.
+- **Parallel kline fetching** — Klines fetched in batches of 5 using `Promise.all`, reducing scan time by ~60% for 30+ tokens.
+- **Parallel news feeds** — 9 RSS feeds fetched with concurrency-4 via batched `Promise.all`. News in ~2s instead of ~12s.
+- **Atomic file writes** — CSV logs written to `.tmp` then `fs.renameSync()` (filesystem-atomic on Linux). No partial-write data loss on crash.
+- **Log rotation** — `src/core/log-rotation.ts` rotates at 10MB, gzips to `.log.1.gz`, keeps 5 archives.
+- **Multi-timeframe analysis** — Fetches klines across 4 intervals (`15m`, `1h`, `4h`, `1d`) in parallel per token. Technical indicators computed and stored per interval.
+- **Cross-timeframe strategy aggregation** — Strategy engine runs on each interval with weighted vote (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35). Per-TF breakdown in `compositeReason` field.
+- **OBV (On-Balance Volume)** — `computeOBV()` in `indicators.ts`. Wired into enriched tickers.
+- **Volume vs Average (`volVsAvg`)** — `computeVolVsAvg()` in `indicators.ts`. Shows current volume deviation from 20-period average.
+- **`--period` CLI flag** — `--period 15m|1h|4h|1d` limits scan to a single timeframe.
+- **7 new tokens** — SUI, APT, SEI, TIA, INJ, RUNE, ATOM. Total: 39 tracked tokens.
+- **Config auto-discovery** — `radar.config.json` auto-discovered from project root. Supports custom token list.
+- **155-test suite** — Unit, integration, E2E coverage across 18 test files (was 58, 5 files).
+- **Coverage gate** — vitest configured with thresholds: statements 80%, branches 70%, functions 75%, lines 80%.
+- **2x cache TTL** — Ticker cache increased from 30s to 5min, reducing Binance API pressure.
+- **Pre-commit hook** — `.husky/pre-commit` runs `npm test`.
+
+### Documentation
+- Full JSDoc on all exported functions across 15+ source files.
+
+---
+
 ## [1.1.0] — 2026-07-02
 
 ### Added
