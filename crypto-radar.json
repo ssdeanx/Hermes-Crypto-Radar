@@ -1,0 +1,8 @@
+{
+  "$schema": "./crypto-radar.schema.json",
+  "description": "Crypto Radar token configuration — which tokens to track.",
+  "version": 1,
+
+  "enabled": ["*"],
+  "disabled": []
+}
