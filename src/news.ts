@@ -4,6 +4,7 @@
 
 import type { NewsArticle, NewsMatch, TokenDef } from './types.js';
 import { getTokenList } from './tokens.js';
+import { recordFeedResult, getDeadFeeds } from './core/feed-monitor.js';
 
 interface FeedDef {
   name: string;
@@ -16,7 +17,8 @@ const NEWS_FEEDS: FeedDef[] = [
   { name: 'CoinDesk',      url: 'https://www.coindesk.com/arc/outboundfeeds/rss/', tier: 1 },
   { name: 'Decrypt',       url: 'https://decrypt.co/feed',                tier: 1 },
   { name: 'The Defiant',   url: 'https://thedefiant.io/feed/',            tier: 1 },
-  { name: 'Blockworks',    url: 'https://blockworks.co/feed/',            tier: 2 },
+  { name: 'The Block',     url: 'https://www.theblock.co/rss.xml',        tier: 1 },
+  { name: 'Blockworks',    url: 'https://blockworks.co/feed/',            tier: 1 },
   { name: 'CryptoSlate',   url: 'https://cryptoslate.com/feed/',          tier: 2 },
   { name: 'CoinStats',     url: 'https://coinstats.app/blog/feed/',       tier: 3 },
   { name: 'DeFi Saver',    url: 'https://blog.defisaver.com/rss/',         tier: 3 },
@@ -28,10 +30,11 @@ const SOURCE_TIERS: Record<string, number> = {
   'CoinDesk':      1.0,
   'Decrypt':       1.0,
   'The Defiant':   1.0,
-  'Blockworks':    0.9,
+  'The Block':     1.0,
+  'Blockworks':    1.0,
   'CryptoSlate':   0.8,
-  'DeFi Saver':    0.7,
   'CoinStats':     0.6,
+  'DeFi Saver':    0.7,
   'NullTX':        0.4,
 };
 
@@ -67,7 +70,7 @@ function parseRSS(xml: string, source: string): NewsArticle[] {
 
     // Extract domain from link
     const link = getField('link');
-    let domain = '';
+    let domain;
     try {
       domain = new URL(link).hostname.replace('www.', '');
     } catch {
@@ -175,8 +178,17 @@ export async function fetchAndMatchNews(
   const tokens = getTokenList();
   const CONCURRENCY = 4;
 
+  // Pre-compute dead feeds to skip (avoid wasting HTTP calls)
+  const deadFeeds = new Set(getDeadFeeds().map(f => f.name));
+
   /** Process a single feed's articles */
-  async function processFeed(feed: FeedDef): Promise<void> {
+  async function processFeed(feed: FeedDef): Promise<NewsArticle[]> {
+    // Skip dead feeds entirely — don't waste HTTP calls
+    if (deadFeeds.has(feed.name)) {
+      recordFeedResult(feed.name, feed.url, false, 'skipped — feed is dead');
+      return [];
+    }
+
     try {
       const ctrl = new AbortController();
       setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
@@ -186,46 +198,63 @@ export async function fetchAndMatchNews(
         headers: { 'User-Agent': 'Hermes-Crypto-Radar/1.0' },
       });
 
-      if (!res.ok) return;
+      if (!res.ok) {
+        recordFeedResult(feed.name, feed.url, false, `HTTP ${res.status}`);
+        return [];
+      }
 
       const xml = await res.text();
-      const articles = parseRSS(xml, feed.name);
+      const parsed = parseRSS(xml, feed.name);
 
-      for (const article of articles) {
-        // Skip poison headlines
-        if (isPoison(article.headline)) continue;
-
-        // Skip duplicates (cross-feed or same-run)
-        const norm = normalizeHeadline(article.headline);
-        if (seenHeadlines.has(norm)) continue;
-        seenHeadlines.add(norm);
-
-        for (const token of tokens) {
-          const relevance = matchToken(article.headline, article.description, token, feed.name);
-          if (relevance < 0.5) continue;
-
-          matches.push({
-            runId,
-            tsUtc,
-            symbol: token.sym,
-            headline: article.headline,
-            description: article.description.slice(0, 500),
-            source: article.source,
-            domain: article.domain,
-            relevance: Math.round(relevance * 100) / 100,
-            url: article.url,
-          });
-        }
-      }
-    } catch {
-      // Silently skip failed feeds
+      recordFeedResult(feed.name, feed.url, true);
+      return parsed;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      recordFeedResult(feed.name, feed.url, false, errMsg);
+      return [];
     }
   }
 
   // Process feeds in batches with limited concurrency
+  // Promise.allSettled ensures one failing feed doesn't block the batch
   for (let i = 0; i < NEWS_FEEDS.length; i += CONCURRENCY) {
     const batch = NEWS_FEEDS.slice(i, i + CONCURRENCY);
-    await Promise.all(batch.map(feed => processFeed(feed)));
+    const settled = await Promise.allSettled(
+      batch.map(feed => processFeed(feed)),
+    );
+
+    for (const s of settled) {
+      if (s.status === 'fulfilled') {
+        for (const article of s.value) {
+          // Skip poison headlines
+          if (isPoison(article.headline)) continue;
+
+          // Skip duplicates (cross-feed or same-run)
+          const norm = normalizeHeadline(article.headline);
+          if (seenHeadlines.has(norm)) continue;
+          seenHeadlines.add(norm);
+
+          for (const token of tokens) {
+            const relevance = matchToken(article.headline, article.description, token, article.source);
+            if (relevance < 0.5) continue;
+
+            matches.push({
+              runId,
+              tsUtc,
+              symbol: token.sym,
+              headline: article.headline,
+              description: article.description.slice(0, 500),
+              source: article.source,
+              domain: article.domain,
+              relevance: Math.round(relevance * 100) / 100,
+              url: article.url,
+            });
+          }
+        }
+      }
+      // Rejected branches are already handled inside processFeed — Promise.allSettled
+      // catches only unexpected errors (shouldn't happen), so we just skip them
+    }
   }
 
   return matches;

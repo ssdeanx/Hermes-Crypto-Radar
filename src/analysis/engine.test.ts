@@ -150,10 +150,31 @@ describe('StrategyEngine', () => {
     const engine = new StrategyEngine();
     const info = engine.getStrategyInfo();
 
-    expect(info).toHaveLength(3);
-    const momentum = info.find(s => s.name === 'momentum');
+    expect(info.strategies).toHaveLength(3);
+    expect(info.tfWeights).toBeDefined();
+    expect(info.tfWeights['1h']).toBe(0.25);
+    const momentum = info.strategies.find(s => s.name === 'momentum');
     expect(momentum).toBeDefined();
     expect(momentum!.weight).toBe(0.4);
     expect(momentum!.timeframe).toBe('1h');
+  });
+
+  it('getStrategyWeights returns current weights as record', () => {
+    const engine = new StrategyEngine();
+    const weights = engine.getStrategyWeights();
+    expect(weights['momentum']).toBe(0.4);
+    expect(weights['mean-reversion']).toBe(0.2);
+    expect(weights['trend-following']).toBe(0.4);
+  });
+
+  it('setStrategyWeight updates weight at runtime', () => {
+    const engine = new StrategyEngine();
+    engine.setStrategyWeight('momentum', 0.5);
+    expect(engine.getStrategyWeights()['momentum']).toBe(0.5);
+  });
+
+  it('setStrategyWeight throws for unknown strategy', () => {
+    const engine = new StrategyEngine();
+    expect(() => engine.setStrategyWeight('unknown', 0.5)).toThrow('Unknown strategy');
   });
 });

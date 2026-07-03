@@ -245,3 +245,55 @@ function scoreToBar(score: number, maxLen: number): string {
   const empty = maxLen - filled;
   return '█'.repeat(filled) + '░'.repeat(Math.max(0, empty));
 }
+
+// ── JSON Schema Validation ──
+
+export interface ValidationError {
+  field: string;
+  message: string;
+  value: unknown;
+}
+
+/**
+ * Validate radar output data against expected schema.
+ * Returns list of validation errors (empty = valid).
+ */
+export function validateOutput(
+  tickers: EnrichedTicker[],
+): ValidationError[] {
+  const errors: ValidationError[] = [];
+  for (let i = 0; i < tickers.length; i++) {
+    const t = tickers[i]!;
+    if (typeof t.lastPrice !== 'number' || isNaN(t.lastPrice)) {
+      errors.push({ field: `tickers[${i}].lastPrice`, message: 'Must be a valid number', value: t.lastPrice });
+    }
+    if (!t.symbol || typeof t.symbol !== 'string') {
+      errors.push({ field: `tickers[${i}].symbol`, message: 'Must be a non-empty string', value: t.symbol });
+    }
+    if (typeof t.priceChangePercent !== 'number' || isNaN(t.priceChangePercent)) {
+      errors.push({ field: `tickers[${i}].priceChangePercent`, message: 'Must be a valid number', value: t.priceChangePercent });
+    }
+    if (typeof t.runId !== 'string' || t.runId.length === 0) {
+      errors.push({ field: `tickers[${i}].runId`, message: 'Must be a non-empty string', value: t.runId });
+    }
+    if (typeof t.tsUtc !== 'string' || t.tsUtc.length === 0) {
+      errors.push({ field: `tickers[${i}].tsUtc`, message: 'Must be a non-empty string', value: t.tsUtc });
+    }
+    if (typeof t.chain !== 'string' || t.chain.length === 0) {
+      errors.push({ field: `tickers[${i}].chain`, message: 'Must be a non-empty string', value: t.chain });
+    }
+    if (typeof t.volume !== 'number' || isNaN(t.volume) || t.volume < 0) {
+      errors.push({ field: `tickers[${i}].volume`, message: 'Must be a non-negative number', value: t.volume });
+    }
+    if (typeof t.quoteVolume !== 'number' || isNaN(t.quoteVolume) || t.quoteVolume < 0) {
+      errors.push({ field: `tickers[${i}].quoteVolume`, message: 'Must be a non-negative number', value: t.quoteVolume });
+    }
+    if (typeof t.spreadPct !== 'number' || isNaN(t.spreadPct)) {
+      errors.push({ field: `tickers[${i}].spreadPct`, message: 'Must be a valid number', value: t.spreadPct });
+    }
+    if (typeof t.momentum !== 'number' || isNaN(t.momentum)) {
+      errors.push({ field: `tickers[${i}].momentum`, message: 'Must be a valid number', value: t.momentum });
+    }
+  }
+  return errors;
+}

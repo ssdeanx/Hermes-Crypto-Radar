@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.3.0] — 2026-07-03
+
+### Added
+- **5 new technical indicators** — Stochastic Oscillator (%K/%D), Ichimoku Cloud (conversion/base/spanA/spanB/lagging span), Williams %R, Chaikin Money Flow (CMF), True Strength Index (TSI). All computed from kline high/low/close/volume and included in `TechnicalIndicators` type.
+- **DeFiLlama on-chain metrics** — `src/onchain.ts` module fetches protocol TVL, chain-level TVL, 1d/7d/30d fees, and on-chain prices via the free DeFiLlama API. Batched in parallel (concurrency-5) with fallback. Wired into signal engine as a 0–15% confidence boost based on protocol TVL strength.
+- **On-chain signal boost** — `computeOnchainBoost()` in `signals.ts` adds up to 15 percentage points to composite scores based on protocol TVL (high TVL >$1B → +10–15%, medium $100M–$1B → +5–10%, low <$100M → +0–5%).
+- **Dynamic top-50 volume scan** — `--dynamic [count]` CLI flag auto-discovers the top N tokens by 24h USD volume via `getTopTokensByVolume()` in `tokens.ts`. Uses Binance ticker data to rank pairs by `quoteVolume`. Takes priority over `--filter`.
+- **Strategy weight config overrides** — `radar.config.json` now accepts `strategyWeights` (e.g. `{"momentum": 0.5, "mean-reversion": 0.2, "trend-following": 0.3}`) and `timeframeWeights` (e.g. `{"15m": 0.1, "1h": 0.3, "4h": 0.3, "1d": 0.3}`). Also settable via `RADAR__STRATEGY_WEIGHTS` and `RADAR__TIMEFRAME_WEIGHTS` env vars.
+- **`--onchain` CLI flag** — New flag on `scan` command to include DeFiLlama on-chain metrics during the scan pipeline. Disabled by default to avoid extra latency.
+- **`RADAR__DEFI_LLAMA_ENABLED` env var** — Enables DeFiLlama metrics globally via environment config.
+- **ESLint configuration** — Full ESLint flat config with `typescript-eslint` strict rules, `eslint-config-prettier` compatibility. `npm run lint` / `npm run lint:fix` scripts.
+- **`.env.example`** — Documented all 9 env vars with defaults: `RADAR__DATA_DIR`, `RADAR__LOG_LEVEL`, `RADAR__STRATEGY_WEIGHTS`, `RADAR__TIMEFRAME_WEIGHTS`, `RADAR__TOKENS`, `RADAR__BINANCE_BASE_URL`, `RADAR__FETCH_TIMEOUT_MS`, `RADAR__CACHE_TTL_MS`, `RADAR__DEFI_LLAMA_ENABLED`.
+- **`.npmignore`** — Excludes `src/`, `test/`, `data/`, eslint/prettier configs, `tsconfig.json`, `.git/`, `.github/`, `.husky/` from published package.
+
+### Changed
+- **SVG charts overhaul** — All chart types (line, candlestick, dashboard) now use:
+  - CSS-in-`<style>` for maintainable styling
+  - `<linearGradient>` fills for depth and visual polish
+  - `viewBox` for responsive scaling across devices
+  - `role="img"` + `aria-label` for accessibility
+  - `<title>` tooltips on data points
+  - Crosshair effects at latest candle
+  - Dark theme (`#0f172a` bg), cyan/green/red palette
+  - Inter font stack
+  - Branding watermark
+- **Package.json SEO optimization** — Name set to `hermes-crypto-radar`, description rewritten with all feature keywords, 36 comprehensive keywords (hermes, crypto, trading, defi, rsi, macd, bollinger-bands, on-chain, etc.), repository links to GitHub, `sideEffects: false`.
+- **Standardized data directory** — All logs and state now default to `~/.hermes/data/crypto-radar/` (was local `./data/`). Configurable via `RADAR__DATA_DIR` env var. Ensures cross-session persistence within Hermes ecosystem.
+- **DeFiLlama config integration** — `sources.defiLlama` and `defiLlamaEnabled` fields in config schema, loaded via env + file merge.
+- **`includeOnchain` in RadarOptions** — `RadarOptions` type extended with `includeOnchain?: boolean` for pipeline gating.
+- **Plugin tools expanded to 6** — Added `crypto_radar_chart` and `crypto_radar_daemon` to `plugin.yaml` `provides_tools` list.
+- **Test suite grown to 167 tests** — Up from 155 in v1.2.0, covering all new indicators, on-chain module, config overrides, and dynamic scan.
+- **`version` bumped** from `1.2.0` to `1.3.0`.
+
+### Documentation
+- README completely rewritten for GitHub discoverability with badges, feature tables, full CLI reference, plugin tool reference, architecture diagram, and quick-start guides.
+- `.env.example` with all 9 supported env vars and documentation.
+- CHANGELOG and SPEC.md updated for v1.3.0.
+
+### Infrastructure
+- ESLint flat config with `typescript-eslint` (strict rules, method-signature-style, await-thenable, no-unused-vars, no-floating-promises).
+- Prettier 3.9 configuration.
+- `.npmignore` for clean package publishing.
+
+---
+
 ## [1.2.0] — 2026-07-02
 
 ### Added

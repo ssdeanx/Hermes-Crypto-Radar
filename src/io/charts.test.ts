@@ -71,8 +71,8 @@ describe('priceSvgChart', () => {
   it('outputs different dimensions', () => {
     const klines = makeKlines(20);
     const svg = priceSvgChart('Small', klines, 300, 150);
-    expect(svg).toContain('width=\"300\"');
-    expect(svg).toContain('height=\"150\"');
+    expect(svg).toContain('viewBox="0 0 300 150"');
+    expect(svg).toContain('aria-label="Price Chart: Small"');
   });
 });
 

@@ -5,30 +5,56 @@
 // Detects strong trending moves by combining:
 //   - Price change velocity (rate of change)
 //   - Volume confirmation (volume rising with price)
+//   - Volume profile (multi-period volume comparison)
+//   - ADX filter (only signal in trending markets)
+//   - Breakout detection (price breaking recent range with volume)
 //   - RSI momentum (not overbought, but strong)
 //   - MACD alignment (histogram direction)
 //   - Breakout from Bollinger Bands
 
 import type { SignalStrategy, StrategyContext, StrategySignal } from './strategies.js';
+import { computeADX } from '../indicators.js';
 
 /**
  * Momentum strategy.
  *
- * Detects strong trending moves with volume confirmation
- * and MACD alignment.
+ * Detects strong trending moves with volume confirmation,
+ * MACD alignment, ADX trending filter, breakout detection,
+ * and multi-period volume profile analysis.
  */
 export class MomentumStrategy implements SignalStrategy {
   readonly name = 'momentum';
-  readonly description = 'Detects strong trending moves with volume confirmation and MACD alignment';
+  readonly description = 'Detects strong trending moves with volume confirmation, MACD alignment, ADX filter, and volume profile';
   readonly timeframe = '1h';
 
   evaluate(ctx: StrategyContext): StrategySignal {
-    const { ticker, technical, klineCloses, klineVolumes } = ctx;
+    const { ticker, technical, klineCloses, klineHighs, klineLows, klineVolumes } = ctx;
     let confidence = 0.5;
     const indicators: Record<string, number | null> = {};
     const reasons: string[] = [];
 
-    // 1. Price change velocity (rate of change over 24h)
+    // ── 0. ADX Filter — only signal in trending markets ──
+    const adx = computeADX(klineHighs, klineLows, klineCloses, 14);
+    indicators.adx = adx;
+
+    if (adx != null) {
+      if (adx > 25) {
+        // Trending market — scale confidence proportionally to ADX strength
+        // ADX 25→0.5 boost, 50→0.8, 75+→1.0
+        const adxScale = Math.min((adx - 25) / 50, 1.0);
+        const adxBonus = adxScale * 0.15;
+        confidence += adxBonus;
+        reasons.push(`ADX ${adx.toFixed(1)} — trending market (confidence × ${(1 + adxScale * 0.3).toFixed(2)})`);
+      } else if (adx < 20) {
+        // Choppy market — reduce confidence
+        confidence -= 0.10;
+        reasons.push(`ADX ${adx.toFixed(1)} — choppy market, reducing signal confidence`);
+      } else {
+        reasons.push(`ADX ${adx.toFixed(1)} — transitioning`);
+      }
+    }
+
+    // ── 1. Price change velocity (rate of change over 24h) ──
     const roc = ticker.priceChangePercent;
     indicators.roc = roc;
 
@@ -46,22 +72,94 @@ export class MomentumStrategy implements SignalStrategy {
       reasons.push(`moderate downside momentum: ${roc.toFixed(2)}%`);
     }
 
-    // 2. Volume confirmation
-    if (ticker.quoteVolume > 50e6) {
-      confidence += 0.10;
-      reasons.push('very high volume');
-    } else if (ticker.quoteVolume > 10e6) {
-      confidence += 0.05;
+    // ── 2. Volume profile — multi-period volume comparison ──
+    const currentVolume = klineVolumes[klineVolumes.length - 1] ?? 0;
+    const avgVolume20 = klineVolumes.length >= 20
+      ? klineVolumes.slice(-20).reduce((a, b) => a + b, 0) / 20
+      : null;
+    const avgVolume50 = klineVolumes.length >= 50
+      ? klineVolumes.slice(-50).reduce((a, b) => a + b, 0) / 50
+      : null;
+
+    indicators.currentVolume = currentVolume;
+    indicators.avgVolume20 = avgVolume20;
+    indicators.avgVolume50 = avgVolume50;
+
+    let volumeProfileConfirmed = false;
+
+    if (avgVolume20 != null && currentVolume > avgVolume20) {
+      const volRatio20 = currentVolume / avgVolume20;
+      indicators.volumeRatio20 = volRatio20;
+      if (volRatio20 > 1.5) {
+        confidence += 0.08;
+        reasons.push(`volume ${(volRatio20 * 100).toFixed(0)}% of 20-avg`);
+      } else if (volRatio20 > 1.0) {
+        confidence += 0.04;
+      }
     }
 
-    // Volume trend
+    if (avgVolume50 != null && currentVolume > avgVolume50) {
+      const volRatio50 = currentVolume / avgVolume50;
+      indicators.volumeRatio50 = volRatio50;
+      if (volRatio50 > 1.3) {
+        confidence += 0.07;
+        reasons.push(`volume ${(volRatio50 * 100).toFixed(0)}% of 50-avg`);
+      } else if (volRatio50 > 1.0) {
+        confidence += 0.03;
+      }
+    }
+
+    // Strong confirmation when volume is above both averages simultaneously
+    if (avgVolume20 != null && avgVolume50 != null && currentVolume > avgVolume20 && currentVolume > avgVolume50) {
+      confidence += 0.05;
+      volumeProfileConfirmed = true;
+      reasons.push('volume above both 20 and 50 period averages');
+    }
+
+    // Volume trend (existing)
     if (technical?.volTrend != null && technical.volTrend > 0.3) {
       confidence += 0.08;
       reasons.push(`volume surging: ${(technical.volTrend * 100).toFixed(0)}% vs avg`);
     }
     indicators.volumeTrend = technical?.volTrend ?? null;
 
-    // 3. RSI — strong but not exhausted
+    // ── 3. Breakout detection — price breaking 20-period range ──
+    if (klineHighs.length >= 20 && klineLows.length >= 20) {
+      const periodHigh20 = Math.max(...klineHighs.slice(-20));
+      const periodLow20 = Math.min(...klineLows.slice(-20));
+      const currentPrice = klineCloses.length > 0
+        ? klineCloses[klineCloses.length - 1]!
+        : ticker.lastPrice;
+
+      indicators.periodHigh20 = periodHigh20;
+      indicators.periodLow20 = periodLow20;
+
+      const isBreakoutUp = currentPrice > periodHigh20;
+      const isBreakoutDown = currentPrice < periodLow20;
+      const hasVolumeConfirmation = avgVolume20 != null && currentVolume > avgVolume20 * 1.2;
+
+      if (isBreakoutUp && hasVolumeConfirmation) {
+        confidence += 0.12;
+        reasons.push(`bullish breakout above 20-period high (${currentPrice.toFixed(4)} > ${periodHigh20.toFixed(4)}, vol confirmed)`);
+      } else if (isBreakoutDown && hasVolumeConfirmation) {
+        confidence += 0.12;
+        reasons.push(`bearish breakout below 20-period low (${currentPrice.toFixed(4)} < ${periodLow20.toFixed(4)}, vol confirmed)`);
+      } else if (isBreakoutUp) {
+        reasons.push('price broke above 20-period range but volume light');
+      } else if (isBreakoutDown) {
+        reasons.push('price broke below 20-period range but volume light');
+      }
+    }
+
+    // ── 3b. Quote volume check (existing) ──
+    if (ticker.quoteVolume > 50e6) {
+      confidence += 0.10;
+      reasons.push('very high quote volume');
+    } else if (ticker.quoteVolume > 10e6) {
+      confidence += 0.05;
+    }
+
+    // ── 4. RSI — strong but not exhausted ──
     if (technical?.rsi != null) {
       indicators.rsi = technical.rsi;
       if (roc > 0) {
@@ -83,7 +181,7 @@ export class MomentumStrategy implements SignalStrategy {
       }
     }
 
-    // 4. MACD alignment
+    // ── 5. MACD alignment ──
     if (technical?.macd != null) {
       indicators.macdHistogram = technical.macd.histogram;
       if (technical.macd.histogram > 0 && roc > 0) {
@@ -93,7 +191,6 @@ export class MomentumStrategy implements SignalStrategy {
         confidence += 0.08;
         reasons.push('MACD negative and declining');
       } else if (technical.macd.histogram > 0 && roc < 0) {
-        // Divergence warning
         reasons.push('⚠️ bullish MACD divergence (price down, MACD up)');
         confidence += 0.05;
       } else if (technical.macd.histogram < 0 && roc > 0) {
@@ -102,7 +199,7 @@ export class MomentumStrategy implements SignalStrategy {
       }
     }
 
-    // 5. BB breakout
+    // ── 6. BB breakout ──
     if (technical?.bb != null) {
       indicators.bbPosition = technical.bb.position;
       if (technical.bb.position > 0.95 && roc > 0) {
@@ -114,7 +211,7 @@ export class MomentumStrategy implements SignalStrategy {
       }
     }
 
-    // Determine direction
+    // ── Determine direction ──
     let direction: 'buy' | 'sell' | 'neutral' | 'strong_buy' | 'strong_sell';
     if (confidence >= 0.8) {
       direction = roc > 0 ? 'strong_buy' : 'strong_sell';

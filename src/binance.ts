@@ -71,6 +71,27 @@ function getPairs(): string[] {
 }
 
 /**
+ * Fetch 24hr ticker for ALL USDT pairs from Binance.
+ * This is used by the dynamic top-N volume detection to discover which pairs
+ * are most active, regardless of the hardcoded token registry.
+ * @returns A map of symbol -> ticker for all USDT pairs
+ */
+export async function fetchAllUsdtTickers(): Promise<Map<string, BinanceTicker>> {
+  return binanceBreaker.call(async () => {
+    const url = `${BASE_URL}/api/v3/ticker/24hr`;
+    const res = await fetchWithRetry(url);
+    const data = (await res.json()) as BinanceTicker[];
+    const map = new Map<string, BinanceTicker>();
+    for (const ticker of data) {
+      if (ticker.symbol.endsWith('USDT')) {
+        map.set(ticker.symbol, ticker);
+      }
+    }
+    return map;
+  }, async () => new Map());
+}
+
+/**
  * Fetch 24hr ticker for all tracked tokens from Binance.
  * @returns A map of symbol -> ticker
  */

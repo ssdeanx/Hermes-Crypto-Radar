@@ -4,7 +4,10 @@
 
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { ConfigError } from './errors.js';
+
+const DEFAULT_DATA_DIR = `${homedir()}/.hermes/data/crypto-radar`;
 
 export interface RadarConfig {
   /** Binance API base URL */
@@ -42,9 +45,16 @@ export interface RadarConfig {
   sources: {
     binance: boolean;
     coinGecko: boolean;
+    defiLlama?: boolean;
   };
+  /** Enable DeFiLlama on-chain metrics during scan */
+  defiLlamaEnabled?: boolean;
   /** Optional token whitelist — if set, only these token IDs are scanned */
   tokens?: string[];
+  /** Override strategy weights e.g. {"momentum": 0.5, "mean-reversion": 0.2, "trend-following": 0.3} */
+  strategyWeights?: Record<string, number>;
+  /** Override timeframe weights e.g. {"15m": 0.1, "1h": 0.25, "4h": 0.3, "1d": 0.35} */
+  timeframeWeights?: Record<string, number>;
 }
 
 const DEFAULTS: RadarConfig = {
@@ -55,7 +65,7 @@ const DEFAULTS: RadarConfig = {
   rateLimitMax: 20,
   rateLimitWindowMs: 1_000,  // 20 req/sec
   logLevel: 'info',
-  dataDir: 'data',
+  dataDir: DEFAULT_DATA_DIR,
   newsFeeds: true,
   maxNewsPerFeed: 30,
   indicatorPeriods: {
@@ -72,6 +82,7 @@ const DEFAULTS: RadarConfig = {
     binance: true,
     coinGecko: false,
   },
+  defiLlamaEnabled: false,
 };
 
 let _instance: RadarConfig | null = null;
@@ -137,6 +148,14 @@ export function loadConfig(configPath?: string): RadarConfig {
     } else {
       base.tokens = raw.split(',').map(t => t.trim()).filter(Boolean);
     }
+  }
+  if (envMap.strategy_weights) {
+    try { base.strategyWeights = JSON.parse(envMap.strategy_weights); }
+    catch { /* ignore invalid JSON */ }
+  }
+  if (envMap.timeframe_weights) {
+    try { base.timeframeWeights = JSON.parse(envMap.timeframe_weights); }
+    catch { /* ignore invalid JSON */ }
   }
 
   _instance = base;

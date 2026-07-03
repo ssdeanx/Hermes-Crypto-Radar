@@ -11,6 +11,8 @@ import type { TokenDef } from './tokens.js';
 import { fetchAllTickers, fetchKlines } from './binance.js';
 import { fetchSimplePrices } from './coingecko.js';
 import type { CoinGeckoPrice } from './coingecko.js';
+import { fetchOnChainMetrics } from './onchain.js';
+import type { OnChainMetrics } from './onchain.js';
 import { computeAllIndicators } from './indicators.js';
 import { fetchAndMatchNews } from './news.js';
 import { computeSignals } from './signals.js';
@@ -124,6 +126,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   newsMatches: NewsMatch[];
   signals: TokenSignal[];
   aggregatedSignals: AggregatedSignal[];
+  onchain: OnChainMetrics | null;
   run: RadarRun;
 }> {
   const startTime = Date.now();
@@ -208,7 +211,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   let newsMatches: NewsMatch[] = [];
   if (options.includeNews !== false) {
     const newsCacheKey = `news:${runId}`;
-    let cached = _cache.get<NewsMatch[]>(newsCacheKey);
+    const cached = _cache.get<NewsMatch[]>(newsCacheKey);
     if (!cached) {
       log.info('Fetching news feeds...');
       try {
@@ -222,12 +225,26 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     }
   }
 
+  // 4. On-chain metrics (DeFiLlama) — opt-in via config or flag
+  let onchain: OnChainMetrics | null = null;
+  if (config.defiLlamaEnabled || options.includeOnchain) {
+    log.info('Fetching on-chain metrics...');
+    try {
+      onchain = await fetchOnChainMetrics(filteredTokens);
+      _cache.set(`onchain:${runId}`, onchain, 300_000);
+    } catch (err) {
+      log.warn('On-chain metrics fetch failed, continuing without', {
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   const singleTechs = new Map<string, TechnicalIndicators>();
   for (const [sym, perInterval] of technicals) {
     const oneHr = perInterval.get('1h') ?? perInterval.values().next().value ?? null;
     if (oneHr) singleTechs.set(sym, oneHr);
   }
-  const signals = computeSignals(tickers, singleTechs, newsMatches);
+  const signals = computeSignals(tickers, singleTechs, newsMatches, onchain);
 
   const engine = new StrategyEngine();
   const aggregatedSignals: AggregatedSignal[] = [];
@@ -284,7 +301,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   const durationMs = Date.now() - startTime;
   const run: RadarRun = { runId, tsUtc, numTokens: tickers.length, numSignals: signals.length, durationMs };
   log.info(`Scan complete: ${tickers.length} tokens, ${durationMs}ms`);
-  return { tickers, technicals, newsMatches, signals, aggregatedSignals, run };
+  return { tickers, technicals, newsMatches, signals, aggregatedSignals, onchain, run };
 }
 
 async function appendToLog<T>(
@@ -335,7 +352,8 @@ export async function displayRadar(
   if (format === 'json') {
     return JSON.stringify({
       tickers: result.tickers, signals: result.signals,
-      aggregatedSignals: result.aggregatedSignals, run: result.run,
+      aggregatedSignals: result.aggregatedSignals,
+      onchain: result.onchain, run: result.run,
     }, null, 2);
   }
   if (format === 'csv') {

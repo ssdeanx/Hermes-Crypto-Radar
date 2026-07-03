@@ -89,6 +89,19 @@ export interface EnrichedTicker {
   source: string;
 }
 
+export interface StochasticResult {
+  k: number | null;
+  d: number | null;
+}
+
+export interface IchimokuResult {
+  conversionLine: number | null;
+  baseLine: number | null;
+  spanA: number | null;
+  spanB: number | null;
+  laggingSpan: number | null;
+}
+
 /** Technical indicators computed from kline/candlestick data */
 export interface TechnicalIndicators {
   rsi: number | null;
@@ -100,6 +113,16 @@ export interface TechnicalIndicators {
   priceVsEma50: number | null;
   obv: number | null;
   volVsAvg: number | null;
+  /** Stochastic Oscillator (%K, %D) */
+  stochastic?: StochasticResult | null;
+  /** Ichimoku Cloud lines */
+  ichimoku?: IchimokuResult | null;
+  /** Williams %R (-100 to 0) */
+  williamsR?: number | null;
+  /** Chaikin Money Flow */
+  cmf?: number | null;
+  /** True Strength Index */
+  tsi?: number | null;
 }
 
 export interface BBandsResult {
@@ -167,6 +190,8 @@ export interface RadarOptions {
   includeNews?: boolean;
   /** Limit scan to a specific kline interval (e.g. '1h' or '4h') */
   period?: KlineInterval;
+  /** Enable DeFiLlama on-chain metrics during scan */
+  includeOnchain?: boolean;
 }
 
 /** Run metadata for a radar sweep */
@@ -192,4 +217,12 @@ export interface Kline {
   takerBuyVol: number;
   takerBuyQuoteVol: number;
   ignore: number;
+}
+
+/** DEX price entry for Solana tokens via Jupiter aggregator */
+export interface DexPrice {
+  source: 'jupiter' | 'raydium' | 'orca';
+  price: number;
+  tokenId: string;
+  timestamp: number;
 }

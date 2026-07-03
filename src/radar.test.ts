@@ -4,6 +4,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { resetConfig } from './core/config.js';
+import { _resetTestCache } from './radar.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { mkdtempSync } from 'node:fs';
@@ -30,6 +31,7 @@ describe('Radar Engine', () => {
 
   beforeEach(() => {
     resetConfig();
+    _resetTestCache();
     mockFetch.mockReset();
     tmpDir = mkdtempSync(path.join(tmpdir(), 'radar-test-'));
     process.env['RADAR__DATA_DIR'] = tmpDir;
@@ -145,7 +147,8 @@ describe('Radar Engine', () => {
   it('handles Binance API failure gracefully', async () => {
     mockFetch.mockRejectedValue(new Error('Network failure'));
 
-    const { runRadar } = await import('./radar.js');
+    const { runRadar, _resetTestCache } = await import('./radar.js');
+    _resetTestCache();
     const result = await runRadar({ includeTech: false, includeNews: false, noLog: true });
     expect(result.tickers).toHaveLength(0);
     expect(result.run.numTokens).toBe(0);

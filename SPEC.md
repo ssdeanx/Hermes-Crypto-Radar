@@ -1,7 +1,7 @@
 # 🛰️ Hermes Crypto Radar — SPEC
 
 > **Project:** Hermes Agent Plugin — Multi-chain crypto market radar  
-> **Status:** v1.1.0 · Stable  
+> **Status:** v1.3.0 · Stable  
 > **Versioning:** [SemVer](https://semver.org/) — all changes tracked in this spec
 
 ---
@@ -82,71 +82,95 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 
 ## 3. Token Coverage
 
-### 3.1 Current (v1.0.0) — 32 tokens
+### 3.1 Current (v1.3.0) — 39+ tokens
 
 | Chain | Tokens |
 |-------|--------|
 | **Solana** (14) | SOL, JUP, JTO, RAY, PYTH, BONK, KMNO, PUMP, RENDER, ORCA, FIDA, WIF, BOME, AUDIO |
 | **Polygon/DeFi** (13) | POL, SUSHI, UNI, AAVE, CRV, LINK, QUICK, BAL, LDO, BAT, COMP, ZRO, GRT |
 | **Multi** (6) | BTC, ETH, BNB, XRP, DOGE, ADA |
+| **Cosmos/New L1s** (7) | SUI, APT, SEI, TIA, INJ, RUNE, ATOM |
 
 ### 3.2 Expansion Plan
 
 | Phase | Additions | Priority |
 |-------|-----------|----------|
-| v1.2 | SUI, APT, SEI, TIA (new L1s) | High |
-| v1.2 | INJ, RUNE, ATOM (cross-chain) | Medium |
-| v1.3 | Top 50 by volume (dynamic detection) | Medium |
-| v2.0 | User-configurable token list (config file) | High |
+| v1.2 | SUI, APT, SEI, TIA (new L1s) | ✅ |
+| v1.2 | INJ, RUNE, ATOM (cross-chain) | ✅ |
+| v1.3 | Top 50 by volume (dynamic detection) | ✅ |
+| v2.0 | User-configurable token list (config file) | ✅ |
+| v2.0 | Strategy config overrides | ✅ |
 
 ---
 
 ## 4. Features
 
-### 4.1 Implemented (v1.0.0)
+### 4.1 Implemented (v1.3.0)
 
-| Feature | Status | Details |
-|---------|--------|---------|
-| Binance 24hr ticker | ✅ | All USDT pairs, timeout + retry + 429 backoff |
-| Token enrichment | ✅ | Spread, VWAP distance, range position, book imbalance |
-| Momentum scoring | ✅ | Price change + volume + spread + book imbalance |
-| Technical indicators | ✅ | RSI, MFI, MACD, Bollinger Bands, ATR, volume trend, EMA50 |
-| News fetching | ✅ | 9 RSS feeds, headline/body matching, relevance scoring, poison filtering, dedup |
-| Signal generation | ✅ | Composite score: 40% momentum + 40% technical + 20% news, alerts |
-| CSV logging | ✅ | Append-only, header-on-first-write |
-| CLI | ✅ | `scan`, `signals`, `news`, `tokens`, `chart`, `health`, `configure`, `strategies` + flags |
-| Hermes plugin | ✅ | 4 tools, JSON output, `check_fn` gating |
-| Multi-chain | ✅ | Solana + Polygon + broad-market separation |
-| Output formats | ✅ | Terminal table, CSV, JSON, Markdown, XLSX (Excel/Sheets) |
+| Feature | Status | Details | Version |
+|---------|--------|---------|---------|
+| Binance 24hr ticker | ✅ | All USDT pairs, timeout + retry + 429 backoff | v1.0 |
+| Token enrichment | ✅ | Spread, VWAP distance, range position, book imbalance | v1.0 |
+| Momentum scoring | ✅ | Price change + volume + spread + book imbalance | v1.0 |
+| Technical indicators | ✅ | RSI, MFI, MACD, Bollinger Bands, ATR, volume trend, EMA50, OBV | v1.0 |
+| News fetching | ✅ | 9 RSS feeds, headline/body matching, relevance scoring, poison filtering, dedup | v1.0 |
+| Signal generation | ✅ | Composite score: 40% momentum + 40% technical + 20% news, alerts | v1.0 |
+| CSV logging | ✅ | Append-only, header-on-first-write | v1.0 |
+| CLI | ✅ | `scan`, `signals`, `news`, `tokens`, `chart`, `health`, `configure`, `strategies`, `daemon` | v1.0 |
+| Hermes plugin | ✅ | 6 tools, JSON output, `check_fn` gating | v1.0 |
+| Multi-chain | ✅ | Solana + Polygon + broad-market + Cosmos/L1s separation | v1.0 |
+| Output formats | ✅ | Terminal table, CSV, JSON, Markdown, XLSX (Excel/Sheets) | v1.0 |
 | **CoinGecko data source** | ✅ | Free API wired into scan pipeline via `--alt-source` flag, fallback for missing tokens | v1.1 |
 | **XLSX export** | ✅ | Excel/Google Sheets native export via exceljs, `--format xlsx` | v1.1 |
 | **CI pipeline** | ✅ | GitHub Actions builds on Node 20 & 22, runs tests, verifies dist | v1.1 |
-| **Terminal sparkline charts** | ✅ | ASCII price charts via asciichart, configurable lookback/period |
-| **SVG chart generation** | ✅ | Self-contained SVG price charts, multi-panel with RSI |
-| **3-strategy signal engine** | ✅ | Momentum, Mean Reversion, Trend Following — weighted confidence voting |
-| **Strategy aggregation** | ✅ | Weighted vote engine, per-strategy reasons, composite confidence 0–100% |
-| **Health monitoring** | ✅ | Binance API, data directory, system resource checks, uptime tracking |
-| **Configuration system** | ✅ | JSON config file + `RADAR__*` env vars, typed defaults |
-| **Typed error classes** | ✅ | CryptoRadarError, NetworkError, RateLimitError, DataError, ConfigError |
-| **Structured logging** | ✅ | Pino-style JSON logs to stderr, levels (trace–fatal), child loggers |
-| **In-memory cache** | ✅ | TTL-based, memoize support, stats tracking, automatic expiry |
-| **Rate limiter** | ✅ | Token-bucket algorithm, configurable max/window |
+| **Terminal sparkline charts** | ✅ | ASCII price charts via asciichart, configurable lookback/period | v1.0 |
+| **SVG chart generation** | ✅ | Self-contained SVG price charts, multi-panel with RSI | v1.0 |
+| **3-strategy signal engine** | ✅ | Momentum, Mean Reversion, Trend Following — weighted confidence voting | v1.0 |
+| **Strategy aggregation** | ✅ | Weighted vote engine, per-strategy reasons, composite confidence 0–100% | v1.0 |
+| **Health monitoring** | ✅ | Binance API, data directory, system resource checks, uptime tracking | v1.0 |
+| **Configuration system** | ✅ | JSON config file + `RADAR__*` env vars, typed defaults | v1.0 |
+| **Typed error classes** | ✅ | CryptoRadarError, NetworkError, RateLimitError, DataError, ConfigError | v1.0 |
+| **Structured logging** | ✅ | Pino-style JSON logs to stderr, levels (trace–fatal), child loggers | v1.0 |
+| **In-memory cache** | ✅ | TTL-based, memoize support, stats tracking, automatic expiry | v1.0 |
+| **Rate limiter** | ✅ | Token-bucket algorithm, configurable max/window | v1.0 |
+| **Multi-timeframe analysis** | ✅ | 15m, 1h, 4h, 1d klines + strategy eval per timeframe | v1.2 |
+| **Cross-timeframe aggregation** | ✅ | Weighted vote (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35) | v1.2 |
+| **Circuit breaker** | ✅ | CLOSED/OPEN/HALF-OPEN, failure threshold, cached-fallback | v1.2 |
+| **Parallel kline fetching** | ✅ | Batches of 5, ~60% scan time reduction for 30+ tokens | v1.2 |
+| **Parallel news feeds** | ✅ | Concurrency-4, news in ~2s instead of ~12s | v1.2 |
+| **Atomic file writes** | ✅ | `.tmp` → `fs.renameSync()`, no partial-write data loss | v1.2 |
+| **Log rotation** | ✅ | 10MB rotate, gzip, keep 5 archives | v1.2 |
+| **OBV indicator** | ✅ | On-Balance Volume computed from klines | v1.2 |
+| **Stochastic Oscillator** | ✅ | %K/%D with 14/3/3 period defaults | v1.3 |
+| **Ichimoku Cloud** | ✅ | Conversion/base line, span A/B, lagging span | v1.3 |
+| **Williams %R** | ✅ | 14-period Williams %R (-100 to 0) | v1.3 |
+| **Chaikin Money Flow** | ✅ | 20-period CMF from high/low/close/volume | v1.3 |
+| **True Strength Index** | ✅ | 25/13 double-smoothed TSI | v1.3 |
+| **DeFiLlama on-chain metrics** | ✅ | Protocol TVL, chain TVL, fees (1d/7d/30d), on-chain prices | v1.3 |
+| **On-chain signal boost** | ✅ | 0–15% confidence boost based on protocol TVL strength | v1.3 |
+| **Dynamic top-50 scan** | ✅ | `--dynamic [count]` auto-discovers top N by volume | v1.3 |
+| **Strategy weight overrides** | ✅ | `radar.config.json` + `RADAR__*` env overrides | v1.3 |
+| **ESLint + Prettier** | ✅ | Flat config, strict TS rules, auto-fix | v1.3 |
+| **SVG chart overhaul** | ✅ | CSS-in-style, gradients, viewBox, tooltips, crosshairs, a11y | v1.3 |
+| **Daemon mode** | ✅ | Warm HTTP daemon for sub-50ms tool calls | v1.3 |
 
 ### 4.2 Planned (Roadmap)
 
 | Feature | Status | Details | Target |
 |---------|--------|---------|--------|
-| Multi-timeframe analysis | 🔜 | 15m, 1h, 4h, 1d klines + strategy eval per timeframe | v1.2 |
-| WebSocket live prices | 🔜 | Binance WS for real-time updates | v1.2 |
-| Portfolio tracking | 🔜 | User-defined holdings → P&L | v1.2 |
-| Price alerts | 🔜 | Threshold-based notification via Hermes gateway | v1.2 |
-| DEX data (Jupiter) | 🔜 | Solana DEX prices via Jupiter API | v1.2 |
-| Backtesting engine | 🔜 | Test strategies against historical data | v1.3 |
-| On-chain metrics | 🔜 | TVL, volume, fees via DeFiLlama | v1.3 |
-| User-config token list | 🔜 | `radar.config.json` per user | v1.2 |
-| Strategy config UI | 🔜 | Adjust weights/params via config file | v1.2 |
-| Hermes chart tool | 🔜 | SVG charts delivered as agent visual responses | v1.1 |
-| Plugin marketplace publish | 🔜 | Publish to `hermes skills publish` | v1.1 |
+| Multi-timeframe analysis | ✅ | 15m, 1h, 4h, 1d klines + strategy eval per timeframe | v1.2 ✅ |
+| On-chain metrics | ✅ | TVL, volume, fees via DeFiLlama | v1.3 ✅ |
+| Dynamic volume token discovery | ✅ | `--dynamic [count]` top-N by 24h volume | v1.3 ✅ |
+| User-config token list | ✅ | `radar.config.json` per user | v1.2 ✅ |
+| Strategy config overrides | ✅ | Adjust weights/params via config file + env vars | v1.3 ✅ |
+| Hermes chart tool | ✅ | SVG charts delivered as agent visual responses | v1.1 ✅ |
+| Daemon tool | ✅ | Warm daemon for sub-50ms tool calls | v1.3 ✅ |
+| WebSocket live prices | 🔜 | Binance WS for real-time updates | v2.0 |
+| Portfolio tracking | 🔜 | User-defined holdings → P&L | v2.0 |
+| Price alerts | 🔜 | Threshold-based notification via Hermes gateway | v2.0 |
+| DEX data (Jupiter) | 🔜 | Solana DEX prices via Jupiter API | v2.0 |
+| Backtesting engine | 🔜 | Test strategies against historical data | v2.0 |
+| Plugin marketplace publish | 🔜 | Publish to `hermes skills publish` | v2.0 |
 
 ---
 
@@ -154,19 +178,19 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 
 ### 5.1 `crypto_radar_scan`
 
-Full market scan. Fetches prices, indicators, news, and generates signals.
+Full market scan. Fetches prices, indicators, news, on-chain metrics (if enabled), and generates signals.
 
 **Parameters:**
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `filter` | string[] | — | Token symbols to filter (e.g. `["SOL", "BTC"]`) |
 | `chain` | string | — | Chain filter: `solana`, `polygon`, `bnb`, etc. |
-| `sort_by` | string | `momentum` | Sort: `alpha`, `change`, `volume`, `momentum` |
+| `sort_by` | string | `momentum` | Sort: `alpha`, `change`, `volume`, `momentum`, `signal` |
 | `no_tech` | boolean | `false` | Skip technical indicators |
 | `no_news` | boolean | `false` | Skip news fetching |
 | `no_log` | boolean | `false` | Skip CSV logging |
 
-**Returns:** JSON with `tickers[]` (enriched market data), `technicals{}` (indicators by symbol), `news[]` (matched articles), `signals[]` (composite scores), `run{}` (metadata).
+**Returns:** JSON with `tickers[]` (enriched market data), `technicals{}` (indicators by symbol), `news[]` (matched articles), `signals[]` (composite scores), `onchain{}` (DeFiLlama metrics), `run{}` (metadata).
 
 ### 5.2 `crypto_radar_signals`
 
@@ -200,6 +224,34 @@ List all tracked tokens.
 | `chain` | string | — | Filter by chain |
 
 **Returns:** JSON with `tokens[]` — symbol, name, chain for each.
+
+### 5.5 `crypto_radar_chart`
+
+Generate SVG charts for agent visual responses. Supports line, candlestick, dashboard, and sparkline chart types.
+
+**Parameters:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `symbol` | string | — | Token symbol (e.g. SOL, BTC) |
+| `type` | string | `sparkline` | Chart type: `sparkline`, `ma`, `svg`, `dashboard`, `candlestick` |
+| `period` | string | `1h` | Kline interval: `15m`, `1h`, `4h`, `1d` |
+| `lookback` | number | `100` | Number of candles to display |
+| `width` | number | `600` | SVG width in pixels |
+
+**Returns:** SVG markup string with responsive viewBox, CSS gradients, tooltips, and crosshair effects.
+
+### 5.6 `crypto_radar_daemon`
+
+Manage the warm HTTP daemon for sub-50ms tool calls.
+
+**Parameters:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `action` | string | `status` | Action: `start`, `stop`, `status` |
+| `port` | number | `9877` | HTTP port for the daemon |
+| `refresh_sec` | number | `300` | Cache refresh interval in seconds |
+
+**Returns:** JSON with daemon status, cache state, and uptime.
 
 ---
 
@@ -332,11 +384,22 @@ hermes tools list | grep crypto_radar
 
 ### 8.2 Manual Hermes Registration
 
-```
+```bash
 hermes plugins install /path/to/hermes-crypto-radar
+# Or from project root:
+hermes plugins install .
 ```
 
-### 8.3 Skill-based Alternative (if plugin not accepted)
+### 8.3 Quick Verification
+
+```bash
+hermes plugins list | grep crypto-radar
+hermes tools list | grep crypto_radar
+node dist/cli.js scan --filter SOL --no-news --format json   # Quick scan test
+node dist/cli.js health                                       # System health check
+```
+
+### 8.4 Skill-based Alternative (if plugin not accepted)
 
 The project also ships as a Hermes skill that wraps the CLI:
 
@@ -354,8 +417,14 @@ hermes skills install ./crypto-radar-skill.md
 npm run build        # Compile TS → dist/
 npm run watch        # Watch mode
 npm run start        # Run CLI (default: scan)
-npm run test         # Run test suite
+npm test             # Run vitest suite (167 tests)
+npm run test:watch   # Watch mode for TDD
+npm run lint         # ESLint check
+npm run lint:fix     # ESLint auto-fix
+npm run format       # Prettier check
+npm run format:fix   # Prettier auto-format
 npm run clean        # Remove dist/
+npm run daemon       # Start warm daemon
 ```
 
 ### 9.2 Project Structure
@@ -451,6 +520,8 @@ To get the plugin listed on the Hermes map/registry:
 |---------|------|---------|
 | 1.0.0 | 2026-07-02 | Initial release — 32 tokens, Binance prices, tech indicators, news, signals, 4 Hermes tools, CSV/JSON/MD output |
 | 1.1.0 | 2026-07-02 | News domain extraction fix, SOURCE_TIERS bug fix, multi-line CSV quoting, XLSX export, CoinGecko API + pipeline wiring, kline caching, dead dep cleanup, SPEC/README docs overhaul, vitest test suite (58 tests), CI pipeline, deterministic integration tests, XLSX error handling, XRP CoinGecko ID fix |
+| 1.2.0 | 2026-07-02 | Circuit breaker, parallel kline/news fetching, atomic writes, log rotation, multi-timeframe analysis (15m/1h/4h/1d), cross-timeframe strategy aggregation, OBV indicator, 7 new tokens (SUI/APT/SEI/TIA/INJ/RUNE/ATOM), config auto-discovery, coverage gate, 155 tests, pre-commit hook, full JSDoc |
+| 1.3.0 | 2026-07-03 | 5 new indicators (Stochastic, Ichimoku, Williams %R, CMF, TSI), DeFiLlama on-chain metrics + signal boost, dynamic top-50 volume scan, strategy weight config overrides, SVG chart overhaul (gradients, viewBox, tooltips, crosshairs, a11y), daemon mode, eslint/prettier, .env.example, .npmignore, package.json SEO, standardized data dir, 167 tests |
 
 ---
 

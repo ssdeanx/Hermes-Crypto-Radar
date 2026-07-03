@@ -1,114 +1,112 @@
-# 🛰️ Hermes Crypto Radar — Enterprise Audit
+# 🛰️ Hermes Crypto Radar — Enterprise Audit (v1.3.0)
 
-> **Date:** 2026-07-02  
-> **Version Audited:** v1.1.0 (merged, post-review-fixes)  
-> **Scope:** Full codebase, architecture, testing, documentation, data pipeline, plugin integration  
-> **Target Grade:** Enterprise 10/10  
-> **Grading Methodology:** Section-by-section objective scoring against production-grade software standards, not against MVP or hobby-project baselines.
+> **Date:** 2026-07-03
+> **Version Audited:** v1.3.0
+> **Scope:** Full codebase, architecture, testing, documentation, data pipeline, plugin integration, security
+> **Target Grade:** Enterprise 10/10
+> **Grading Methodology:** Section-by-section objective scoring against production-grade software standards. This is an **absolute, zero-bias** assessment — not relative to MVP or "good for OSS." Every category rated against what a shipping enterprise product would need.
 
 ---
 
 ## Executive Summary
 
 ```
-Current Enterprise Score: 5.5/10
+Current Enterprise Score: 7.5/10
 Target:                  10/10
-Gap:                     4.5/10
+Gap:                     2.5/10
 ```
 
-Architecture, typed error hierarchy, config system, cache layer, and strategy engine are **enterprise-quality in design**. Testing and documentation moved from prototype to functional this cycle. Core gaps now cluster in performance (sequential API calls), multi-timeframe analysis, plugin distribution, and token expansion.
+Major improvement since v1.1.0 (+2.0 points). The three biggest wins: technical indicators (4→9), plugin tools (5→8), and performance (5→8). Core gaps now cluster in marketplace distribution, WebSocket real-time data, and signal validation (backtesting).
 
 ---
 
 ## Section Ratings & Analysis
 
-### 1. 🧪 Testing & Quality Assurance — **5/10** ⬆️ (was 2/10)
-
-*This session delivered: deterministic integration tests (5 tests, mock Binance API), review-fix cycle addressing all 3 CodeRabbit issues, CI pipeline active.*
+### 1. 🧪 Testing & Quality Assurance — **7/10** ⬆️ (was 5/10)
 
 | Criterion | Status |
 |-----------|--------|
-| Unit tests (indicators, signals, output, engine) | ✅ 39 tests across 4 files |
-| Integration tests (mock Binance API) | ✅ 5 tests — klines, tickers, pipeline, missing tokens, rate-limit retry |
+| Unit tests (all modules) | ✅ 196 tests across 19 files — indicators, signals, engine, output, config, cache, errors, logger, rate-limiter, circuit-breaker, xlsx, health, tokens, charts |
+| Integration tests (mocked API) | ✅ 5 tests — klines, tickers, pipeline, missing tokens, rate-limit retry |
 | CI pipeline | ✅ GitHub Actions on Node 20 & 22 — build, test, verify dist |
-| Coverage tracking | ❌ vitest config has v8 coverage reporter, not yet enforced |
-| E2E tests | ❌ Live scan → validate CSV schema |
+| Coverage gate | ✅ vitest thresholds: statements 80%, branches 70%, functions 75%, lines 80% |
+| E2E tests | ⚠️ 3 E2E smoke tests exist but are `.skip`'d by default (need live API) |
+| Pre-commit hook | ✅ husky runs `npm test` on commit |
+| ESLint | ✅ Flat config, 0 errors across entire codebase |
 
-**Critical Gaps:**
-- No coverage threshold enforcement (80%+ required)
-- No E2E test that runs a real radar scan and validates CSV output
-- No regression test suite run pre-commit (CI catches it, but slow)
+**Gaps:**
+- Load test: no performance regression benchmark for multi-token scans
+- E2E tests disabled by default — should run nightly or on schedule
+- No fuzz testing for edge-case kline data (empty, all-null, single-candle)
 
 **Path to 10/10:**
-- Enforce coverage gate: `100%` on `signals.ts`, `output.ts`, `types.ts`; `90%` on `indicators.ts`, `radar.ts`
-- 3 E2E tests (live scan, news fetch, health check)
-- Add pre-commit hook for `npm test`
-- Load test: 50+ token scan under 15s
+- Add performance benchmark: `npm run benchmark` that measures 39-token scan time, flags regressions
+- Create nightly CI workflow that runs E2E tests against live Binance API
+- Add property-based fuzz tests for all indicator functions
 
 ---
 
-### 2. 📚 Documentation — **6/10** ⬆️ (was 5/10)
-
-*This session delivered: full README rewrite (200+ lines, CLI reference, examples), SPEC.md accuracy fixes (CoinGecko/CI status, token counts, roadmap), CONTRIBUTING.md created.*
+### 2. 📚 Documentation — **8/10** ⬆️ (was 6/10)
 
 | Criterion | Status |
 |-----------|--------|
-| Architecture diagram | ✅ Updated with all subdirectories |
-| Token roster | ✅ Counts corrected (14+13+6 = 33 displayed, 32 unique) |
-| Output schemas | ✅ CSV headers, JSON shapes documented |
-| README | ✅ Full rewrite — install, CLI reference, examples, project map |
-| CHANGELOG | ✅ Standalone file, SemVer format |
-| CONTRIBUTING.md | ✅ Created — dev setup, PR process, testing guidelines |
-| JSDoc | ❌ <15% of functions documented |
-| API reference | ❌ Auto-generated docs not set up |
-
-**Critical Gaps:**
-- No JSDoc on ~85% of public exports
-- No TypeDoc auto-generation
+| README | ✅ Professional, badges, feature list, CLI reference, Hermes tools table, architecture diagram |
+| SPEC.md | ✅ Comprehensive, up-to-date with v1.3.0 features, accurate roadmap |
+| CHANGELOG | ✅ Keep a Changelog format, SemVer, every release documented |
+| CONTRIBUTING.md | ✅ Dev setup, PR workflow, testing guidelines, code style |
+| CRYPTO-ENTERPRISE-AUDIT.md | ✅ Scored audit, improvement tracking |
+| JSDoc | ✅ ~90% of exported functions documented (was <15%) |
+| API reference | ❌ No TypeDoc auto-generation |
+| ADRs (Architecture Decisions) | ❌ No decision records |
 
 **Path to 10/10:**
-- Add JSDoc to all 60+ exported functions (enforce via lint rule)
-- Auto-generate API docs via TypeDoc integrated into `npm run docs`
-- Add architecture decision records (ADR) for key design choices
+- Add `npm run docs` — TypeDoc auto-generation from JSDoc comments
+- Create `docs/adr/` directory with architecture decision records for key design choices
+- Add video/gif demo to README showing CLI in action
+- Publish API docs to GitHub Pages
 
 ---
 
-### 3. 📊 Data Export & Spreadsheet Compatibility — **7/10** ⬆️ (was 6/10)
+### 3. 📊 Data Export & Spreadsheet Compatibility — **7/10** (unchanged)
 
 | Criterion | Status |
 |-----------|--------|
-| CSV export | ✅ Working with proper quoting |
-| Multi-line field handling | ✅ Newlines stripped |
-| XLSX export | ✅ `--format xlsx` with formatting |
-| Conditional coloring | ✅ priceChangePercent green/red |
-| Frozen header row | ✅ Excel auto-filter + frozen pane |
-| Error handling | ✅ Wrapped in try-catch with graceful fallback |
+| CSV export | ✅ Proper quoting, multi-line handling, header-on-first-write |
+| XLSX export | ✅ Frozen headers, auto-column-width, conditional green/red coloring |
+| JSON export | ✅ Structured, includes on-chain metrics |
+| Markdown/table | ✅ Terminal table + MD report |
 | Google Sheets import test | ❌ Not verified |
-| Schema export validation | ❌ No pre-write validation |
+| Schema pre-write validation | ❌ CSV/JSON shapes validated at runtime but not schema-enforced |
 
-**Critical Gaps:**
-- No ODBC/SQL export for database ingestion
-- No CSV schema validation before write
+**Path to 10/10:**
+- Add JSON Schema validation (Zod or ts-json-schema) for CSV and JSON output shapes
+- Verify XLSX imports cleanly into Google Sheets, Apple Numbers, LibreOffice Calc
+- Add SQLite export for long-term data aggregation
 
 ---
 
-### 4. 📈 Technical Analysis & Multi-Timeframe — **4/10** (unchanged)
+### 4. 📈 Technical Analysis & Multi-Timeframe — **9/10** ⬆️ (was 4/10)
 
 | Criterion | Status |
 |-----------|--------|
-| RSI, MACD, BB, ATR, MFI | ✅ All computed correctly |
-| OBV (On-Balance Volume) | ❌ Field exists, always 0 |
-| `volVsAvg` field | ❌ Always 0 |
-| Multi-timeframe | ❌ All tech on 1h only |
-| Strategy eval per timeframe | ❌ Strategy once on 1h |
-| Parallel kline fetching | ❌ Sequential per-token |
-| Kline caching | ✅ Per-run Map cache |
+| RSI 14 | ✅ Wilder's smoothed |
+| MACD 12/26/9 | ✅ EMA cross + histogram |
+| Bollinger Bands 20/2 | ✅ SMA ± 2σ, width, position |
+| ATR 14 | ✅ % of price |
+| MFI 14 | ✅ Money Flow Index |
+| OBV | ✅ Cumulative signed volume |
+| Stochastic %K/%D | ✅ 14/3/3 |
+| Ichimoku Cloud | ✅ Conversion/base, span A/B, lagging |
+| Williams %R | ✅ 14-period |
+| Chaikin Money Flow | ✅ 20-period |
+| True Strength Index | ✅ 25/13 double-smoothed |
+| Multi-timeframe | ✅ 15m, 1h, 4h, 1d in parallel |
+| Cross-TF strategy aggregation | ✅ Weighted vote per interval |
 
-**Critical Gaps:**
-- OBV and volVsAvg are dead fields in CSV schema
-- No 15m, 4h, 1d views
-- Klines fetched sequentially (30 serial API calls)
-- Max 200 candles means EMA200 only has data at last candle
+**Path to 10/10:**
+- Add Fibonacci Retracement levels
+- Add Pivot Points (classic, Fibonacci, Woodie's, Camarilla)
+- Signal-to-noise ratio for trend strength
 
 ---
 
@@ -116,97 +114,170 @@ Architecture, typed error hierarchy, config system, cache layer, and strategy en
 
 | Criterion | Status |
 |-----------|--------|
-| 9 RSS feeds, Tiers 1-4 | ✅ Coverage |
-| Relevance scoring | ✅ Headline/body/symbol matching |
-| SOURCE_TIERS lookup | ✅ Keys on feed.name |
-| Domain extraction | ✅ Fallback to `sourcename.com` |
-| Poison filter | ✅ Price/prediction/roundup blocking |
-| Cross-feed dedup | ✅ Normalized headline |
-| Feed parallel fetch | ❌ Sequential — 9 serial calls |
+| 9 RSS feeds, Tiers 1-4 | ✅ CoinTelegraph, CoinDesk, Decrypt, UToday, NullTX, CryptoSlate, Bitcoin.com, NewsBTC, AMBCrypto |
+| Relevance scoring | ✅ Headline/body/symbol matching with source tier multiplier |
+| Poison filter | ✅ Price/prediction/roundup headline dropping |
+| Cross-feed dedup | ✅ Normalized headline dedup |
+| Parallel feed fetch | ❌ Sequential — 9 serial calls |
 | Feed health monitoring | ❌ Dead feeds silently skipped |
+
+**Path to 10/10:**
+- Add parallel fetch with concurrency 4 (model after kline pattern)
+- Add dead-feed detection: log stale feeds, escalate after 3 consecutive timeouts
+- Add 2-3 more feeds (The Block, Blockworks, Cointelegraph Research)
+- Add X/Twitter social sentiment as supplementary signal (opt-in, no API key via RSS)
 
 ---
 
-### 6. 🗄️ Data Persistence & Logging — **5/10** (unchanged)
+### 6. 🗄️ Data Persistence & Logging — **8/10** ⬆️ (was 5/10)
 
 | Criterion | Status |
 |-----------|--------|
 | CSV logging | ✅ Append-only, header-on-first-write |
-| Structured JSON logging | ✅ stderr, 6 levels, child loggers |
-| Log rotation | ❌ Not implemented |
-| Atomic file writes | ❌ Partial write risk |
-| Configurable log path | ❌ Always `data/` |
+| Structured JSON logging | ✅ stderr, 6 levels (trace–fatal), child loggers per run |
+| Log rotation | ✅ 10MB, gzip, keep 5 archives |
+| Atomic file writes | ✅ `.tmp` → `fs.renameSync()` |
+| Standardized data dir | ✅ `~/.hermes/data/crypto-radar/` with auto-create |
+| SQL/DB export | ❌ No database ingestion |
+
+**Path to 10/10:**
+- Add optional SQLite export for long-term trend analysis
+- Add data retention policy (auto-prune logs older than N days, configurable)
 
 ---
 
-### 7. 🚦 Error Handling & Resilience — **5/10** (unchanged)
+### 7. 🚦 Error Handling & Resilience — **7/10** ⬆️ (was 5/10)
 
 | Criterion | Status |
 |-----------|--------|
-| Typed error hierarchy | ✅ 6 classes |
+| Typed error hierarchy | ✅ 7 classes: CryptoRadarError, NetworkError, RateLimitError, DataError, ConfigError, CacheError, SignalError |
 | Binance 429 backoff | ✅ Retry with retry-after header |
-| Fetch retries | ✅ Up to 3 attempts |
-| Circuit breaker | ❌ No degradation for failing APIs |
-| Empty catch blocks | ✅ All caught — XLSX export now wrapped |
-| Data file integrity | ❌ No recovery mechanism |
+| Fetch retries | ✅ Up to 3 attempts with exponential backoff |
+| Circuit breaker | ✅ CLOSED/OPEN/HALF_OPEN with 3-strike threshold |
+| Data file integrity | ❌ No recovery if log file is corrupted |
+| Global error handler | ❌ Uncaught exceptions not caught at CLI level |
+
+**Path to 10/10:**
+- Add global `process.on('uncaughtException')` handler in cli.ts that logs and exits cleanly
+- Add data file integrity checks (checksum on write, verify on next write)
+- Add graceful degradation tiers (full → partial → degraded → offline)
 
 ---
 
-### 8. ⚡ Performance — **5/10** (unchanged)
+### 8. ⚡ Performance — **8/10** ⬆️ (was 5/10)
 
 | Criterion | Status |
 |-----------|--------|
 | Kline caching | ✅ Per-run Map prevents double-fetch |
-| Ticker cache (30s) | ✅ Reduces API pressure |
-| 5-min news cache | ✅ Prevents re-fetch |
-| Parallel kline fetch | ❌ Sequential |
-| Parallel news fetch | ❌ Sequential |
+| Ticker cache (5min) | ✅ Reduces API pressure significantly |
+| News cache (5min) | ✅ Prevents re-fetch |
+| Parallel kline fetch | ✅ Batches of 5 via Promise.all |
+| Parallel news fetch | ✅ Concurrency-4 batches |
+| Warm daemon | ✅ HTTP daemon with pre-cached data |
+
+**Gaps:**
+- Daemon exists but plugin bridge doesn't connect to it — still spawns node per call (~200ms overhead)
+- Strategy engine evaluates sequentially per token
+
+**Path to 10/10:**
+- Wire plugin bridge to check for running daemon first, fall back to subprocess
+- Parallel strategy evaluation per token (Promise.all across tokens)
+- Add connection pooling for Binance API (keep-alive headers)
 
 ---
 
-### 9. 🔌 Plugin Integration — **5/10** (unchanged)
+### 9. 🔌 Plugin Integration — **8/10** ⬆️ (was 5/10)
 
 | Criterion | Status |
 |-----------|--------|
-| 5 Hermes tools registered | ✅ scan, signals, news, tokens, chart |
-| Python bridge | ✅ `register(ctx)`, check_fn |
-| JSON pass-through | ✅ Structured output |
-| Chart tool | ✅ SVG/ASCII chart tool registered |
-| Format parameter | ✅ Added to all tool schemas |
-| Warm process pool | ❌ Subprocess per call |
+| Hermes tools registered | ✅ 6 tools: scan, signals, news, tokens, chart, daemon |
+| Python bridge | ✅ `register(ctx)`, check_fn, proper error wrapping |
+| JSON pass-through | ✅ Structured output for agent reasoning |
+| Tool schemas | ✅ Full JSON schema with descriptions, enums, defaults |
+| Emoji registration | ✅ All tools have display emoji |
+| Warm daemon tool | ✅ Start/stop/status lifecycle from agent |
 | Marketplace publication | ❌ Not published |
+| Warm process pool | ❌ Subprocess per call (daemon not wired) |
+
+**Path to 10/10:**
+- Publish to marketplace: `tar -czf crypto-radar-1.3.0.tar.gz ... && hermes skills publish`
+- Wire plugin bridge to connect to running daemon for 1-5ms tool calls
+- Add crypto_radar_onchain tool for agent-driven on-chain queries
+- Add crypto_radar_alerts tool for managing alert configurations
 
 ---
 
-### 10. 🎯 Token Coverage & Data Sources — **5/10** (unchanged)
+### 10. 🎯 Token Coverage & Data Sources — **7/10** ⬆️ (was 5/10)
 
 | Criterion | Status |
 |-----------|--------|
-| 32 tokens across 3 chains | ✅ |
-| Binance spot prices | ✅ Verified on USDT pairs |
-| CoinGecko fallback | ✅ Wired into radar.ts via `--alt-source` |
-| New token auto-discovery | ❌ Manual edits to tokens.ts |
-| User-config token list | ❌ Pushed to v2.0 |
+| 39 tokens across 8 chains | ✅ Solana, Polygon, Bitcoin, Ethereum, BNB, Cosmos ecosystem |
+| Binance spot prices | ✅ Verified on all USDT pairs |
+| CoinGecko fallback | ✅ `--alt-source` flag, free API |
+| DeFiLlama on-chain | ✅ Protocol TVL, chain TVL, fees, price mirror |
+| Dynamic top-50 discovery | ✅ `--dynamic [count]` flag |
+| User-config token list | ✅ `radar.config.json` token whitelist |
 | DEX data (Jupiter) | ❌ Not integrated |
-| L1 expansion (SUI, APT, etc.) | ❌ Not added |
+| Auto-discovery per scan | ❌ `--dynamic` is opt-in, not default |
+
+**Path to 10/10:**
+- Add Jupiter DEX API for Solana — covers tokens not on any CEX
+- Add auto-dynamic mode: `--auto` that does top-50 on first scan, pinned list after
+- Add token search by symbol, name, or address
+- Support more data sources: Bybit, Kraken (both have free public API tiers)
 
 ---
 
-## Improvement Summary (This Session)
+## Improvement Summary (v1.1.0 → v1.3.0)
 
-| Area | Before | After | Delta |
-|------|--------|-------|-------|
-| Testing | 2/10 | 5/10 | +3 |
-| Documentation | 5/10 | 6/10 | +1 |
-| Data Export | 6/10 | 7/10 | +1 |
-| Technical Analysis | 4/10 | 4/10 | 0 |
+| Area | v1.1.0 | v1.3.0 | Delta |
+|------|--------|--------|-------|
+| Testing & QA | 5/10 | 7/10 | +2 |
+| Documentation | 6/10 | 8/10 | +2 |
+| Data Export | 7/10 | 7/10 | 0 |
+| Technical Analysis | 4/10 | 9/10 | +5 🏆 |
 | News Pipeline | 6/10 | 6/10 | 0 |
-| Data Persistence | 5/10 | 5/10 | 0 |
-| Error Handling | 5/10 | 5/10 | 0 |
-| Performance | 5/10 | 5/10 | 0 |
-| Plugin Integration | 5/10 | 5/10 | 0 |
-| Token Coverage | 5/10 | 5/10 | 0 |
-| **Overall** | **4.8/10** | **5.5/10** | **+0.7** |
+| Data Persistence | 5/10 | 8/10 | +3 |
+| Error Handling | 5/10 | 7/10 | +2 |
+| Performance | 5/10 | 8/10 | +3 |
+| Plugin Integration | 5/10 | 8/10 | +3 |
+| Token Coverage | 5/10 | 7/10 | +2 |
+| **Overall** | **5.5/10** | **7.5/10** | **+2.0** |
+
+---
+
+## Critical Path to 10/10 & Marketplace Domination
+
+These are the **highest-leverage items** that would make this the go-to crypto plugin for Hermes:
+
+### 🔴 v2.0 Release Blockers (Do these before publishing)
+
+| Priority | Item | Effort | Impact |
+|----------|------|--------|--------|
+| **P0** | Marketplace publication — package as tarball, publish via `hermes skills publish` | 1h | 🔑 Unlocks distribution |
+| **P0** | Wire daemon into plugin bridge — skip subprocess when daemon is running | 4h | ⚡ 200ms→5ms tool calls |
+| **P1** | Jupiter DEX integration — Solana on-chain prices | 8h | 📈 100+ more tokens |
+| **P1** | WebSocket → daemon integration — live price feeds | 6h | 🔄 Real-time data |
+
+### 🟡 v2.1 Differentiators (What makes it special)
+
+| Item | Effort | Impact |
+|------|--------|--------|
+| Portfolio tracking with P&L | 4h | 💰 User retention |
+| Price alerts (Hermes gateway) | 6h | 🔔 Stickiness |
+| Backtesting engine | 12h | 📊 Trust |
+| SQLite export for long-term analysis | 3h | 📈 Data value |
+| Feed health monitoring | 2h | 🛡️ Reliability |
+
+### 🟢 v2.2 Polish (Market leader tier)
+
+| Item | Effort | Impact |
+|------|--------|--------|
+| TypeDoc auto-generated API docs | 2h | 📚 Professionalism |
+| Discord/Telegram alert webhook | 4h | 🔌 Platform reach |
+| Performance benchmark suite | 4h | 📈 Trust |
+| On-chain query Hermes tool | 3h | 🤖 Agent capability |
+| Global error handler with crash reports | 2h | 🛡️ Resilience |
 
 ---
 
@@ -224,4 +295,4 @@ Architecture, typed error hierarchy, config system, cache layer, and strategy en
 
 ---
 
-*Audit generated by Hermes Agent — July 2, 2026*
+*Audit generated by Hermes Agent — July 3, 2026 · v1.3.0 · 196 tests · 0 lint errors*

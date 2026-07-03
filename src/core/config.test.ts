@@ -88,6 +88,6 @@ describe('Configuration', () => {
     expect(fs.existsSync(fp)).toBe(true);
     const content = JSON.parse(fs.readFileSync(fp, 'utf-8'));
     expect(content.binanceBaseUrl).toBe('https://data-api.binance.vision');
-    expect(content.dataDir).toBe('data');
+    expect(content.dataDir).toContain('.hermes/data/crypto-radar');
   });
 });

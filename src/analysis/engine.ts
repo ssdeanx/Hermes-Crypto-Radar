@@ -1,5 +1,6 @@
 import type { SignalStrategy, StrategyContext, AggregatedSignal, StrategyWeight, StrategySignal } from './strategies.js';
 import type { TechnicalIndicators } from '../types.js';
+import type { RadarConfig } from '../core/config.js';
 import { MomentumStrategy } from './momentum.js';
 import { MeanReversionStrategy } from './mean-reversion.js';
 import { TrendFollowingStrategy } from './trend-following.js';
@@ -17,7 +18,8 @@ const DEFAULT_WEIGHTS: StrategyWeight[] = [
   { name: 'trend-following', weight: 0.40 },
 ];
 
-const TF_WEIGHTS: Record<string, number> = {
+/** Default timeframe weights — exported so consumers can inspect/merge */
+export const TF_WEIGHTS: Record<string, number> = {
   '15m': 0.10,
   '1h':  0.25,
   '4h':  0.30,
@@ -33,13 +35,37 @@ const TF_WEIGHTS: Record<string, number> = {
 export class StrategyEngine {
   private strategies: SignalStrategy[];
   private weights: Map<string, number>;
+  private tfWeights: Record<string, number>;
 
   constructor(
     strategies: SignalStrategy[] = DEFAULT_STRATEGIES,
     weights: StrategyWeight[] = DEFAULT_WEIGHTS,
+    tfWeights?: Record<string, number>,
   ) {
     this.strategies = strategies;
     this.weights = new Map(weights.map(w => [w.name, w.weight]));
+    this.tfWeights = tfWeights ?? TF_WEIGHTS;
+  }
+
+  /**
+   * Create a StrategyEngine from a RadarConfig, merging config
+   * overrides with default strategy weights and timeframe weights.
+   * Config values take precedence over defaults.
+   */
+  static fromConfig(config: RadarConfig): StrategyEngine {
+    let weights: StrategyWeight[] = DEFAULT_WEIGHTS;
+    if (config.strategyWeights) {
+      // Merge: defaults first, config overrides on top
+      const merged = new Map(DEFAULT_WEIGHTS.map(w => [w.name, w.weight]));
+      for (const [name, weight] of Object.entries(config.strategyWeights)) {
+        merged.set(name, weight);
+      }
+      weights = Array.from(merged.entries()).map(([name, weight]) => ({ name, weight }));
+    }
+    const tfWeights = config.timeframeWeights
+      ? { ...TF_WEIGHTS, ...config.timeframeWeights }
+      : TF_WEIGHTS;
+    return new StrategyEngine(DEFAULT_STRATEGIES, weights, tfWeights);
   }
 
   /**
@@ -97,7 +123,7 @@ export class StrategyEngine {
     const dirVotes: Record<string, number> = { buy: 0, sell: 0, neutral: 0, strong_buy: 0, strong_sell: 0 };
     for (const signal of allSignals) {
       const strategyWeight = this.weights.get(signal.strategy) ?? (1 / this.strategies.length);
-      const tfWeight = TF_WEIGHTS[signal.timeframe] ?? 0.25;
+      const tfWeight = this.tfWeights[signal.timeframe] ?? 0.25;
       const compositeWeight = (strategyWeight / totalWeight) * tfWeight;
       weightedConfidence += signal.confidence * compositeWeight;
       const voteWeight = signal.confidence * compositeWeight;
@@ -167,13 +193,44 @@ export class StrategyEngine {
   }
 
   /**
-   * Get info about all registered strategies and their weights.
-   * @returns Array of strategy info objects
+   * Get current strategy weights as a Record.
+   * @returns Record of strategy name -> weight
    */
-  getStrategyInfo(): Array<{ name: string; description: string; timeframe: string; weight: number }> {
-    return this.strategies.map(s => ({
-      name: s.name, description: s.description, timeframe: s.timeframe,
-      weight: this.weights.get(s.name) ?? (1 / this.strategies.length),
-    }));
+  getStrategyWeights(): Record<string, number> {
+    const result: Record<string, number> = {};
+    for (const [name, weight] of this.weights) {
+      result[name] = weight;
+    }
+    return result;
+  }
+
+  /**
+   * Set the weight of a strategy at runtime.
+   * @param name Strategy name
+   * @param weight New weight value
+   */
+  setStrategyWeight(name: string, weight: number): void {
+    const valid = this.strategies.some(s => s.name === name);
+    if (!valid) {
+      throw new Error(`Unknown strategy: "${name}". Valid strategies: ${this.strategies.map(s => s.name).join(', ')}`);
+    }
+    this.weights.set(name, weight);
+  }
+
+  /**
+   * Get info about all registered strategies, their weights, and current tfWeights.
+   * @returns Object with strategies array and tfWeights
+   */
+  getStrategyInfo(): {
+    strategies: Array<{ name: string; description: string; timeframe: string; weight: number }>;
+    tfWeights: Record<string, number>;
+  } {
+    return {
+      strategies: this.strategies.map(s => ({
+        name: s.name, description: s.description, timeframe: s.timeframe,
+        weight: this.weights.get(s.name) ?? (1 / this.strategies.length),
+      })),
+      tfWeights: { ...this.tfWeights },
+    };
   }
 }

@@ -6,7 +6,53 @@ import type {
   EnrichedTicker, TokenSignal, TechnicalIndicators,
   NewsMatch, Chain,
 } from './types.js';
+import type { OnChainMetrics } from './onchain.js';
+import { PROTOCOL_MAP } from './onchain.js';
 import { getTokenById } from './tokens.js';
+
+/**
+ * Compute an on-chain confidence boost (0–15 percentage points) based on
+ * protocol TVL for a given token. Uses the PROTOCOL_MAP to find the
+ * DeFiLlama protocol slug for the token, then looks up the fetched TVL
+ * from the OnChainMetrics result.
+ *
+ * @param symbol Token symbol (e.g. 'SOLUSDT')
+ * @param tokenId Internal token id (e.g. 'solana')
+ * @param onchain Fetched on-chain metrics (may be null)
+ * @returns Boost value in percentage points (0–15)
+ */
+export function computeOnchainBoost(
+  symbol: string,
+  tokenId: string,
+  onchain: OnChainMetrics | null,
+): number {
+  if (!onchain || !onchain.protocols || onchain.protocols.length === 0) return 0;
+
+  // Look up the DeFiLlama protocol slug for this token
+  const protocolSlug = PROTOCOL_MAP[tokenId];
+  if (!protocolSlug) return 0;
+
+  // Find matching protocol in the fetched metrics
+  const protocol = onchain.protocols.find(p => p.name === protocolSlug);
+  if (!protocol) return 0;
+
+  const tvl = protocol.tvl;
+
+  // High TVL (>$1B) → +10–15% boost
+  if (tvl > 1_000_000_000) {
+    return 10 + Math.min((tvl - 1_000_000_000) / 100_000_000_000 * 5, 5);
+  }
+  // Medium TVL ($100M–$1B) → +5–10% boost
+  if (tvl > 100_000_000) {
+    return 5 + ((tvl - 100_000_000) / 900_000_000) * 5;
+  }
+  // Low TVL (>0, <$100M) → +0–5% boost
+  if (tvl > 0) {
+    return (tvl / 100_000_000) * 5;
+  }
+
+  return 0;
+}
 
 /**
  * Compute composite signal scores for all tickers.
@@ -15,16 +61,19 @@ import { getTokenById } from './tokens.js';
  * - Momentum (40%): price change, spread, book imbalance
  * - Technical (40%): RSI, MACD, BB position, volume trend
  * - News (20%): recent relevant news volume and relevance
+ * - On-chain boost (up to +15% added to composite): protocol TVL strength
  *
  * @param tickers Array of enriched tickers
  * @param technicals Map of symbol -> TechnicalIndicators
  * @param newsMatches Array of news matches
+ * @param onchain Optional on-chain metrics for TVL-based boost
  * @returns Array of computed TokenSignal objects
  */
 export function computeSignals(
   tickers: EnrichedTicker[],
   technicals: Map<string, TechnicalIndicators>,
   newsMatches: NewsMatch[],
+  onchain?: OnChainMetrics | null,
 ): TokenSignal[] {
   const newsBySymbol = new Map<string, NewsMatch[]>();
   for (const m of newsMatches) {
@@ -46,11 +95,20 @@ export function computeSignals(
     // News score (0-100)
     const newsScore = computeNewsScore(newsItems);
 
-    // Composite (weighted)
-    const compositeScore =
+    // On-chain boost (0-15 percentage points)
+    const onchainBoost = onchain
+      ? computeOnchainBoost(t.symbol, t.tokenId, onchain)
+      : 0;
+
+    // Composite (weighted + on-chain boost)
+    let compositeScore =
       momentumScore * 0.40 +
       technicalScore * 0.40 +
-      newsScore * 0.20;
+      newsScore * 0.20 +
+      onchainBoost; // add on-chain boost directly as percentage points
+
+    // Cap at 100
+    compositeScore = Math.min(compositeScore, 100);
 
     // Alerts
     const alerts: string[] = [];
@@ -63,6 +121,7 @@ export function computeSignals(
     if (t.quoteVolume >= 10e6) alerts.push('High volume');
     if (t.spreadPct >= 1) alerts.push('Wide spread');
     if (newsItems.length >= 2) alerts.push(`News: ${newsItems.length} articles`);
+    if (onchainBoost >= 10) alerts.push('Strong on-chain TVL');
 
     const tokenDef = getTokenById(t.tokenId);
 

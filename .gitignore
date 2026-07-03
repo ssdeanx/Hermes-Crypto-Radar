@@ -6,3 +6,5 @@ data/
 *.lock
 crypto-radar-state.json
 *.log
+*.tar.gz
+*.skill.md

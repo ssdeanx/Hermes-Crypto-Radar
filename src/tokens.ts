@@ -4,6 +4,7 @@
 
 import type { TokenDef, Chain } from './types.js';
 import { loadConfig } from './core/config.js';
+import { fetchAllUsdtTickers } from './binance.js';
 
 /**
  * Master token registry.
@@ -128,6 +129,29 @@ export function getTokensByChain(chain: Chain | undefined): TokenDef[] {
 /** Get Binance USDT pair for a token */
 export function getBinancePair(token: TokenDef): string {
   return `${token.sym}USDT`;
+}
+
+/**
+ * Get the top N tokens by 24h quote volume from all Binance USDT pairs.
+ * Filters to pairs we can map to our token registry.
+ * @param n Number of top tokens to return (default: 50)
+ */
+export async function getTopTokensByVolume(n: number = 50): Promise<TokenDef[]> {
+  const tickers = await fetchAllUsdtTickers();
+  const entries: Array<{ token: TokenDef; quoteVolume: number }> = [];
+
+  for (const [symbol, ticker] of tickers) {
+    // Strip the USDT suffix to get the trading symbol for lookup
+    const sym = symbol.replace(/USDT$/, '');
+    const token = getTokenBySymbol(sym);
+    if (token) {
+      entries.push({ token, quoteVolume: parseFloat(ticker.quoteVolume) });
+    }
+  }
+
+  // Sort descending by quoteVolume and return top N
+  entries.sort((a, b) => b.quoteVolume - a.quoteVolume);
+  return entries.slice(0, n).map(e => e.token);
 }
 
 export type { TokenDef } from './types.js';
