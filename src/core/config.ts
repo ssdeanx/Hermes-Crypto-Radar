@@ -55,6 +55,10 @@ export interface RadarConfig {
   strategyWeights?: Record<string, number>;
   /** Override timeframe weights e.g. {"15m": 0.1, "1h": 0.25, "4h": 0.3, "1d": 0.35} */
   timeframeWeights?: Record<string, number>;
+  /** Auto-prune log files older than this many days (default: 0 = no pruning) */
+  logRetentionDays: number;
+  /** Enable SHA-256 checksum verification on log files */
+  enableFileChecksums?: boolean;
 }
 
 const DEFAULTS: RadarConfig = {
@@ -83,6 +87,7 @@ const DEFAULTS: RadarConfig = {
     coinGecko: false,
   },
   defiLlamaEnabled: false,
+  logRetentionDays: 0,   // 0 = disabled
 };
 
 let _instance: RadarConfig | null = null;
@@ -157,6 +162,8 @@ export function loadConfig(configPath?: string): RadarConfig {
     try { base.timeframeWeights = JSON.parse(envMap.timeframe_weights); }
     catch { /* ignore invalid JSON */ }
   }
+  if (envMap.log_retention_days) base.logRetentionDays = parseInt(envMap.log_retention_days, 10);
+  if (envMap.enable_file_checksums) base.enableFileChecksums = envMap.enable_file_checksums === 'true';
 
   _instance = base;
   return base;

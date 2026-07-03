@@ -4,6 +4,9 @@ coverage/
 data/
 *.csv
 *.lock
+
+# Docs output
+docs/api/
 crypto-radar-state.json
 *.log
 *.tar.gz

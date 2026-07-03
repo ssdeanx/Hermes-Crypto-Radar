@@ -27,6 +27,10 @@ export { RateLimiter } from './core/rate-limiter.js';
 export { checkAlerts, formatAlerts, resetAlertState } from './core/alerts.js';
 export type { PriceAlert, AlertResult } from './core/alerts.js';
 
+// Webhook notifications
+export { sendAlert, formatAlertMessage } from './core/webhook.js';
+export type { WebhookType, WebhookConfig } from './core/webhook.js';
+
 // Charts
 export { priceSparkline, dualSparkline, multiMaSparkline, priceSvgChart, multiPanelSvgChart, candlestickSvgChart } from './io/charts.js';
 export { correlationHeatMap, portfolioDashboard, marketBreadthGauge, strategyPerformance } from './io/advanced-charts.js';

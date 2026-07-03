@@ -63,13 +63,20 @@ program
   .option('--period <interval>', 'Kline interval: 15m|1h|4h|1d (default: all)')
   .action(async (opts) => {
     try {
-      // Resolve dynamic top-N token detection — takes priority over --filter
+      // Resolve token filter — auto-dynamic by default (top 30 by volume)
       let filter = opts.filter;
-      if (opts.dynamic !== undefined) {
-        const count = typeof opts.dynamic === 'string' ? parseInt(opts.dynamic, 10) : 50;
-        const dynamicTokens = await getTopTokensByVolume(count);
-        filter = dynamicTokens.map(t => t.sym);
-        console.error(`[dynamic] Top ${dynamicTokens.length} tokens by volume selected`);
+      if (!filter || filter.length === 0) {
+        // No explicit filter — use dynamic top tokens by default
+        const count = typeof opts.dynamic === 'string' ? parseInt(opts.dynamic, 10) 
+          : opts.dynamic !== undefined ? 50 
+          : 30; // default: top 30 by volume
+        try {
+          const dynamicTokens = await getTopTokensByVolume(count);
+          filter = dynamicTokens.map(t => t.sym);
+          console.error(`[auto-dynamic] Top ${dynamicTokens.length} tokens by volume`);
+        } catch {
+          console.error('[auto-dynamic] Failed to fetch top tokens, using default list');
+        }
       }
 
       const result = await runRadar({
@@ -185,6 +192,34 @@ program
     const tokens = getTokenList()
       .filter(t => !opts.chain || t.chain === opts.chain || t.chains?.includes(opts.chain));
     console.table(tokens.map(t => ({ Symbol: t.sym, Name: t.name, Chain: t.chain })));
+  });
+
+// ── search command ──
+program
+  .command('search')
+  .alias('find')
+  .description('Search for tokens by symbol, name, or address')
+  .argument('<query>', 'Search query (symbol, name, or partial match)')
+  .option('--json', 'Output as JSON')
+  .action((query, opts) => {
+    const q = query.toUpperCase();
+    const tokens = getTokenList();
+    const results = tokens.filter(t => 
+      t.sym.toUpperCase().includes(q) ||
+      t.name.toUpperCase().includes(q) ||
+      t.id.includes(q) ||
+      t.chain.toUpperCase().includes(q)
+    );
+    if (opts.json) {
+      console.log(JSON.stringify(results, null, 2));
+    } else {
+      console.table(results.map(t => ({
+        Symbol: t.sym, Name: t.name, Chain: t.chain, ID: t.id,
+      })));
+    }
+    if (results.length === 0) {
+      console.error(`No tokens matching "${query}"`);
+    }
   });
 
 // ── signals command ──

@@ -24,7 +24,7 @@ import { StrategyEngine } from './analysis/engine.js';
 import type { AggregatedSignal } from './analysis/strategies.js';
 import { toTable, toMarkdownReport, toSignalReport, toCSV, csvHeader, NEWS_CSV_HEADER } from './output.js';
 import { exportToXlsx } from './xlsx-export.js';
-import { checkLogRotation } from './core/log-rotation.js';
+import { checkLogRotation, pruneOldLogs, writeLogWithChecksum } from './core/log-rotation.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -314,12 +314,22 @@ async function appendToLog<T>(
   try {
     if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
     const filePath = path.join(dataDir, fileName);
+    const config = loadConfig();
+
+    // Prune old logs per retention policy
+    pruneOldLogs(dataDir);
+
     checkLogRotation(filePath);
     const tmpPath = filePath + '.tmp';
     const exists = fs.existsSync(filePath);
     const content = (exists ? '' : header + '\n') + items.map(item => formatter(item)).join('\n') + '\n';
-    await fs.promises.writeFile(tmpPath, content);
-    fs.renameSync(tmpPath, filePath);
+
+    if (config.enableFileChecksums) {
+      writeLogWithChecksum(filePath, content);
+    } else {
+      await fs.promises.writeFile(tmpPath, content);
+      fs.renameSync(tmpPath, filePath);
+    }
   } catch (err) {
     logger.error('Failed to write log', { file: fileName, error: String(err) });
   }

@@ -17,3 +17,10 @@ export {
   resetFeedHealth,
 } from './feed-monitor.js';
 export type { FeedHealth } from './feed-monitor.js';
+export {
+  checkLogRotation,
+  pruneOldLogs,
+  writeLogWithChecksum,
+  verifyLogChecksum,
+  computeFileChecksum,
+} from './log-rotation.js';

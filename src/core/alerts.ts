@@ -101,6 +101,14 @@ export function checkAlerts(tickers: EnrichedTicker[]): AlertResult[] {
     }
   }
 
+  // Send notifications for newly triggered alerts
+  if (results.length > 0) {
+    import('./webhook.js').then(({ sendAlert, formatAlertMessage }) => {
+      const msg = formatAlertMessage(results);
+      if (msg) sendAlert(msg).catch(() => {});
+    }).catch(() => {});
+  }
+
   return results;
 }
 

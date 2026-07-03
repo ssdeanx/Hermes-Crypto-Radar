@@ -37,6 +37,8 @@
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --check src/",
     "format:fix": "prettier --write src/",
+    "docs": "typedoc",
+    "docs:serve": "typedoc --watch",
     "benchmark": "node dist/cli.js benchmark",
     "backtest": "node dist/cli.js backtest",
     "clean": "rm -rf dist",
@@ -114,6 +116,7 @@
     "eslint-config-prettier": "^10.1.8",
     "husky": "^9.1.7",
     "prettier": "^3.9.4",
+    "typedoc": "^0.28.19",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1",
     "vitest": "^4.1.9"
