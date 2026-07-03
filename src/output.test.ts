@@ -48,11 +48,14 @@ describe('CSV output', () => {
   it('produces correct CSV header', () => {
     const header = csvHeader();
     expect(header).toContain('run_id');
-    expect(header).toContain('lastPrice');
-    expect(header).toContain('priceChangePercent');
+    expect(header).toContain('last_price');
+    expect(header).toContain('price_change_pct');
     expect(header).toContain('momentum');
+    expect(header).toContain('rsi');
+    expect(header).toContain('composite_score');
+    expect(header).toContain('regime');
     const cols = header.split(',');
-    expect(cols.length).toBe(32); // verified column count
+    expect(cols.length).toBe(63); // expanded column count
   });
 
   it('formats ticker as CSV row', () => {
@@ -61,16 +64,17 @@ describe('CSV output', () => {
     expect(csv).toContain('TEST-1');
     expect(csv).toContain('SOL');
     expect(csv).toContain('solana');
-    expect(csv).toContain('2.55'); // priceChangePercent
-    // Verify all fields present (comma count = header - 1)
+    expect(csv).toContain('2.5500'); // priceChangePercent → 4dp
+    // Verify all fields present
     const cols = csv.split(',');
-    expect(cols.length).toBe(29); // 30 fields - 1 (no openTime/closeTime in toCSV)
+    expect(cols.length).toBe(63); // matches header column count
   });
 
   it('handles very small prices', () => {
     const ticker = makeTicker({ lastPrice: 0.00001234, symbol: 'BONK' });
     const csv = toCSV(ticker);
-    expect(csv).toContain('0.00001234');
+    // fPrice: < 0.0001 → toFixed(6) → "0.000012" (rounds down)
+    expect(csv).toContain('0.000012');
   });
 
   it('handles very large volumes', () => {

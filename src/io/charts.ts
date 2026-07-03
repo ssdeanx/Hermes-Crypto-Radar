@@ -160,11 +160,11 @@ function sharedStyles(): string {
     .vp-bar-lvn { fill: rgba(239,68,68,0.3); }
     .vp-poc-line { stroke: #22d3ee; stroke-width: 1.5; stroke-dasharray: 3,2; }
     .vp-poc-label { fill: #22d3ee; font-family: 'Inter', monospace; font-size: 9px; font-weight: 700; }
-    .vp-label { fill: #64748b; font-family: 'Inter', monospace; font-size: 8px; }
+    .vp-label { fill: #64748b; font-family: 'Inter', monospace; font-size: 9px; }
     .vp-va-area { fill: rgba(34,211,238,0.06); stroke: rgba(34,211,238,0.15); stroke-width: 0.5; }
     /* Comparison chart styles */
     .comp-grid-line { stroke: #1e293b; stroke-width: 1; }
-    .comp-grid-line-zero { stroke: #334155; stroke-width: 1.5; }
+    .comp-grid-line-zero { stroke: #334155; stroke-width: 2; stroke-dasharray: 5,3; }
     .comp-grid-label { fill: #475569; font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 9px; }
     .comp-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
     .comp-hover-dot { fill: transparent; }
@@ -172,6 +172,55 @@ function sharedStyles(): string {
     .comp-pct-up { fill: #22c55e; }
     .comp-pct-down { fill: #ef4444; }
     .comp-pct-zero { fill: #94a3b8; }
+    /* Light mode overrides */
+    @media (prefers-color-scheme: light) {
+      .bg { fill: #ffffff; }
+      .title { fill: #1e293b; }
+      .grid-line { stroke: #e2e8f0; }
+      .grid-label { fill: #475569; }
+      .axis-label { fill: #64748b; }
+      .label-bg { fill: #f1f5f9; stroke: rgba(34,211,238,0.4); }
+      .label-text { fill: #0891b2; }
+      .label-text-white { fill: #1e293b; }
+      .rsi-label { fill: #64748b; }
+      .watermark { fill: rgba(100,116,139,0.35); }
+      .comp-grid-line { stroke: #e2e8f0; }
+      .comp-grid-line-zero { stroke: #cbd5e1; }
+      .comp-grid-label { fill: #64748b; }
+      .comp-legend-text { fill: #1e293b; }
+      .vol-bar-up { fill: rgba(22,163,74,0.35); }
+      .vol-bar-down { fill: rgba(220,38,38,0.35); }
+      .candle-up { fill: rgba(22,163,74,0.6); stroke: #16a34a; }
+      .candle-down { fill: rgba(220,38,38,0.6); stroke: #dc2626; }
+      .wick-up { stroke: #16a34a; }
+      .wick-down { stroke: #dc2626; }
+    }
+    /* Hyperframe animations */
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    @keyframes gradient-shift {
+      0% { stop-color: #0f172a; }
+      50% { stop-color: #1e293b; }
+      100% { stop-color: #0f172a; }
+    }
+    .latest-candle { animation: pulse-glow 2s ease-in-out infinite; }
+    .pulse-dot { animation: pulse-glow 2s ease-in-out infinite; }
+    .data-point { transition: opacity 0.3s, stroke-width 0.3s, r 0.3s; }
+    .data-point:hover { opacity: 1; stroke-width: 3; r: 5; }
+    .frame-counter { fill: rgba(148,163,184,0.3); font-family: 'Inter', monospace; font-size: 8px; }
+    /* Glassmorphism panel */
+    .panel { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: rgba(30, 41, 59, 0.8); border-radius: 8px; }
+    @media (prefers-color-scheme: light) {
+      .panel { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: rgba(255, 255, 255, 0.9); }
+    }
+    /* Typography */
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+    /* Accessibility: reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      .latest-candle, .pulse-dot, .data-point { animation: none; transition: none; }
+    }
   </style>`;
 }
 
@@ -202,6 +251,30 @@ function sharedDefs(): string {
     <linearGradient id="candleVolDownGrad" x1="0" y1="1" x2="0" y2="0">
       <stop offset="0%" stop-color="rgba(239,68,68,0.1)"/>
       <stop offset="100%" stop-color="rgba(239,68,68,0.5)"/>
+    </linearGradient>
+    <filter id="lineGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="2.5" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="glassMorphism" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur"/>
+      <feSpecularLighting in="blur" surfaceScale="2" specularConstant="0.2" specularExponent="20" lighting-color="#ffffff" result="specOut">
+        <fePointLight x="200" y="100" z="200"/>
+      </feSpecularLighting>
+      <feComposite in="specOut" in2="SourceAlpha" operator="in" result="specOut2"/>
+      <feComposite in="SourceGraphic" in2="specOut2" operator="arithmetic" k1="0" k2="1" k3="0.08" k4="0"/>
+    </filter>
+    <!-- Gradient-shift animation background gradients -->
+    <linearGradient id="bgGradShift" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a">
+        <animate attributeName="stop-color" values="#0f172a;#1e293b;#0f172a" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#0f172a">
+        <animate attributeName="stop-color" values="#0f172a;#1e293b;#0f172a" dur="8s" repeatCount="indefinite"/>
+      </stop>
     </linearGradient>
   </defs>`;
 }
@@ -317,7 +390,10 @@ function renderVolumeBars(layout: ChartLayout, klines: Kline[], barMaxHeight: nu
     const x = padding.left + (i / (n - 1)) * plotW;
     const barH = volRatio * barMaxHeight;
     const barY = height - padding.bottom + 5;
-    out += `<rect x="${(x - 1).toFixed(1)}" y="${(barY - barH).toFixed(1)}" width="2" height="${barH.toFixed(1)}" fill="url(#volGrad)" />\n`;
+    out += `<rect x="${(x - 1).toFixed(1)}" y="${(barY - barH).toFixed(1)}" width="2" height="${barH.toFixed(1)}" fill="url(#volGrad)">
+      <animate attributeName="height" from="0" to="${barH.toFixed(1)}" dur="0.5s" fill="freeze"/>
+      <animate attributeName="y" from="${barY}" to="${(barY - barH).toFixed(1)}" dur="0.5s" fill="freeze"/>
+    </rect>\n`;
   }
   return out;
 }
@@ -330,7 +406,7 @@ function renderWatermark(layout: ChartLayout): string {
 
 /** Opening SVG tag with accessibility attributes */
 function svgOpen(width: number, height: number, title: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%" role="img" aria-label="${escapeXml(title)}">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(title)}">
   ${sharedStyles()}
   ${sharedDefs()}
   <rect width="${width}" height="${height}" class="bg" rx="8"/>`;
@@ -377,7 +453,7 @@ export function priceSvgChart(
   for (let i = 0; i < n; i++) {
     const x = padding.left + (i / (n - 1)) * plotW;
     const y = padding.top + plotH - ((closes[i]! - min) / range) * plotH;
-    tooltipSvg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="transparent">
+    tooltipSvg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" class="data-point">
       <title>${formatTime(klines[i]!.openTime)} — ${formatYLabel(closes[i]!)}</title>
     </circle>\n`;
   }
@@ -402,6 +478,12 @@ export function priceSvgChart(
 
   <!-- Crosshair + labels -->
   ${renderCrosshair(layout, klines, min, max)}
+
+  <!-- Pulsing latest data point -->
+  <circle cx="${(padding.left + plotW).toFixed(1)}" cy="${(padding.top + plotH - ((closes[n-1]! - min) / range) * plotH).toFixed(1)}" r="4" class="pulse-dot data-point"/>
+
+  <!-- Frame counter -->
+  <text x="6" y="${(height - 8).toFixed(1)}" class="frame-counter">FRM-${Math.floor(Math.random() * 90000 + 10000)}</text>
 
   <!-- Min/max markers -->
   ${renderMinMaxMarkers(layout, klines, min, max)}
@@ -449,7 +531,7 @@ export function multiPanelSvgChart(
   for (let i = 0; i < n; i++) {
     const x = priceLayout.padding.left + (i / (n - 1)) * priceLayout.plotW;
     const y = priceLayout.padding.top + priceLayout.plotH - ((closes[i]! - min) / range) * priceLayout.plotH;
-    priceTooltips += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="transparent">
+    priceTooltips += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" class="data-point">
       <title>${formatTime(klines[i]!.openTime)} — ${formatYLabel(closes[i]!)}</title>
     </circle>\n`;
   }
@@ -491,7 +573,7 @@ export function multiPanelSvgChart(
     if (rsi == null) continue;
     const x = rsiLayout.padding.left + (i / (n - 1)) * rsiLayout.plotW;
     const y = rsiPanelTop + rsiLayout.padding.top + rsiPlotH - ((rsi - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
-    rsiTooltips += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="transparent">
+    rsiTooltips += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" class="data-point">
       <title>${formatTime(klines[i]!.openTime)} — RSI: ${rsi.toFixed(1)}</title>
     </circle>\n`;
   }
@@ -585,9 +667,15 @@ export function multiPanelSvgChart(
     <!-- RSI crosshair -->
     ${rsiCrosshair}
 
+    <!-- Pulsing latest data point -->
+    <circle cx="${(rsiLayout.padding.left + rsiLayout.plotW).toFixed(1)}" cy="${(rsiPanelTop + rsiLayout.padding.top + rsiPlotH - ((lastRsi ?? 50 - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH).toFixed(1)}" r="4" class="pulse-dot data-point"/>
+
     <!-- Label -->
     <text x="${rsiLayout.padding.left.toFixed(1)}" y="${(rsiPanelTop + rsiLayout.height - 8).toFixed(1)}" class="rsi-label">RSI (14)</text>
   </g>
+
+  <!-- Frame counter -->
+  <text x="6" y="${(height - 8).toFixed(1)}" class="frame-counter">FRM-${Math.floor(Math.random() * 90000 + 10000)}</text>
 
 ${SVG_CLOSE}`;
 
@@ -665,7 +753,7 @@ export function candlestickSvgChart(
     const bodyH = Math.max(1, bodyBottom - bodyTop);
     const candleClass = isUp ? 'candle-up' : 'candle-down';
 
-    candleSvg += `<rect x="${(x - candleWidth / 2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${candleWidth.toFixed(1)}" height="${bodyH.toFixed(1)}" class="${candleClass}"/>\n`;
+    candleSvg += `<rect x="${(x - candleWidth / 2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${candleWidth.toFixed(1)}" height="${bodyH.toFixed(1)}" class="${candleClass}${i === n - 1 ? ' latest-candle' : ''}">${i === n - 1 ? `<animate attributeName="opacity" values="0;1" dur="0.4s" fill="freeze"/>` : ''}</rect>\n`;
 
     // Tooltip
     candleSvg += `<rect x="${(x - candleWidth / 2).toFixed(1)}" y="${bodyTop.toFixed(1)}" width="${candleWidth.toFixed(1)}" height="${bodyH.toFixed(1)}" fill="transparent" style="pointer-events:visible">
@@ -682,7 +770,10 @@ Vol: ${(k.volume / 1).toFixed(1)}</title>
     const barH = volRatio * volBarMax;
     const barY = height - padding.bottom + 5;
     const volClass = isUp ? 'vol-bar-up' : 'vol-bar-down';
-    volSvg += `<rect x="${(x - 1).toFixed(1)}" y="${(barY - barH).toFixed(1)}" width="2" height="${barH.toFixed(1)}" class="${volClass}" />\n`;
+    volSvg += `<rect x="${(x - 1).toFixed(1)}" y="${(barY - barH).toFixed(1)}" width="2" height="${barH.toFixed(1)}" class="${volClass}">
+      <animate attributeName="height" from="0" to="${barH.toFixed(1)}" dur="0.5s" fill="freeze"/>
+      <animate attributeName="y" from="${barY}" to="${(barY - barH).toFixed(1)}" dur="0.5s" fill="freeze"/>
+    </rect>\n`;
   }
 
   // ── EMA overlays ──
@@ -764,7 +855,7 @@ Vol: ${(k.volume / 1).toFixed(1)}</title>
     vpSvg += `<text x="${(vpLeft + 2).toFixed(1)}" y="${(valY - 3).toFixed(1)}" class="vp-label">VAL</text>\n`;
 
     // Volume Profile title
-    vpSvg += `<text x="${(vpLeft + vpWidth / 2).toFixed(1)}" y="${(padding.top + 12).toFixed(1)}" text-anchor="middle" fill="#64748b" font-family="'Inter', sans-serif" font-size="8">VP</text>\n`;
+    vpSvg += `<text x="${(vpLeft + vpWidth / 2).toFixed(1)}" y="${(padding.top + 12).toFixed(1)}" text-anchor="middle" fill="#64748b" font-family="'Inter', sans-serif" font-size="9">VP</text>\n`;
   }
 
   const svg = `${svgOpen(width, height, `Candlestick Chart: ${title}`)}
@@ -791,6 +882,12 @@ Vol: ${(k.volume / 1).toFixed(1)}</title>
   <text x="${(crossX + 10).toFixed(1)}" y="${(crossY + 3).toFixed(1)}" class="label-text">${formatYLabel(lastClose)}</text>
   <rect x="${(padding.left - 5).toFixed(1)}" y="${(crossY - 10).toFixed(1)}" width="100" height="20" rx="4" class="label-bg"/>
   <text x="${padding.left.toFixed(1)}" y="${(crossY + 3).toFixed(1)}" class="label-text">${formatTime(klines[n - 1]?.openTime ?? 0)}</text>
+
+  <!-- Pulsing latest data point -->
+  <circle cx="${crossX.toFixed(1)}" cy="${crossY.toFixed(1)}" r="4" class="pulse-dot data-point"/>
+
+  <!-- Frame counter -->
+  <text x="6" y="${(height - 8).toFixed(1)}" class="frame-counter">FRM-${Math.floor(Math.random() * 90000 + 10000)}</text>
 
   <!-- Min/max markers -->
   ${renderMinMaxMarkers(layout, klines, min, max)}
@@ -832,8 +929,8 @@ export function comparisonSvgChart(
     return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40"><rect width="200" height="40" fill="#0f172a" rx="4"/><text x="100" y="24" text-anchor="middle" fill="#94a3b8" font-family="\'Inter\', sans-serif" font-size="12">No data</text></svg>';
   }
 
-  // Color palette for tokens
-  const palette = ['#22d3ee', '#facc15', '#a855f7', '#22c55e', '#fb923c', '#f472b6', '#14b8a6', '#eab308'];
+  // Color palette for tokens — high contrast, colorblind-safe
+  const palette = ['#06b6d4', '#f59e0b', '#c084fc', '#34d399', '#fb923c', '#fb7185', '#2dd4bf', '#eab308'];
   const lineColors = new Map<string, string>();
   symbols.forEach((s, i) => lineColors.set(s, palette[i % palette.length]!));
 
@@ -901,7 +998,7 @@ export function comparisonSvgChart(
       const x = padding.left + (i / Math.max(1, maxPoints - 1)) * plotW;
       const y = centerY - (pctChanges[i]! / yRange) * plotH;
       path += `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-      hoverDots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" class="comp-hover-dot" style="pointer-events:visible">
+      hoverDots += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" class="data-point" style="pointer-events:visible">
         <title>${escapeXml(sym)}: ${pctChanges[i]!.toFixed(2)}%</title>
       </circle>\n`;
     }
@@ -960,11 +1057,21 @@ export function comparisonSvgChart(
   ${yGridSvg}
   ${zeroLabelHtml}
 
-  <!-- Price lines (normalized) -->
+  <!-- Price lines (normalized) + end-of-line labels + glow -->
   ${symbols.map(sym => {
     const path = pathMap.get(sym);
     const color = lineColors.get(sym) ?? '#22d3ee';
-    return path ? `<path d="${path}" class="comp-line" stroke="${color}"/>` : '';
+    if (!path) return '';
+    const pctChanges = normalizedMap.get(sym);
+    const lastVal = pctChanges?.[pctChanges.length - 1] ?? 0;
+    const lastX = padding.left + plotW;
+    const lastY = centerY - ((pctChanges?.[pctChanges.length - 1] ?? 0) / yRange) * plotH;
+    const pctSign = lastVal >= 0 ? '+' : '';
+    const pctClass = lastVal >= 0 ? 'comp-pct-up' : 'comp-pct-down';
+    return `${path ? `<path d="${path}" class="comp-line" stroke="${color}" filter="url(#lineGlow)"/>` : ''}
+    <rect x="${(lastX + 4).toFixed(1)}" y="${(lastY - 7).toFixed(1)}" width="50" height="14" rx="3" fill="#0f172a" stroke="${color}" stroke-width="0.5"/>
+    <text x="${(lastX + 8).toFixed(1)}" y="${(lastY + 3).toFixed(1)}" fill="${color}" font-family="'Inter', monospace" font-size="9" font-weight="700">${pctSign}${lastVal.toFixed(1)}%</text>
+    <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4" class="pulse-dot data-point" fill="${color}"/>`;
   }).filter(Boolean).join('\n')}
 
   <!-- Hover tooltips -->
@@ -978,6 +1085,9 @@ export function comparisonSvgChart(
 
   <!-- Branding -->
   ${renderWatermark(layout)}
+
+  <!-- Frame counter -->
+  <text x="6" y="${(height - 8).toFixed(1)}" class="frame-counter">FRM-${Math.floor(Math.random() * 90000 + 10000)}</text>
 
 ${SVG_CLOSE}`;
 

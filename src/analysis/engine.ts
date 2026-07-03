@@ -1,6 +1,8 @@
 import type { SignalStrategy, StrategyContext, AggregatedSignal, StrategyWeight, StrategySignal } from './strategies.js';
 import type { TechnicalIndicators } from '../types.js';
 import type { RadarConfig } from '../core/config.js';
+import { getRegimeWeights } from './regime.js';
+import type { MarketRegime } from './regime.js';
 import { MomentumStrategy } from './momentum.js';
 import { MeanReversionStrategy } from './mean-reversion.js';
 import { TrendFollowingStrategy } from './trend-following.js';
@@ -76,6 +78,16 @@ export class StrategyEngine {
    * @returns AggregatedSignal with direction, confidence, and alerts
    */
   evaluate(ctx: StrategyContext): AggregatedSignal {
+    // Edge case: no kline data → neutral
+    if (!ctx.klineCloses || ctx.klineCloses.length === 0) {
+      return {
+        symbol: ctx.ticker.symbol, tokenName: ctx.ticker.tokenName, chain: ctx.ticker.chain,
+        lastPrice: ctx.ticker.lastPrice, priceChangePercent: ctx.ticker.priceChangePercent,
+        direction: 'neutral', compositeConfidence: 0,
+        signals: [], alerts: [], timestamp: ctx.ticker.tsUtc,
+        compositeReason: 'No kline data available',
+      };
+    }
     const signals: StrategySignal[] = this.strategies.map(s => {
       try { return s.evaluate(ctx); }
       catch (err) {
@@ -92,11 +104,37 @@ export class StrategyEngine {
     return this.aggregate(signals, ctx);
   }
 
+  /**
+   * Get regime-adjusted strategy weights.
+   * Trending → more momentum + trend-following
+   * Ranging → more mean-reversion
+   * Volatile → reduce all
+   */
+  getAdjustedWeights(regime?: MarketRegime): Map<string, number> {
+    if (!regime) return this.weights;
+    const adj = getRegimeWeights(regime);
+    const adjusted = new Map(this.weights);
+    adjusted.set('momentum', adj.momentum);
+    adjusted.set('mean-reversion', adj.meanReversion);
+    adjusted.set('trend-following', adj.trendFollowing);
+    return adjusted;
+  }
+
   private aggregateMultiTF(
     _baseSignals: ReturnType<SignalStrategy['evaluate']>[],
     ctx: StrategyContext,
     techByInterval: Map<string, TechnicalIndicators>,
   ): AggregatedSignal {
+    // Redistribute TF weights if fewer intervals than expected
+    const expectedIntervals = Object.keys(this.tfWeights);
+    const effectiveTfWeights: Record<string, number> = { ...this.tfWeights };
+    if (techByInterval.size < expectedIntervals.length) {
+      const evenWeight = 1 / techByInterval.size;
+      for (const interval of techByInterval.keys()) {
+        effectiveTfWeights[interval] = evenWeight;
+      }
+    }
+
     const allSignals: StrategySignal[] = [];
     const tfReasons: string[] = [];
     for (const [interval, tech] of techByInterval.entries()) {
@@ -123,7 +161,7 @@ export class StrategyEngine {
     const dirVotes: Record<string, number> = { buy: 0, sell: 0, neutral: 0, strong_buy: 0, strong_sell: 0 };
     for (const signal of allSignals) {
       const strategyWeight = this.weights.get(signal.strategy) ?? (1 / this.strategies.length);
-      const tfWeight = this.tfWeights[signal.timeframe] ?? 0.25;
+      const tfWeight = effectiveTfWeights[signal.timeframe] ?? (1 / expectedIntervals.length);
       const compositeWeight = (strategyWeight / totalWeight) * tfWeight;
       weightedConfidence += signal.confidence * compositeWeight;
       const voteWeight = signal.confidence * compositeWeight;
@@ -132,12 +170,37 @@ export class StrategyEngine {
       if (signal.direction === 'strong_sell') dirVotes['sell'] = (dirVotes['sell'] ?? 0) + voteWeight;
     }
 
+    // Edge case: all strategies returned neutral across all timeframes
+    const allNeutral = allSignals.every(s => s.direction === 'neutral');
+    if (allNeutral) {
+      weightedConfidence = 0;
+    }
+
     let direction: 'buy' | 'sell' | 'neutral' | 'strong_buy' | 'strong_sell';
     const buyVotes = (dirVotes['buy'] ?? 0) + (dirVotes['strong_buy'] ?? 0);
     const sellVotes = (dirVotes['sell'] ?? 0) + (dirVotes['strong_sell'] ?? 0);
-    if (buyVotes > sellVotes && buyVotes > 0.3) direction = buyVotes > 0.5 ? 'strong_buy' : 'buy';
+    if (allNeutral) direction = 'neutral';
+    else if (buyVotes > sellVotes && buyVotes > 0.3) direction = buyVotes > 0.5 ? 'strong_buy' : 'buy';
     else if (sellVotes > buyVotes && sellVotes > 0.3) direction = sellVotes > 0.5 ? 'strong_sell' : 'sell';
     else direction = 'neutral';
+
+    // Agreement score: how much strategies agree on direction (0-1)
+    const totalVotes = buyVotes + sellVotes + (dirVotes['neutral'] ?? 0);
+    const agreement_score = totalVotes > 0
+      ? Math.max(buyVotes, sellVotes, dirVotes['neutral'] ?? 0) / totalVotes
+      : 0;
+
+    // 95% confidence interval
+    const confidenceHalfWidth = (1 - agreement_score) * 0.2;
+    const confidenceRange = {
+      low: Math.round(Math.max(0, weightedConfidence - confidenceHalfWidth) * 100) / 100,
+      high: Math.round(Math.min(1, weightedConfidence + confidenceHalfWidth) * 100) / 100,
+    };
+
+    // Position size: confidence adjusted by volatility (high volatility = smaller position)
+    const atrPct = ctx.technical?.atrPct ?? 0;
+    const volatilityFactor = Math.min(atrPct / 100, 0.5);
+    const positionSize = Math.round(weightedConfidence * (1 - volatilityFactor) * 100) / 100;
 
     const alerts: string[] = [];
     if (ctx.ticker.priceChangePercent <= -5) alerts.push('\u{1F534} DIP (>5% drop)');
@@ -152,6 +215,7 @@ export class StrategyEngine {
       symbol: ctx.ticker.symbol, tokenName: ctx.ticker.tokenName, chain: ctx.ticker.chain,
       lastPrice: ctx.ticker.lastPrice, priceChangePercent: ctx.ticker.priceChangePercent,
       direction, compositeConfidence: Math.round(weightedConfidence * 100) / 100,
+      positionSize, confidenceRange,
       signals: allSignals.map(s => ({ strategy: s.strategy, direction: s.direction, confidence: s.confidence, reason: s.reason, indicators: s.indicators, timeframe: s.timeframe })),
       alerts, timestamp: ctx.ticker.tsUtc, compositeReason,
     };
@@ -170,12 +234,39 @@ export class StrategyEngine {
       if (signal.direction === 'strong_buy') dirVotes['buy'] = (dirVotes['buy'] ?? 0) + voteWeight;
       if (signal.direction === 'strong_sell') dirVotes['sell'] = (dirVotes['sell'] ?? 0) + voteWeight;
     }
+
+    // Edge case: all strategies returned neutral
+    const allNeutral = signals.every(s => s.direction === 'neutral');
+    if (allNeutral) {
+      weightedConfidence = 0;
+    }
+
     let direction: 'buy' | 'sell' | 'neutral' | 'strong_buy' | 'strong_sell';
     const buyVotes = (dirVotes['buy'] ?? 0) + (dirVotes['strong_buy'] ?? 0);
     const sellVotes = (dirVotes['sell'] ?? 0) + (dirVotes['strong_sell'] ?? 0);
-    if (buyVotes > sellVotes && buyVotes > 0.3) direction = buyVotes > 0.5 ? 'strong_buy' : 'buy';
+    if (allNeutral) direction = 'neutral';
+    else if (buyVotes > sellVotes && buyVotes > 0.3) direction = buyVotes > 0.5 ? 'strong_buy' : 'buy';
     else if (sellVotes > buyVotes && sellVotes > 0.3) direction = sellVotes > 0.5 ? 'strong_sell' : 'sell';
     else direction = 'neutral';
+
+    // Agreement score: how much strategies agree on direction (0-1)
+    const totalVotes = buyVotes + sellVotes + (dirVotes['neutral'] ?? 0);
+    const agreement_score = totalVotes > 0
+      ? Math.max(buyVotes, sellVotes, dirVotes['neutral'] ?? 0) / totalVotes
+      : 0;
+
+    // 95% confidence interval
+    const confidenceHalfWidth = (1 - agreement_score) * 0.2;
+    const confidenceRange = {
+      low: Math.round(Math.max(0, weightedConfidence - confidenceHalfWidth) * 100) / 100,
+      high: Math.round(Math.min(1, weightedConfidence + confidenceHalfWidth) * 100) / 100,
+    };
+
+    // Position size: confidence adjusted by volatility (high volatility = smaller position)
+    const atrPct = ctx.technical?.atrPct ?? 0;
+    const volatilityFactor = Math.min(atrPct / 100, 0.5);
+    const positionSize = Math.round(weightedConfidence * (1 - volatilityFactor) * 100) / 100;
+
     const alerts: string[] = [];
     if (ctx.ticker.priceChangePercent <= -5) alerts.push('\u{1F534} DIP (>5% drop)');
     if (ctx.ticker.priceChangePercent >= 5) alerts.push('\u{1F7E2} PUMP (>5% gain)');
@@ -187,6 +278,7 @@ export class StrategyEngine {
       symbol: ctx.ticker.symbol, tokenName: ctx.ticker.tokenName, chain: ctx.ticker.chain,
       lastPrice: ctx.ticker.lastPrice, priceChangePercent: ctx.ticker.priceChangePercent,
       direction, compositeConfidence: Math.round(weightedConfidence * 100) / 100,
+      positionSize, confidenceRange,
       signals: signals.map(s => ({ strategy: s.strategy, direction: s.direction, confidence: s.confidence, reason: s.reason, indicators: s.indicators, timeframe: s.timeframe })),
       alerts, timestamp: ctx.ticker.tsUtc,
     };

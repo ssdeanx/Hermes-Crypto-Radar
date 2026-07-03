@@ -117,7 +117,7 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | Signal generation | ✅ | Composite score: 40% momentum + 40% technical + 20% news, alerts | v1.0 |
 | CSV logging | ✅ | Append-only, header-on-first-write | v1.0 |
 | CLI | ✅ | `scan`, `signals`, `news`, `tokens`, `chart`, `health`, `configure`, `strategies`, `daemon` | v1.0 |
-| Hermes plugin | ✅ | 6 tools, JSON output, `check_fn` gating | v1.0 |
+| Hermes plugin | ✅ | 8 tools, JSON output, `check_fn` gating | v1.0 |
 | Multi-chain | ✅ | Solana + Polygon + broad-market + Cosmos/L1s separation | v1.0 |
 | Output formats | ✅ | Terminal table, CSV, JSON, Markdown, XLSX (Excel/Sheets) | v1.0 |
 | **CoinGecko data source** | ✅ | Free API wired into scan pipeline via `--alt-source` flag, fallback for missing tokens | v1.1 |
@@ -153,6 +153,21 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | **ESLint + Prettier** | ✅ | Flat config, strict TS rules, auto-fix | v1.3 |
 | **SVG chart overhaul** | ✅ | CSS-in-style, gradients, viewBox, tooltips, crosshairs, a11y | v1.3 |
 | **Daemon mode** | ✅ | Warm HTTP daemon for sub-50ms tool calls | v1.3 |
+| **Auto-dynamic scan** | ✅ | Scan defaults to top-30 tokens by volume when no filter given | v1.3 |
+| **Backtesting engine** | ✅ | Signal accuracy backtesting with weight optimization | v1.3 |
+| **Candlestick pattern recognition** | ✅ | 16 patterns: doji, hammer, engulfing, morning/evening star, etc. | v1.3 |
+| **Chart comparison overlay** | ✅ | Multi-token SVG comparison chart with normalized returns | v1.3 |
+| **Correlation engine** | ✅ | N×N Pearson correlation matrix between tracked tokens | v1.3 |
+| **Data retention policy** | ✅ | Configurable log pruning by age + SHA-256 file checksums | v1.3 |
+| **Discord/Telegram webhooks** | ✅ | Price alert notifications via Discord webhook or Telegram bot | v1.3 |
+| **Fuzz testing suite** | ✅ | 130 edge-case tests for all indicators (NaN, Infinity, empty) | v1.3 |
+| **HTML/PDF report** | ✅ | Self-contained dark-theme HTML report generator | v1.3 |
+| **Market regime detection** | ✅ | Trending/Ranging/Volatile/Quiet classification via ADX+BB+ATR | v1.3 |
+| **npm publication** | ✅ | `hermes-crypto-radar@1.3.0` on npm registry | v1.3 |
+| **Support/Resistance detection** | ✅ | Pivot points, cluster detection, volume confirmation, psych levels | v1.3 |
+| **Token search CLI** | ✅ | `search` command finds tokens by symbol/name/chain | v1.3 |
+| **Volume Profile analysis** | ✅ | Market Profile: POC, HVN/LVN, value area, SVG histogram | v1.3 |
+| **Webhook notifications** | ✅ | Discord + Telegram alert delivery | v1.3 |
 
 ### 4.2 Planned (Roadmap)
 
@@ -167,10 +182,10 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | Daemon tool | ✅ | Warm daemon for sub-50ms tool calls | v1.3 ✅ |
 | WebSocket live prices | 🔜 | Binance WS for real-time updates | v2.0 |
 | Portfolio tracking | 🔜 | User-defined holdings → P&L | v2.0 |
-| Price alerts | 🔜 | Threshold-based notification via Hermes gateway | v2.0 |
-| DEX data (Jupiter) | 🔜 | Solana DEX prices via Jupiter API | v2.0 |
-| Backtesting engine | 🔜 | Test strategies against historical data | v2.0 |
-| Plugin marketplace publish | 🔜 | Publish to `hermes skills publish` | v2.0 |
+| Price alerts | ✅ | Webhook-based notifications via Discord/Telegram | v1.3 ✅ |
+| DEX data (Jupiter) | ✅ | Solana DEX prices via Jupiter API | v1.3 ✅ |
+| Backtesting engine | ✅ | Signal accuracy backtesting with weight optimization | v1.3 ✅ |
+| Plugin marketplace publish | ✅ | npm published (`hermes-crypto-radar@1.3.0`), tarball ready | v1.3 ✅ |
 
 ---
 
@@ -253,6 +268,28 @@ Manage the warm HTTP daemon for sub-50ms tool calls.
 
 **Returns:** JSON with daemon status, cache state, and uptime.
 
+### 5.7 `crypto_radar_onchain`
+
+On-chain metrics from DeFiLlama: protocol TVL, chain TVL, fees.
+
+**Parameters:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `filter` | string[] | — | Token symbols to filter |
+
+**Returns:** JSON with onchain metrics — protocol TVL, chain TVL, fees (1d/7d/30d), and on-chain prices per token.
+
+### 5.8 `crypto_radar_ws`
+
+WebSocket stream management for real-time prices.
+
+**Parameters:**
+| Param | Type | Default | Description |
+|-------|------|---------|-------------|
+| `action` | string | `status` | Action: `start`, `stop`, `status` |
+
+**Returns:** JSON with WebSocket connection status, active streams, and uptime.
+
 ---
 
 ## 6. Data Flow
@@ -263,11 +300,11 @@ Manage the warm HTTP daemon for sub-50ms tool calls.
 Agent calls crypto_radar_scan()
   → plugin/__init__.py spawns node dist/cli.js scan --format json
     → radar.ts: runRadar()
-      → binance.ts: fetchAllTickers()     [GET ticker/24hr for 30 pairs]
-      → for each token:
-          → indicators.ts: computeAllIndicators()  [GET klines, compute RSI/MACD/BB/ATR]
-      → news.ts: fetchAndMatchNews()     [GET 9 RSS feeds, parse, match, score]
-      → signals.ts: computeSignals()     [weighted composite scores]
+      → binance.ts: fetchAllTickers()          [GET ticker/24hr for 30 pairs, parallel batches of 5]
+      → indicators.ts: computeAllIndicators()  [Parallel kline fetches, compute RSI/MACD/BB/ATR/Stochastic/Ichimoku/CMF/TSI/W%R]
+      → news.ts: fetchAndMatchNews()           [11 RSS feeds, concurrency-4, headline/body/sentiment scoring]
+      → defillama.ts: fetchOnChainMetrics()    [DeFiLlama: protocol TVL, chain TVL, fees 1d/7d/30d]
+      → signals.ts: computeSignals()           [Weighted composite: momentum 40% + technical 40% + news 20%, on-chain 0-15% boost]
       → output.ts: format → JSON
   → JSON returned to agent context
   → Agent reasons about data, responds to user
@@ -283,6 +320,8 @@ Agent calls crypto_radar_scan()
 | Ticker symbol in headline | 0.5 | Bare symbol match |
 | Ticker with $ prefix in description | 0.5 | e.g. "$SOL mentioned" |
 | Source tier multiplier | 0.4–1.0 | CoinTelegraph/CoinDesk/Decrypt = 1.0, NullTX = 0.4 |
+| Sentiment keyword match | +0.2 | Bullish/bearish sentiment keywords in headline |
+| Recency bonus | +0.1–0.3 | Articles <6h old get +0.3, <24h +0.1 |
 | **Filter** | | Poison headlines dropped, sub-0.5 relevance filtered |
 
 ### 6.3 Signal Scoring Model
@@ -290,8 +329,9 @@ Agent calls crypto_radar_scan()
 | Component | Weight | Inputs |
 |-----------|--------|--------|
 | Momentum | 40% | Price change, spread, volume, book imbalance, range position |
-| Technical | 40% | RSI, MACD, BB position, volume trend, EMA50 distance |
-| News | 20% | Recent article count × relevance |
+| Technical | 40% | RSI, MACD, BB position, volume trend, EMA50 distance, 11+ indicators |
+| News | 20% | Recent article count × relevance, sentiment keywords, recency bonus |
+| On-chain boost | 0–15% | Protocol TVL strength (DeFiLlama) added to composite score |
 
 ---
 
@@ -417,7 +457,7 @@ hermes skills install ./crypto-radar-skill.md
 npm run build        # Compile TS → dist/
 npm run watch        # Watch mode
 npm run start        # Run CLI (default: scan)
-npm test             # Run vitest suite (167 tests)
+npm test             # Run vitest suite (332 tests)
 npm run test:watch   # Watch mode for TDD
 npm run lint         # ESLint check
 npm run lint:fix     # ESLint auto-fix
@@ -521,7 +561,7 @@ To get the plugin listed on the Hermes map/registry:
 | 1.0.0 | 2026-07-02 | Initial release — 32 tokens, Binance prices, tech indicators, news, signals, 4 Hermes tools, CSV/JSON/MD output |
 | 1.1.0 | 2026-07-02 | News domain extraction fix, SOURCE_TIERS bug fix, multi-line CSV quoting, XLSX export, CoinGecko API + pipeline wiring, kline caching, dead dep cleanup, SPEC/README docs overhaul, vitest test suite (58 tests), CI pipeline, deterministic integration tests, XLSX error handling, XRP CoinGecko ID fix |
 | 1.2.0 | 2026-07-02 | Circuit breaker, parallel kline/news fetching, atomic writes, log rotation, multi-timeframe analysis (15m/1h/4h/1d), cross-timeframe strategy aggregation, OBV indicator, 7 new tokens (SUI/APT/SEI/TIA/INJ/RUNE/ATOM), config auto-discovery, coverage gate, 155 tests, pre-commit hook, full JSDoc |
-| 1.3.0 | 2026-07-03 | 5 new indicators (Stochastic, Ichimoku, Williams %R, CMF, TSI), DeFiLlama on-chain metrics + signal boost, dynamic top-50 volume scan, strategy weight config overrides, SVG chart overhaul (gradients, viewBox, tooltips, crosshairs, a11y), daemon mode, eslint/prettier, .env.example, .npmignore, package.json SEO, standardized data dir, 167 tests |
+| 1.3.0 | 2026-07-03 | 5 new indicators (Stochastic, Ichimoku, Williams %R, CMF, TSI), DeFiLlama on-chain metrics + signal boost, dynamic top-50 volume scan, auto-dynamic scan (default top-30), strategy weight config overrides, SVG chart overhaul (gradients, viewBox, tooltips, crosshairs, a11y), daemon mode, eslint/prettier, backtesting engine, candlestick pattern recognition (16 patterns), chart comparison overlay, correlation engine, data retention policy, Discord/Telegram webhooks, fuzz testing suite (130 tests), HTML/PDF report, market regime detection (ADX+BB+ATR), npm publication, support/resistance detection, token search CLI, Volume Profile analysis, webhook notifications, .env.example, .npmignore, package.json SEO, standardized data dir, 332 tests |
 
 ---
 

@@ -341,7 +341,7 @@ function toNewsCSV(match: NewsMatch): string {
   return [
     match.runId, match.tsUtc, match.symbol,
     `"${cleanHeadline}"`, `"${cleanDescription}"`,
-    match.source, match.domain, match.relevance,
+    match.source, match.domain, match.relevance.toFixed(2),
   ].join(',');
 }
 

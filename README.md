@@ -203,6 +203,34 @@ hermes-crypto-radar/
 
 ---
 
+## 📦 Marketplace Installation
+
+### From Hermes Marketplace (recommended)
+```bash
+hermes plugins install crypto-radar
+```
+
+### From npm
+```bash
+npm install -g hermes-crypto-radar
+crypto-radar scan --filter SOL BTC --no-news
+```
+
+### One-liner (no npm/node required)
+```bash
+curl -fsSL https://raw.githubusercontent.com/ssdeanx/Hermes-Crypto-Radar/main/scripts/install.sh | bash
+```
+
+### From source
+```bash
+git clone https://github.com/ssdeanx/Hermes-Crypto-Radar.git
+cd Hermes-Crypto-Radar
+npm install && npm run build
+ln -sf "$PWD" ~/.hermes/plugins/crypto-radar
+```
+
+---
+
 ## 🚀 Quick Install
 
 ```bash

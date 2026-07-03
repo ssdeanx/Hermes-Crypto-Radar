@@ -2,8 +2,8 @@
 // Hermes Crypto Radar — Signal Generation Tests
 // ═══════════════════════════════════════════════════════════════════════
 
-import { describe, it, expect } from 'vitest';
-import { computeSignals, computeOnchainBoost } from './signals.js';
+import { describe, it, expect, beforeEach } from 'vitest';
+import { computeSignals, computeOnchainBoost, clearAlertCache } from './signals.js';
 import type { EnrichedTicker, TechnicalIndicators, NewsMatch } from './types.js';
 import type { OnChainMetrics, ProtocolMetrics } from './onchain.js';
 
@@ -151,9 +151,9 @@ describe('computeSignals', () => {
 // ── computeOnchainBoost ──
 
 describe('computeOnchainBoost', () => {
-  function makeOnchain(tvl: number, slug: string): OnChainMetrics {
+  function makeOnchain(tvl: number, slug: string, trend: 'up' | 'flat' | 'down' = 'flat'): OnChainMetrics {
     return {
-      protocols: [{ name: slug, tvl, fees1d: 0, fees7d: 0, fees30d: 0 }],
+      protocols: [{ name: slug, tvl, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: trend }],
       chains: [],
       fetchedAt: '2026-07-03T00:00:00Z',
     };
@@ -195,16 +195,32 @@ describe('computeOnchainBoost', () => {
     expect(boost).toBeLessThanOrEqual(5);
   });
 
-  it('returns exactly 15 for very high TVL ($2T)', () => {
-    const onchain = makeOnchain(2_000_000_000_000, 'uniswap-v3');
+  it('returns 10 for high TVL with flat trend (instead of old formula max)', () => {
+    const onchain = makeOnchain(2_000_000_000_000, 'uniswap-v3', 'flat');
     const boost = computeOnchainBoost('UNIUSDT', 'uniswap', onchain);
-    expect(boost).toBeCloseTo(15, 1);
+    expect(boost).toBe(10);
+  });
+
+  it('returns 15 for high TVL with uptrend', () => {
+    const onchain = makeOnchain(2_000_000_000_000, 'uniswap-v3', 'up');
+    const boost = computeOnchainBoost('UNIUSDT', 'uniswap', onchain);
+    expect(boost).toBe(15);
+  });
+
+  it('returns 0 for high TVL with downtrend', () => {
+    const onchain = makeOnchain(2_000_000_000_000, 'lido', 'down');
+    const boost = computeOnchainBoost('LDOUSDT', 'lido-dao', onchain);
+    expect(boost).toBe(0);
   });
 });
 
 // ── computeSignals with on-chain parameter ──
 
 describe('computeSignals with onchain', () => {
+  beforeEach(() => {
+    clearAlertCache();
+  });
+
   it('passes onchain parameter without breaking existing behavior', () => {
     const tickers = [makeTicker({ symbol: 'TEST', tokenId: 'test-token', priceChangePercent: 0 })];
     const signals = computeSignals(tickers, new Map(), [], null);
@@ -215,7 +231,7 @@ describe('computeSignals with onchain', () => {
   it('applies on-chain boost to composite score for mapped token', () => {
     const tickers = [makeTicker({ symbol: 'UNIUSDT', tokenId: 'uniswap', priceChangePercent: 0 })];
     const onchain: OnChainMetrics = {
-      protocols: [{ name: 'uniswap-v3', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0 }],
+      protocols: [{ name: 'uniswap-v3', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
       chains: [],
       fetchedAt: '2026-07-03T00:00:00Z',
     };
@@ -228,7 +244,7 @@ describe('computeSignals with onchain', () => {
   it('adds Strong on-chain TVL alert for high boost', () => {
     const tickers = [makeTicker({ symbol: 'UNIUSDT', tokenId: 'uniswap', priceChangePercent: 0 })];
     const onchain: OnChainMetrics = {
-      protocols: [{ name: 'uniswap-v3', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0 }],
+      protocols: [{ name: 'uniswap-v3', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
       chains: [],
       fetchedAt: '2026-07-03T00:00:00Z',
     };

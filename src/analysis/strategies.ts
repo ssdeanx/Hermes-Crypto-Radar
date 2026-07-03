@@ -24,6 +24,10 @@ export interface AggregatedSignal {
   signals: StrategySignal[];
   alerts: string[];
   timestamp: string;
+  /** Suggested position size based on confidence and volatility (0-1) */
+  positionSize?: number;
+  /** 95% confidence interval range */
+  confidenceRange?: { low: number; high: number };
   compositeReason?: string;
 }
 

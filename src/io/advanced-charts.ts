@@ -126,13 +126,71 @@ function advancedStyles(): string {
     .a-gauge-bg { fill: none; stroke: #1e293b; stroke-linecap: round; }
     .a-donut-hole { fill: #0f172a; }
     .a-tick { stroke: #475569; stroke-width: 1; }
-    .a-tick-label { fill: #475569; font-family: 'Inter', monospace; font-size: 8px; }
+    .a-tick-label { fill: #475569; font-family: 'Inter', monospace; font-size: 9px; }
+    /* Light mode overrides */
+    @media (prefers-color-scheme: light) {
+      .a-bg { fill: #ffffff; }
+      .a-title { fill: #1e293b; }
+      .a-subtitle { fill: #64748b; }
+      .a-label { fill: #475569; }
+      .a-value { fill: #0f172a; }
+      .a-accent { fill: #0891b2; }
+      .a-watermark { fill: rgba(100,116,139,0.35); }
+      .a-grid-line { stroke: #e2e8f0; }
+      .a-stat-box { fill: rgba(241,245,249,0.6); stroke: rgba(100,116,139,0.15); }
+      .a-donut-hole { fill: #ffffff; }
+      .a-tick { stroke: #cbd5e1; }
+      .a-tick-label { fill: #64748b; }
+      .a-gauge-bg { fill: none; stroke: #e2e8f0; }
+    }
+    /* Hyperframe animations */
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    @keyframes gradient-shift {
+      0% { stop-color: #0f172a; }
+      50% { stop-color: #1e293b; }
+      100% { stop-color: #0f172a; }
+    }
+    .a-pulse { animation: pulse-glow 2s ease-in-out infinite; }
+    .a-hover-data { transition: opacity 0.3s, r 0.3s, stroke-width 0.3s; }
+    .a-hover-data:hover { opacity: 1; stroke-width: 3; r: 5; }
+    .a-frame-counter { fill: rgba(148,163,184,0.3); font-family: 'Inter', monospace; font-size: 8px; }
+    /* Glassmorphism panel */
+    .a-panel { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: rgba(30, 41, 59, 0.8); border-radius: 8px; }
+    @media (prefers-color-scheme: light) {
+      .a-panel { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: rgba(255, 255, 255, 0.9); }
+    }
+    /* Typography */
+    .a-tabnums { font-variant-numeric: tabular-nums; }
+    @media (prefers-reduced-motion: reduce) {
+      .a-pulse, .a-hover-data { animation: none; transition: none; }
+    }
   </style>`;
 }
 
 /** Opening SVG tag with accessibility */
 function svgOpen(w: number, h: number, title: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="100%" height="100%" role="img" aria-label="${escapeXml(title)}">\n${advancedStyles()}\n<rect width="${w}" height="${h}" class="a-bg" rx="8"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(title)}">\n${advancedStyles()}\n<defs>
+    <filter id="aGlass" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur"/>
+      <feSpecularLighting in="blur" surfaceScale="2" specularConstant="0.2" specularExponent="20" lighting-color="#ffffff" result="specOut">
+        <fePointLight x="200" y="100" z="200"/>
+      </feSpecularLighting>
+      <feComposite in="specOut" in2="SourceAlpha" operator="in" result="specOut2"/>
+      <feComposite in="SourceGraphic" in2="specOut2" operator="arithmetic" k1="0" k2="1" k3="0.08" k4="0"/>
+    </filter>
+    <!-- Gradient-shift animated background -->
+    <linearGradient id="aBgShift" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a">
+        <animate attributeName="stop-color" values="#0f172a;#1e293b;#0f172a" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#0f172a">
+        <animate attributeName="stop-color" values="#0f172a;#1e293b;#0f172a" dur="8s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+  </defs>\n<rect width="${w}" height="${h}" class="a-bg" rx="8"/>`;
 }
 
 function svgClose(): string {
@@ -211,7 +269,8 @@ export function correlationHeatMap(
   for (let r = 0; r < n; r++) {
     for (let c = 0; c < n; c++) {
       if (c > r) continue; // only show lower triangle for readability
-      const v = validMatrix[r]?.[c] ?? 0;
+      const isDiagonal = c === r;
+      const v = isDiagonal ? 1 : (validMatrix[r]?.[c] ?? 0);
       const x = gridX + c * cellSize;
       const y = gridY + r * cellSize + legendH + 14;
       const color = correlationColor(v);
@@ -219,10 +278,11 @@ export function correlationHeatMap(
       svg += `  <title>${escapeXml(tokens[r] as string)} / ${escapeXml(tokens[c] as string)}: ${v.toFixed(4)}</title>\n`;
       svg += `</rect>\n`;
 
-      // Value text if cell is large enough
-      if (cellSize > 35) {
-        const textColor = Math.abs(v) > 0.6 ? '#ffffff' : '#94a3b8';
-        svg += `<text x="${(x + cellSize / 2).toFixed(1)}" y="${(y + cellSize / 2 + 3.5).toFixed(1)}" text-anchor="middle" fill="${textColor}" font-family="'Inter', monospace" font-size="${Math.min(9, cellSize * 0.28)}" font-weight="600">${v.toFixed(2)}</text>\n`;
+      // Value text — always show diagonal, otherwise show when cells are large enough
+      if (isDiagonal || cellSize > 35) {
+        const textColor = isDiagonal ? '#ffffff' : (Math.abs(v) > 0.6 ? '#ffffff' : '#94a3b8');
+        const displayVal = isDiagonal ? '1.00' : v.toFixed(2);
+        svg += `<text x="${(x + cellSize / 2).toFixed(1)}" y="${(y + cellSize / 2 + 3.5).toFixed(1)}" text-anchor="middle" fill="${textColor}" font-family="'Inter', monospace" font-size="${Math.min(9, cellSize * 0.28).toFixed(1)}" font-weight="600">${displayVal}</text>\n`;
       }
     }
   }
@@ -390,7 +450,7 @@ export function portfolioDashboard(
 
       // Label below bar
       if (singleBarW > 8) {
-        svg += `<text x="${(barX + singleBarW / 2).toFixed(1)}" y="${(zeroY + 14).toFixed(1)}" text-anchor="middle" class="a-label" font-size="7">${escapeXml(h.symbol)}</text>\n`;
+        svg += `<text x="${(barX + singleBarW / 2).toFixed(1)}" y="${(zeroY + 14).toFixed(1)}" text-anchor="middle" class="a-label" font-size="9">${escapeXml(h.symbol)}</text>\n`;
       }
     }
   }
@@ -524,7 +584,7 @@ export function marketBreadthGauge(
     svg += `<rect x="${barSegX.toFixed(1)}" y="${barSegY}" width="${segW.toFixed(1)}" height="${barSegH}" fill="${color}" rx="2" opacity="${ch.avg >= 0 ? '0.8' : '0.5'}">\n`;
     svg += `  <title>${escapeXml(ch.name)}: ${fmtPct(ch.avg)}</title>\n`;
     svg += `</rect>\n`;
-    svg += `<text x="${(barSegX + segW + 4).toFixed(1)}" y="${(barSegY + barSegH - 3).toFixed(1)}" class="a-label" font-size="8">${escapeXml(ch.name)} ${fmtPct(ch.avg)}</text>\n`;
+    svg += `<text x="${(barSegX + segW + 4).toFixed(1)}" y="${(barSegY + barSegH - 3).toFixed(1)}" class="a-label" font-size="9">${escapeXml(ch.name)} ${fmtPct(ch.avg)}</text>\n`;
     barSegX += segW + 6;
     if (barSegX > width - pad - 20) break;
   }
@@ -537,7 +597,7 @@ export function marketBreadthGauge(
   for (const chName of uniqueChains) {
     const color = sectorColors[chName] ?? '#64748b';
     svg += `<rect x="${legX}" y="${legY}" width="6" height="6" rx="1" fill="${color}"/>\n`;
-    svg += `<text x="${(legX + 9).toFixed(1)}" y="${(legY + 5).toFixed(1)}" class="a-label" font-size="7">${escapeXml(chName)}</text>\n`;
+    svg += `<text x="${(legX + 9).toFixed(1)}" y="${(legY + 5).toFixed(1)}" class="a-label" font-size="9">${escapeXml(chName)}</text>\n`;
     legX += 55;
     if (legX > width - pad - 20) { legX = sectorLeft; legY += 12; }
   }
@@ -597,14 +657,14 @@ export function marketBreadthGauge(
 
     // Center text
     svg += `<text x="${volDonutCX.toFixed(1)}" y="${(volDonutCY - 3).toFixed(1)}" text-anchor="middle" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="10" font-weight="700">${fmtDollar(top3Vol[0]?.volume ?? 0)}</text>\n`;
-    svg += `<text x="${volDonutCX.toFixed(1)}" y="${(volDonutCY + 9).toFixed(1)}" text-anchor="middle" class="a-label" font-size="7">top vol</text>\n`;
+    svg += `<text x="${volDonutCX.toFixed(1)}" y="${(volDonutCY + 9).toFixed(1)}" text-anchor="middle" class="a-label" font-size="9">top vol</text>\n`;
 
     // Mini legend next to donut
     let vlY = volDonutCY - volDonutR + 2;
     const vlX = volDonutCX + volDonutR + 10;
     for (const seg of volSegments) {
       svg += `<rect x="${vlX}" y="${vlY}" width="6" height="6" rx="1" fill="${seg.color}"/>\n`;
-      svg += `<text x="${(vlX + 9).toFixed(1)}" y="${(vlY + 5).toFixed(1)}" class="a-label" font-size="7">${escapeXml(seg.label)} ${(seg.value * 100).toFixed(0)}%</text>\n`;
+      svg += `<text x="${(vlX + 9).toFixed(1)}" y="${(vlY + 5).toFixed(1)}" class="a-label" font-size="9">${escapeXml(seg.label)} ${(seg.value * 100).toFixed(0)}%</text>\n`;
       vlY += 14;
       if (vlY > volDonutCY + volDonutR - 4) break;
     }
@@ -741,8 +801,8 @@ export function strategyPerformance(
     svg += `<line x1="${bx.toFixed(1)}" y1="${winY.toFixed(1)}" x2="${(bx + dirBarW).toFixed(1)}" y2="${winY.toFixed(1)}" stroke="#f1f5f9" stroke-width="1" stroke-dasharray="2,1"/>\n`;
 
     // Label
-    svg += `<text x="${(bx + dirBarW / 2).toFixed(1)}" y="${(dirChartY + dirChartH + 12).toFixed(1)}" text-anchor="middle" class="a-label" font-size="7">${escapeXml(d.label)}</text>\n`;
-    svg += `<text x="${(bx + dirBarW / 2).toFixed(1)}" y="${(dirChartY + dirChartH + 22).toFixed(1)}" text-anchor="middle" class="a-label" font-size="7">${stats.total}</text>\n`;
+    svg += `<text x="${(bx + dirBarW / 2).toFixed(1)}" y="${(dirChartY + dirChartH + 12).toFixed(1)}" text-anchor="middle" class="a-label" font-size="9">${escapeXml(d.label)}</text>\n`;
+    svg += `<text x="${(bx + dirBarW / 2).toFixed(1)}" y="${(dirChartY + dirChartH + 22).toFixed(1)}" text-anchor="middle" class="a-label" font-size="9">${stats.total}</text>\n`;
   }
 
   // ── Sharpe Ratio indicator ──
@@ -788,7 +848,7 @@ export function strategyPerformance(
 
   // Value label
   svg += `<text x="${(dirLeft + sharpeBarW + 8).toFixed(1)}" y="${(sharpeBarY + 11).toFixed(1)}" fill="${sharpeColor}" font-family="'Inter', monospace" font-size="11" font-weight="700">${sharpeVal.toFixed(2)}</text>\n`;
-  svg += `<text x="${(dirLeft + sharpeBarW + 8).toFixed(1)}" y="${(sharpeBarY + 22).toFixed(1)}" fill="${sharpeColor}" font-family="'Inter', sans-serif" font-size="8">${sharpeLabel}</text>\n`;
+  svg += `<text x="${(dirLeft + sharpeBarW + 8).toFixed(1)}" y="${(sharpeBarY + 22).toFixed(1)}" fill="${sharpeColor}" font-family="'Inter', sans-serif" font-size="9">${sharpeLabel}</text>\n`;
 
   // ── Max Drawdown ──
   const ddTop = sharpeTop + 56;

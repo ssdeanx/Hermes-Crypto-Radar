@@ -61,6 +61,30 @@ const TOKENS: Record<string, TokenDef> = {
   'injective-protocol':  { id: 'injective-protocol',  sym: 'INJ',  name: 'Injective',      chain: 'multi', chains: ['injective'],  coingeckoId: 'injective-protocol' },
   'thorchain':           { id: 'thorchain',           sym: 'RUNE', name: 'THORChain',      chain: 'multi', chains: ['thorchain'],  coingeckoId: 'thorchain' },
   'cosmos':              { id: 'cosmos',              sym: 'ATOM', name: 'Cosmos',         chain: 'multi', chains: ['cosmos'],     coingeckoId: 'cosmos' },
+
+  // ── Layer-1 & Broader Market (Phase D — Binance top-50 coverage) ──
+  'near-protocol':     { id: 'near-protocol',     sym: 'NEAR',  name: 'NEAR Protocol',       chain: 'multi', chains: ['near'],       coingeckoId: 'near' },
+  'tron':              { id: 'tron',              sym: 'TRX',   name: 'TRON',                chain: 'multi', chains: ['tron'],       coingeckoId: 'tron' },
+  'stellar':           { id: 'stellar',           sym: 'XLM',   name: 'Stellar',             chain: 'multi', chains: ['stellar'],    coingeckoId: 'stellar' },
+  'avalanche-2':       { id: 'avalanche-2',       sym: 'AVAX',  name: 'Avalanche',           chain: 'multi', chains: ['avalanche'],  coingeckoId: 'avalanche-2' },
+  'litecoin':          { id: 'litecoin',          sym: 'LTC',   name: 'Litecoin',            chain: 'multi', chains: ['litecoin'],   coingeckoId: 'litecoin' },
+  'bitcoin-cash':      { id: 'bitcoin-cash',      sym: 'BCH',   name: 'Bitcoin Cash',        chain: 'multi', chains: ['bitcoin-cash'], coingeckoId: 'bitcoin-cash' },
+  'hedera-hashgraph':  { id: 'hedera-hashgraph',  sym: 'HBAR',  name: 'Hedera',              chain: 'multi', chains: ['hedera'],     coingeckoId: 'hedera-hashgraph' },
+  'bittensor':         { id: 'bittensor',         sym: 'TAO',   name: 'Bittensor',           chain: 'multi', chains: ['bittensor'],  coingeckoId: 'bittensor' },
+  'polkadot':          { id: 'polkadot',          sym: 'DOT',   name: 'Polkadot',            chain: 'multi', chains: ['polkadot'],   coingeckoId: 'polkadot' },
+  'filecoin':          { id: 'filecoin',          sym: 'FIL',   name: 'Filecoin',            chain: 'multi', chains: ['filecoin'],   coingeckoId: 'filecoin' },
+  'zcash':             { id: 'zcash',             sym: 'ZEC',   name: 'Zcash',               chain: 'multi', chains: ['zcash'],      coingeckoId: 'zcash' },
+
+  // ── Ethereum Ecosystem (DeFi / Meme / L2) ──
+  'pepe':              { id: 'pepe',              sym: 'PEPE',  name: 'Pepe',                chain: 'ethereum',                     coingeckoId: 'pepe' },
+  'worldcoin-wld':     { id: 'worldcoin-wld',     sym: 'WLD',   name: 'Worldcoin',           chain: 'ethereum',                     coingeckoId: 'worldcoin-wld' },
+  'ethena':            { id: 'ethena',            sym: 'ENA',   name: 'Ethena',              chain: 'ethereum',                     coingeckoId: 'ethena' },
+  'fetch-ai':          { id: 'fetch-ai',          sym: 'FET',   name: 'Fetch.ai (ASI)',      chain: 'ethereum',                     coingeckoId: 'fetch-ai' },
+  'optimism':          { id: 'optimism',          sym: 'OP',    name: 'Optimism',            chain: 'ethereum',                     coingeckoId: 'optimism' },
+  'arbitrum':          { id: 'arbitrum',          sym: 'ARB',   name: 'Arbitrum',            chain: 'ethereum',                     coingeckoId: 'arbitrum' },
+
+  // ── Solana Ecosystem (additional) ──
+  'official-trump':    { id: 'official-trump',    sym: 'TRUMP', name: 'Official Trump',      chain: 'solana',                       coingeckoId: 'official-trump' },
 };
 
 /** All token IDs */

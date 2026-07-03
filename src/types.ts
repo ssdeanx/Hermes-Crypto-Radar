@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 /** Blockchain chain identifier */
-export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'dogecoin' | 'cardano' | 'sui' | 'aptos' | 'sei' | 'celestia' | 'injective' | 'thorchain' | 'cosmos' | 'multi';
+export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'dogecoin' | 'cardano' | 'sui' | 'aptos' | 'sei' | 'celestia' | 'injective' | 'thorchain' | 'cosmos' | 'near' | 'tron' | 'stellar' | 'avalanche' | 'litecoin' | 'bitcoin-cash' | 'hedera' | 'bittensor' | 'polkadot' | 'filecoin' | 'zcash' | 'multi';
 
 /** Supported output formats */
 export type OutputFormat = 'csv' | 'json' | 'md' | 'table' | 'xlsx';
@@ -87,6 +87,47 @@ export interface EnrichedTicker {
   momentum: number;
   alerts: string;
   source: string;
+
+  // ── Technical Indicators ──
+  rsi?: number;
+  macdMacd?: number;
+  macdSignal?: number;
+  macdHistogram?: number;
+  bbUpper?: number;
+  bbMiddle?: number;
+  bbLower?: number;
+  bbWidth?: number;
+  atrPct?: number;
+  mfi?: number;
+  stochK?: number;
+  stochD?: number;
+  williamsR?: number;
+  cmf?: number;
+  tsi?: number;
+  ema50DistPct?: number;
+  volTrend?: number;
+
+  // ── Strategy Signals ──
+  momentumScore?: number;
+  momentumDirection?: string;
+  meanReversionScore?: number;
+  meanReversionDirection?: string;
+  trendFollowingScore?: number;
+  trendFollowingDirection?: string;
+  compositeScore?: number;
+  compositeDirection?: string;
+  signalCount?: number;
+  positionSize?: number;
+
+  // ── On-Chain Metrics ──
+  onchainTvl?: number;
+  onchainFees1d?: number;
+  onchainChainTvl?: number;
+  onchainConfidence?: number;
+
+  // ── Market Regime ──
+  regime?: string;
+  regimeConfidence?: number;
 }
 
 export interface StochasticResult {
@@ -162,6 +203,13 @@ export interface NewsMatch {
   url: string;
 }
 
+/** Breakdown of individual signal strategy contributions */
+export interface SignalBreakdown {
+  momentum: { direction: string; confidence: number };
+  meanReversion: { direction: string; confidence: number };
+  trendFollowing: { direction: string; confidence: number };
+}
+
 /** Composite signal for a token */
 export interface TokenSignal {
   symbol: string;
@@ -176,6 +224,10 @@ export interface TokenSignal {
   compositeScore: number;
   alerts: string[];
   timestamp: string;
+  /** Breakdown of per-strategy signal directions and confidence */
+  signalBreakdown?: SignalBreakdown;
+  /** Current market regime if determined */
+  regime?: string;
 }
 
 /** Radar run options */

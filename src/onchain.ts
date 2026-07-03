@@ -26,6 +26,8 @@ export interface ProtocolMetrics {
   fees1d: number | null;
   fees7d: number | null;
   fees30d: number | null;
+  /** Trend direction inferred from fee growth as a TVL proxy */
+  tvlTrend: 'up' | 'flat' | 'down';
 }
 
 export interface ChainMetrics {
@@ -79,6 +81,21 @@ async function fetchJson(url: string): Promise<unknown> {
     throw new Error(`DeFiLlama HTTP ${response.status}: ${response.statusText}`);
   }
   return response.json();
+}
+
+/**
+ * Compute TVL trend direction from fee data as a proxy for protocol health.
+ * Compares annualised daily fees (fees7d/7) against recent 1d fees to detect
+ * growth or decline.
+ *
+ * @returns 'up' if fees are accelerating, 'down' if decelerating, 'flat' otherwise
+ */
+export function computeTvlTrend(fees1d: number, fees7d: number): 'up' | 'flat' | 'down' {
+  if (fees7d <= 0 || fees1d <= 0) return 'flat';
+  const avgDaily7d = fees7d / 7;
+  if (avgDaily7d > fees1d * 1.2) return 'up';
+  if (avgDaily7d < fees1d * 0.8) return 'down';
+  return 'flat';
 }
 
 // ── Public API ─────────────────────────────────────────────────────────
@@ -178,12 +195,15 @@ export async function fetchOnChainMetrics(
     for (const result of results) {
       if (result.status === 'fulfilled') {
         const { slug, tvl, fees } = result.value;
+        // Compute TVL trend direction from fee growth as a proxy
+        const tvlTrend = computeTvlTrend(fees.total1d, fees.total7d);
         protocols.push({
           name: slug,
           tvl,
           fees1d: fees.total1d,
           fees7d: fees.total7d,
           fees30d: fees.total30d,
+          tvlTrend,
         });
       } else {
         log.warn('Protocol fetch failed', { error: result.reason?.message ?? String(result.reason) });

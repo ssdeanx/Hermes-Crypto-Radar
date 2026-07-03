@@ -132,12 +132,12 @@ function dashboardStyles(): string {
     .d-panel-title { fill: #22d3ee; font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 11px; font-weight: 700; }
     .d-label { fill: #94a3b8; font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 9px; }
     .d-value { fill: #f1f5f9; font-family: 'Inter', sans-serif; font-size: 10px; font-weight: 600; }
-    .d-small { fill: #64748b; font-family: 'Inter', monospace; font-size: 8px; }
+    .d-small { fill: #64748b; font-family: 'Inter', monospace; font-size: 9px; }
     .d-up { fill: #22c55e; }
     .d-down { fill: #ef4444; }
     .d-neutral { fill: #94a3b8; }
     .d-card-bg { fill: rgba(30, 41, 59, 0.7); stroke: rgba(148, 163, 184, 0.1); rx: 5; }
-    .d-badge { font-family: 'Inter', sans-serif; font-size: 7px; font-weight: 700; rx: 3; }
+    .d-badge { font-family: 'Inter', sans-serif; font-size: 9px; font-weight: 700; rx: 3; }
     .d-conf-bg { fill: #1e293b; rx: 3; }
     .d-conf-fill { rx: 3; }
     .d-bar-bg { fill: #1e293b; }
@@ -146,13 +146,54 @@ function dashboardStyles(): string {
     .d-grid-line { stroke: #1e293b; stroke-width: 1; }
     .d-gauge-track { fill: none; stroke: #1e293b; stroke-width: 12; stroke-linecap: round; }
     .d-gauge-fill { fill: none; stroke-linecap: round; }
-    .d-watermark { fill: rgba(148, 163, 184, 0.2); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 8px; }
+    .d-watermark { fill: rgba(148, 163, 184, 0.2); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 9px; }
     .d-onchain-bar { rx: 3; }
+    /* Light mode overrides */
+    @media (prefers-color-scheme: light) {
+      .d-bg { fill: #ffffff; }
+      .d-header-title { fill: #0f172a; }
+      .d-status { fill: #475569; }
+      .d-status-val { fill: #0f172a; }
+      .d-panel-title { fill: #0891b2; }
+      .d-label { fill: #475569; }
+      .d-value { fill: #0f172a; }
+      .d-small { fill: #64748b; }
+      .d-card-bg { fill: rgba(241,245,249,0.7); stroke: rgba(100,116,139,0.1); }
+      .d-bar-bg { fill: #e2e8f0; }
+      .d-conf-bg { fill: #e2e8f0; }
+      .d-grid-line { stroke: #e2e8f0; }
+      .d-watermark { fill: rgba(100,116,139,0.35); }
+      .d-gauge-track { stroke: #e2e8f0; }
+    }
+    /* Hyperframe animations */
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    @keyframes gradient-shift {
+      0% { stop-color: #0f172a; }
+      50% { stop-color: #1e293b; }
+      100% { stop-color: #0f172a; }
+    }
+    .d-pulse { animation: pulse-glow 2s ease-in-out infinite; }
+    .d-hover-data { transition: opacity 0.3s, r 0.3s, stroke-width 0.3s; }
+    .d-hover-data:hover { opacity: 1; stroke-width: 3; r: 5; }
+    .d-frame-counter { fill: rgba(148,163,184,0.3); font-family: 'Inter', monospace; font-size: 8px; }
+    /* Glassmorphism panel */
+    .d-glass { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: rgba(30, 41, 59, 0.8); border-radius: 8px; }
+    @media (prefers-color-scheme: light) {
+      .d-glass { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: rgba(255, 255, 255, 0.9); }
+    }
+    /* Typography */
+    .d-tabnums { font-variant-numeric: tabular-nums; }
+    @media (prefers-reduced-motion: reduce) {
+      .d-pulse, .d-hover-data { animation: none; transition: none; }
+    }
   </style>`;
 }
 
 function svgOpen(w: number, h: number, title: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="100%" height="100%" role="img" aria-label="${escapeXml(title)}">\n${dashboardStyles()}\n<rect width="${w}" height="${h}" class="d-bg" rx="8"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(title)}">\n${dashboardStyles()}\n<rect width="${w}" height="${h}" class="d-bg" rx="8"/>`;
 }
 
 function svgClose(): string {
@@ -162,7 +203,7 @@ function svgClose(): string {
 // ── Panel Dividers ──────────────────────────────────────────────────────
 
 function renderDivider(x1: number, y1: number, x2: number, y2: number): string {
-  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(148,163,184,0.12)" stroke-width="1"/>`;
+  return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="rgba(148,163,184,0.3)" stroke-width="1"/>`;
 }
 
 // ── Main Export ─────────────────────────────────────────────────────────
@@ -206,11 +247,36 @@ export function signalDashboard(
   const panel3 = { x: pad, y: headerH + pad + halfH + dividerGap, w: halfW, h: halfH };
   const panel4 = { x: pad + halfW + dividerGap, y: headerH + pad + halfH + dividerGap, w: halfW, h: halfH };
 
-  // ── Timestamp ──
+  // ── Timestamp (auto-generated on every call — always fresh) ──
   const now = new Date();
   const timestamp = now.toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
 
   let svg = svgOpen(width, height, 'Crypto Radar — Master Signal Dashboard');
+
+  // ── Glow gradient for Top Signals panel ──
+  svg += `<defs>
+    <radialGradient id="topSignalsGlow" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="rgba(34,211,238,0.08)"/>
+      <stop offset="100%" stop-color="rgba(34,211,238,0)"/>
+    </radialGradient>
+    <filter id="dGlass" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur"/>
+      <feSpecularLighting in="blur" surfaceScale="2" specularConstant="0.2" specularExponent="20" lighting-color="#ffffff" result="specOut">
+        <fePointLight x="400" y="200" z="200"/>
+      </feSpecularLighting>
+      <feComposite in="specOut" in2="SourceAlpha" operator="in" result="specOut2"/>
+      <feComposite in="SourceGraphic" in2="specOut2" operator="arithmetic" k1="0" k2="1" k3="0.08" k4="0"/>
+    </filter>
+    <!-- Gradient-shift animated background -->
+    <linearGradient id="dBgShift" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f172a">
+        <animate attributeName="stop-color" values="#0f172a;#1e293b;#0f172a" dur="8s" repeatCount="indefinite"/>
+      </stop>
+      <stop offset="100%" stop-color="#0f172a">
+        <animate attributeName="stop-color" values="#0f172a;#1e293b;#0f172a" dur="8s" repeatCount="indefinite"/>
+      </stop>
+    </linearGradient>
+  </defs>`;
 
   // ── HEADER ──
   svg += `<text x="${pad}" y="${24}" class="d-header-title">🛰️ Crypto Radar <tspan fill="#64748b" font-weight="400">— Market Intelligence</tspan></text>\n`;
@@ -253,6 +319,8 @@ export function signalDashboard(
     const innerPad = 8;
     const titleY = py + 14;
     svg += `<text x="${px + innerPad}" y="${titleY}" class="d-panel-title">⚡ Top Signals</text>\n`;
+    // Subtle glow behind signal cards
+    svg += `<rect x="${px + innerPad}" y="${titleY + 8}" width="${pw - innerPad * 2}" height="${ph - 24}" fill="url(#topSignalsGlow)" rx="8"/>`;
 
     const sorted = [...aggregatedSignals].sort((a, b) => b.compositeConfidence - a.compositeConfidence);
     const topSignals = sorted.slice(0, 6);
@@ -276,7 +344,7 @@ export function signalDashboard(
         // Direction badge
         const dir = sig.direction;
         const dirCol = directionColor(dir);
-        const badgeW = dir === 'neutral' ? 40 : 60;
+        const badgeW = dir === 'neutral' ? 45 : 72;
         const badgeH = 14;
         svg += `<rect x="${px + innerPad + 4}" y="${cy + 4}" width="${badgeW}" height="${badgeH}" fill="${dirCol}" class="d-badge"/>\n`;
         svg += `<text x="${px + innerPad + 4 + badgeW / 2}" y="${cy + 4 + 10}" text-anchor="middle" fill="#ffffff" class="d-badge">${directionLabel(dir)}</text>\n`;
@@ -300,7 +368,7 @@ export function signalDashboard(
         const fillW = clamp(sig.compositeConfidence, 0, 1) * (barW - 2);
         const barFillColor = sig.compositeConfidence >= 0.7 ? '#22c55e' : sig.compositeConfidence >= 0.4 ? '#eab308' : '#ef4444';
         svg += `<rect x="${barX + 1}" y="${barY + 1}" width="${fillW.toFixed(1)}" height="${barHc - 2}" fill="${barFillColor}" class="d-conf-fill"/>\n`;
-        svg += `<text x="${barX + barW + 4}" y="${barY + barHc - 1}" class="d-small" font-size="7">${(sig.compositeConfidence * 100).toFixed(0)}%</text>\n`;
+        svg += `<text x="${barX + barW + 4}" y="${barY + barHc - 1}" class="d-small" font-size="9">${(sig.compositeConfidence * 100).toFixed(0)}%</text>\n`;
         svg += `<title>${escapeXml(sig.symbol)} — Confidence: ${(sig.compositeConfidence * 100).toFixed(1)}% — Reason: ${sig.compositeReason ?? sig.signals.map(s => s.reason).join('; ')}</title>\n`;
       }
     }
@@ -346,7 +414,7 @@ export function signalDashboard(
 
     // Percentage text above gauge
     svg += `<text x="${gaugeCX}" y="${(gaugeTop - 6).toFixed(1)}" text-anchor="middle" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="11" font-weight="700">${upPct.toFixed(0)}% Up</text>\n`;
-    svg += `<text x="${gaugeCX}" y="${(gaugeTop + gaugeH + 16).toFixed(1)}" text-anchor="middle" class="d-label" font-size="8">Bull <tspan fill="#22c55e">${upCount}</tspan> / Bear <tspan fill="#ef4444">${downCount}</tspan></text>\n`;
+    svg += `<text x="${gaugeCX}" y="${(gaugeTop + gaugeH + 16).toFixed(1)}" text-anchor="middle" class="d-label" font-size="9">Bull <tspan fill="#22c55e">${upCount}</tspan> / Bear <tspan fill="#ef4444">${downCount}</tspan></text>\n`;
 
     // ── Gainers / Losers list (right of gauge) ──
     const listX = gaugeCX + 40;
@@ -359,28 +427,28 @@ export function signalDashboard(
     const top3 = sortedByChange.slice(0, 3);
     const bottom3 = sortedByChange.slice(-3).reverse();
 
-    svg += `<text x="${listX}" y="${listTop + 10}" class="d-label" font-size="8" fill="#22c55e">Top Gainers</text>\n`;
+    svg += `<text x="${listX}" y="${listTop + 10}" class="d-label" font-size="9" fill="#22c55e">Top Gainers</text>\n`;
     for (let i = 0; i < top3.length; i++) {
       const t = top3[i]!;
       const ly = listTop + 22 + i * 13;
-      svg += `<text x="${listX}" y="${ly}" class="d-value" font-size="8">${escapeXml(t.symbol)}</text>\n`;
-      svg += `<text x="${listX + 80}" y="${ly}" text-anchor="end" fill="#22c55e" font-family="'Inter', monospace" font-size="8" font-weight="600">${shortPct(t.change)}</text>\n`;
+      svg += `<text x="${listX}" y="${ly}" class="d-value" font-size="9">${escapeXml(t.symbol)}</text>\n`;
+      svg += `<text x="${listX + 80}" y="${ly}" text-anchor="end" fill="#22c55e" font-family="'Inter', monospace" font-size="9" font-weight="600">${shortPct(t.change)}</text>\n`;
       svg += `<title>${escapeXml(t.symbol)}: ${shortPct(t.change)}</title>\n`;
     }
 
     const losersY = listTop + 60;
-    svg += `<text x="${listX}" y="${losersY + 10}" class="d-label" font-size="8" fill="#ef4444">Top Losers</text>\n`;
+    svg += `<text x="${listX}" y="${losersY + 10}" class="d-label" font-size="9" fill="#ef4444">Top Losers</text>\n`;
     for (let i = 0; i < bottom3.length; i++) {
       const t = bottom3[i]!;
       const ly = losersY + 22 + i * 13;
-      svg += `<text x="${listX}" y="${ly}" class="d-value" font-size="8">${escapeXml(t.symbol)}</text>\n`;
-      svg += `<text x="${listX + 80}" y="${ly}" text-anchor="end" fill="#ef4444" font-family="'Inter', monospace" font-size="8" font-weight="600">${shortPct(t.change)}</text>\n`;
+      svg += `<text x="${listX}" y="${ly}" class="d-value" font-size="9">${escapeXml(t.symbol)}</text>\n`;
+      svg += `<text x="${listX + 80}" y="${ly}" text-anchor="end" fill="#ef4444" font-family="'Inter', monospace" font-size="9" font-weight="600">${shortPct(t.change)}</text>\n`;
       svg += `<title>${escapeXml(t.symbol)}: ${shortPct(t.change)}</title>\n`;
     }
 
     // ── Sector / Chain breakdown (small bar chart at bottom of panel) ──
     const sectorY = py + ph - 42;
-    svg += `<text x="${px + innerPad}" y="${sectorY}" class="d-label" font-size="8">Chain Breakdown</text>\n`;
+    svg += `<text x="${px + innerPad}" y="${sectorY}" class="d-label" font-size="9">Chain Breakdown</text>\n`;
 
     // Group tickers by chain
     const chainMap = new Map<string, { up: number; down: number; total: number }>();
@@ -407,8 +475,8 @@ export function signalDashboard(
       const barW = Math.max(chainBarMaxW * (stats.total / maxChainCt), 10);
       svg += `<rect x="${chainBarX}" y="${by}" width="${chainBarMaxW}" height="${chainBarH}" class="d-bar-bg" rx="2"/>\n`;
       svg += `<rect x="${chainBarX}" y="${by}" width="${barW.toFixed(1)}" height="${chainBarH}" class="d-bar-up" rx="2"/>\n`;
-      svg += `<text x="${chainBarX + 4}" y="${by + chainBarH - 2}" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="7" font-weight="600">${escapeXml(name)}</text>\n`;
-      svg += `<text x="${chainBarX + chainBarMaxW - 4}" y="${by + chainBarH - 2}" text-anchor="end" fill="#94a3b8" font-family="'Inter', monospace" font-size="7">${stats.up}/${stats.down}</text>\n`;
+      svg += `<text x="${chainBarX + 4}" y="${by + chainBarH - 2}" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="9" font-weight="600">${escapeXml(name)}</text>\n`;
+      svg += `<text x="${chainBarX + chainBarMaxW - 4}" y="${by + chainBarH - 2}" text-anchor="end" fill="#94a3b8" font-family="'Inter', monospace" font-size="9">${stats.up}/${stats.down}</text>\n`;
       svg += `<title>${escapeXml(name)}: ${stats.total} tokens (${stats.up} up, ${stats.down} down)</title>\n`;
     }
   }
@@ -449,8 +517,8 @@ export function signalDashboard(
         const lx = legendX + (i / 20) * legendW;
         svg += `<rect x="${lx.toFixed(1)}" y="${legendY}" width="${Math.max(1, legendW / 20 + 1).toFixed(1)}" height="${legendH}" fill="${correlationColor(t)}"/>\n`;
       }
-      svg += `<text x="${legendX}" y="${(legendY + legendH + 9).toFixed(1)}" class="d-small" font-size="6">-1</text>\n`;
-      svg += `<text x="${(legendX + legendW).toFixed(1)}" y="${(legendY + legendH + 9).toFixed(1)}" text-anchor="end" class="d-small" font-size="6">+1</text>\n`;
+      svg += `<text x="${legendX}" y="${(legendY + legendH + 9).toFixed(1)}" class="d-small" font-size="9">-1</text>\n`;
+      svg += `<text x="${(legendX + legendW).toFixed(1)}" y="${(legendY + legendH + 9).toFixed(1)}" text-anchor="end" class="d-small" font-size="9">+1</text>\n`;
 
       // Cells
       for (let r = 0; r < n; r++) {
@@ -530,22 +598,22 @@ export function signalDashboard(
         svg += `<rect x="${px + innerPad + 1}" y="${by + 1}" width="${(tw - 1).toFixed(1)}" height="${barH - 2}" fill="${fillColor}" opacity="0.8" class="d-onchain-bar"/>\n`;
 
         // Protocol name (in the bar)
-        svg += `<text x="${px + innerPad + 5}" y="${by + barH - 3}" fill="#ffffff" font-family="'Inter', sans-serif" font-size="7" font-weight="700">${escapeXml(p.name)}</text>\n`;
+        svg += `<text x="${px + innerPad + 5}" y="${by + barH - 3}" fill="#ffffff" font-family="'Inter', sans-serif" font-size="9" font-weight="700">${escapeXml(p.name)}</text>\n`;
 
         // TVL value (right side)
-        svg += `<text x="${px + innerPad + barMaxW - 4}" y="${by + barH - 3}" text-anchor="end" fill="#f1f5f9" font-family="'Inter', monospace" font-size="7" font-weight="600">${fmtDollar(p.tvl)}</text>\n`;
+        svg += `<text x="${px + innerPad + barMaxW - 4}" y="${by + barH - 3}" text-anchor="end" fill="#f1f5f9" font-family="'Inter', monospace" font-size="9" font-weight="600">${fmtDollar(p.tvl)}</text>\n`;
         svg += `<title>${escapeXml(p.name)}: TVL ${fmtDollar(p.tvl)}${p.fees1d ? ` | 1d fees: ${fmtDollar(p.fees1d)}` : ''}</title>\n`;
 
         // Fee badge if available
         if (p.fees1d != null && tw > 80) {
-          svg += `<text x="${px + innerPad + tw + 6}" y="${by + barH - 3}" class="d-small" font-size="6">fees: ${fmtDollar(p.fees1d)}/1d</text>\n`;
+          svg += `<text x="${px + innerPad + tw + 6}" y="${by + barH - 3}" class="d-small" font-size="9">fees: ${fmtDollar(p.fees1d)}/1d</text>\n`;
         }
       }
 
       // ── Chain TVL breakdown (small text summary below bars) ──
       if (onchain.chains && onchain.chains.length > 0) {
         const chainY = barStartY + top5.length * (barH + barGap) + 8;
-        svg += `<text x="${px + innerPad}" y="${chainY}" class="d-label" font-size="8">Chain TVL</text>\n`;
+        svg += `<text x="${px + innerPad}" y="${chainY}" class="d-label" font-size="9">Chain TVL</text>\n`;
 
         const sortedChains = [...onchain.chains].sort((a, b) => b.tvl - a.tvl);
         const topChains = sortedChains.slice(0, 4);
@@ -561,8 +629,8 @@ export function signalDashboard(
 
           svg += `<rect x="${px + innerPad}" y="${cby}" width="${barMaxW}" height="${chainBarH}" class="d-bar-bg" rx="2"/>\n`;
           svg += `<rect x="${px + innerPad + 1}" y="${cby + 1}" width="${(ctw - 1).toFixed(1)}" height="${chainBarH - 2}" fill="#64748b" opacity="0.7" class="d-onchain-bar"/>\n`;
-          svg += `<text x="${px + innerPad + 4}" y="${cby + chainBarH - 2}" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="6" font-weight="600">${escapeXml(c.chain)}</text>\n`;
-          svg += `<text x="${px + innerPad + barMaxW - 4}" y="${cby + chainBarH - 2}" text-anchor="end" fill="#94a3b8" font-family="'Inter', monospace" font-size="6">${fmtDollar(c.tvl)}</text>\n`;
+          svg += `<text x="${px + innerPad + 4}" y="${cby + chainBarH - 2}" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="9" font-weight="600">${escapeXml(c.chain)}</text>\n`;
+          svg += `<text x="${px + innerPad + barMaxW - 4}" y="${cby + chainBarH - 2}" text-anchor="end" fill="#94a3b8" font-family="'Inter', monospace" font-size="9">${fmtDollar(c.tvl)}</text>\n`;
           svg += `<title>${escapeXml(c.chain)}: TVL ${fmtDollar(c.tvl)}</title>\n`;
         }
       }

@@ -10,6 +10,7 @@ interface FeedDef {
   name: string;
   url: string;
   tier: 1 | 2 | 3 | 4;
+  lang?: string;
 }
 
 const NEWS_FEEDS: FeedDef[] = [
@@ -23,6 +24,11 @@ const NEWS_FEEDS: FeedDef[] = [
   { name: 'CoinStats',     url: 'https://coinstats.app/blog/feed/',       tier: 3 },
   { name: 'DeFi Saver',    url: 'https://blog.defisaver.com/rss/',         tier: 3 },
   { name: 'NullTX',        url: 'https://nulltx.com/feed/',               tier: 4 },
+  // Google News RSS feeds (free, no API key needed)
+  { name: 'Google News Crypto',  url: 'https://news.google.com/rss/search?q=cryptocurrency&hl=en-US&gl=US&ceid=US:en', tier: 2, lang: 'en' },
+  { name: 'Google News Bitcoin', url: 'https://news.google.com/rss/search?q=bitcoin&hl=en-US&gl=US&ceid=US:en', tier: 2, lang: 'en' },
+  // X/Twitter via Nitter (no API key, free RSS proxy)
+  { name: 'X Crypto (Nitter)',   url: 'https://nitter.net/search/rss?q=cryptocurrency',  tier: 2, lang: 'en' },
 ];
 
 const SOURCE_TIERS: Record<string, number> = {
@@ -36,6 +42,9 @@ const SOURCE_TIERS: Record<string, number> = {
   'CoinStats':     0.6,
   'DeFi Saver':    0.7,
   'NullTX':        0.4,
+  'Google News Crypto': 0.7,
+  'Google News Bitcoin': 0.7,
+  'X Crypto (Nitter)':  0.6,
 };
 
 // Poison headlines to filter out (SEO spam, roundups, etc.)
@@ -103,6 +112,59 @@ function stripHTML(text: string): string {
 /** Check if headline is poison (SEO spam, etc.) */
 function isPoison(headline: string): boolean {
   return POISON_PATTERNS.some(p => p.test(headline));
+}
+
+// ── Sentiment Analysis ──────────────────────────────────────────────────
+
+const BULLISH_KEYWORDS = [
+  'surge', 'rally', 'breakthrough', 'bullish', 'adoption',
+  'partnership', 'upgrade', 'ath', 'all-time high', 'soar',
+  'moon', 'pump', 'explode', 'outperform', 'institutional',
+];
+
+const BEARISH_KEYWORDS = [
+  'crash', 'dump', 'bearish', 'ban', 'scam', 'hack',
+  'regulation', 'crackdown', 'plummet', 'plunge', 'collapse',
+  'sell-off', 'liquidation', 'fud', 'fear',
+];
+
+type Sentiment = 'bullish' | 'bearish' | 'neutral';
+
+/** Analyze headline + description for bullish/bearish sentiment keywords */
+function analyzeSentiment(text: string): Sentiment {
+  const lower = text.toLowerCase();
+  let bullishScore = 0;
+  let bearishScore = 0;
+
+  for (const kw of BULLISH_KEYWORDS) {
+    if (lower.includes(kw)) bullishScore++;
+  }
+  for (const kw of BEARISH_KEYWORDS) {
+    if (lower.includes(kw)) bearishScore++;
+  }
+
+  if (bullishScore > bearishScore) return 'bullish';
+  if (bearishScore > bullishScore) return 'bearish';
+  return 'neutral';
+}
+
+/** Calculate recency bonus: +0.2 if article is within 6 hours */
+function getRecencyBonus(pubDate: string): number {
+  if (!pubDate) return 0;
+  const published = new Date(pubDate).getTime();
+  if (isNaN(published)) return 0;
+  const sixHoursAgo = Date.now() - 6 * 60 * 60 * 1000;
+  return published >= sixHoursAgo ? 0.2 : 0;
+}
+
+/** Calculate length penalty: -0.2 for very short (< 100 chars total) articles */
+function getLengthPenalty(headline: string, description: string): number {
+  return (headline.length + description.length) < 100 ? -0.2 : 0;
+}
+
+/** Compute a hash for a domain + headline pair for enhanced dedup */
+function domainHeadlineHash(domain: string, headline: string): string {
+  return `${domain}:${normalizeHeadline(headline)}`;
 }
 
 /** Match a headline + description against a token */
@@ -175,6 +237,7 @@ export async function fetchAndMatchNews(
 ): Promise<NewsMatch[]> {
   const matches: NewsMatch[] = [];
   const seenHeadlines = new Set<string>();
+  const seenDomainHashes = new Set<string>();
   const tokens = getTokenList();
   const CONCURRENCY = 4;
 
@@ -229,14 +292,28 @@ export async function fetchAndMatchNews(
           // Skip poison headlines
           if (isPoison(article.headline)) continue;
 
-          // Skip duplicates (cross-feed or same-run)
+          // Enhanced dedup: headline normalization + domain+headline hash
           const norm = normalizeHeadline(article.headline);
           if (seenHeadlines.has(norm)) continue;
           seenHeadlines.add(norm);
 
+          const domainKey = domainHeadlineHash(article.domain, article.headline);
+          if (seenDomainHashes.has(domainKey)) continue;
+          seenDomainHashes.add(domainKey);
+
           for (const token of tokens) {
-            const relevance = matchToken(article.headline, article.description, token, article.source);
+            let relevance = matchToken(article.headline, article.description, token, article.source);
             if (relevance < 0.5) continue;
+
+            // Sentiment boost: +0.1 if bullish keywords dominate
+            const sentiment = analyzeSentiment(article.headline + ' ' + article.description);
+            if (sentiment === 'bullish') relevance += 0.1;
+
+            // Recency bonus: +0.2 if published within last 6 hours
+            relevance += getRecencyBonus(article.pubDate);
+
+            // Length penalty: -0.2 for very short articles (< 100 chars)
+            relevance += getLengthPenalty(article.headline, article.description);
 
             matches.push({
               runId,
@@ -246,7 +323,7 @@ export async function fetchAndMatchNews(
               description: article.description.slice(0, 500),
               source: article.source,
               domain: article.domain,
-              relevance: Math.round(relevance * 100) / 100,
+              relevance: Math.round(Math.max(0, relevance) * 100) / 100,
               url: article.url,
             });
           }

@@ -36,8 +36,8 @@ const _feedHealth = new Map<string, FeedHealthState>();
 // ── Thresholds ─────────────────────────────────────────────────────────
 
 const HEALTHY_MAX_FAILURES = 1;   // 0–1 consecutive failures → healthy
-const DEGRADED_MAX_FAILURES = 5;  // 2–5 consecutive failures → degraded
-// 6+ consecutive failures → dead
+const DEGRADED_MAX_FAILURES = 2;  // 2–2 consecutive failures → degraded
+// 3+ consecutive failures → dead
 
 // ── Public API ─────────────────────────────────────────────────────────
 
@@ -102,7 +102,7 @@ export function getFeedHealthReport(): FeedHealth[] {
 }
 
 /**
- * Get list of dead feeds (6+ consecutive failures).
+ * Get list of dead feeds (3+ consecutive failures).
  */
 export function getDeadFeeds(): FeedHealth[] {
   return getFeedHealthReport().filter(f => f.status === 'dead');

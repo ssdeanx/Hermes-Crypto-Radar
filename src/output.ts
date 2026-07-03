@@ -7,7 +7,38 @@ import type { AggregatedSignal } from './analysis/strategies.js';
 
 // ── CSV ──
 
-export const CSV_HEADER = 'run_id,ts_utc,date_et,symbol,chain,lastPrice,bidPrice,bidQty,askPrice,askQty,spreadPct,openPrice,highPrice,lowPrice,prevClosePrice,priceChangePercent,weightedAvgPrice,priceChange,volume,quoteVolume,count,lastQty,vwapDistPct,rangePosPct,bookImbalance,volVsAvg,obv,momentum,alerts,openTime,closeTime,source';
+export const CSV_HEADER = 'run_id,ts_utc,date_et,symbol,chain,last_price,bid_price,bid_qty,ask_price,ask_qty,spread_pct,open_price,high_price,low_price,prev_close_price,price_change_pct,weighted_avg_price,price_change,volume,quote_volume,count,last_qty,vwap_dist_pct,range_pos_pct,book_imbalance,vol_vs_avg,obv,momentum,alerts,source,rsi,macd_macd,macd_signal,macd_histogram,bb_upper,bb_middle,bb_lower,bb_width,atr_pct,mfi,stoch_k,stoch_d,williams_r,cmf,tsi,ema50_dist_pct,vol_trend,momentum_score,momentum_direction,mean_reversion_score,mean_reversion_direction,trend_following_score,trend_following_direction,composite_score,composite_direction,signal_count,position_size,onchain_tvl,onchain_fees_1d,onchain_chain_tvl,onchain_confidence,regime,regime_confidence';
+
+/**
+ * Smart price formatter: preserves precision for small prices.
+ * - $1+    → 2 decimal places
+ * - $0.0001+ → 4 decimal places
+ * - below  → 6 decimal places
+ */
+function fPrice(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '';
+  const abs = Math.abs(v);
+  if (abs >= 1) return v.toFixed(2);
+  if (abs >= 0.0001) return v.toFixed(4);
+  return v.toFixed(6);
+}
+
+/** Percentage formatter: 4 decimal places */
+function fPct(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return '';
+  return v.toFixed(4);
+}
+
+/** Generic numeric formatter with fixed decimal places */
+function f(v: number | null | undefined, d: number = 2): string {
+  if (v == null || !Number.isFinite(v)) return '';
+  return v.toFixed(d);
+}
+
+/** CSV-safe string: wrap in double quotes, escape internal quotes */
+function q(s: string): string {
+  return `"${s.replace(/"/g, '""')}"`;
+}
 
 /**
  * Format an enriched ticker as a CSV line.
@@ -15,40 +46,81 @@ export const CSV_HEADER = 'run_id,ts_utc,date_et,symbol,chain,lastPrice,bidPrice
  * @returns CSV string
  */
 export function toCSV(ticker: EnrichedTicker): string {
-  const f = (v: number | null | undefined, d = 8) => {
-    if (v == null || !Number.isFinite(v)) return '';
-    return v.toFixed(d).replace(/0+$/, '').replace(/\.$/, '');
-  };
   const parts = [
-    ticker.runId,
-    ticker.tsUtc,
-    ticker.dateEt,
-    ticker.symbol,
-    ticker.chain,
-    f(ticker.lastPrice),
-    f(ticker.bidPrice),
+    // ── Run metadata & identity ──
+    q(ticker.runId),
+    q(ticker.tsUtc),
+    q(ticker.dateEt),
+    q(ticker.symbol),
+    q(ticker.chain),
+
+    // ── Price data ──
+    fPrice(ticker.lastPrice),
+    fPrice(ticker.bidPrice),
     f(ticker.bidQty),
-    f(ticker.askPrice),
+    fPrice(ticker.askPrice),
     f(ticker.askQty),
-    f(ticker.spreadPct, 4),
-    f(ticker.openPrice),
-    f(ticker.highPrice),
-    f(ticker.lowPrice),
-    f(ticker.prevClosePrice),
-    f(ticker.priceChangePercent, 2),
-    f(ticker.weightedAvgPrice),
-    f(ticker.priceChange),
-    f(ticker.volume),
+    fPct(ticker.spreadPct),
+    fPrice(ticker.openPrice),
+    fPrice(ticker.highPrice),
+    fPrice(ticker.lowPrice),
+    fPrice(ticker.prevClosePrice),
+    fPct(ticker.priceChangePercent),
+    fPrice(ticker.weightedAvgPrice),
+    fPrice(ticker.priceChange),
+    f(ticker.volume, 0),
     f(ticker.quoteVolume, 2),
     ticker.count.toString(),
     f(ticker.lastQty),
-    f(ticker.vwapDistPct, 2),
-    f(ticker.rangePosPct, 4),
-    f(ticker.bookImbalance, 4),
-    f(ticker.volVsAvg, 2),
-    f(ticker.obv, 2),
-    f(ticker.momentum, 2),
-    ticker.alerts,
+    fPct(ticker.vwapDistPct),
+    fPct(ticker.rangePosPct),
+    fPct(ticker.bookImbalance),
+    fPct(ticker.volVsAvg),
+    fPct(ticker.obv),
+    fPct(ticker.momentum),
+    q(ticker.alerts),
+    q(ticker.source),
+
+    // ── Technical indicators ──
+    f(ticker.rsi, 2),
+    f(ticker.macdMacd, 4),
+    f(ticker.macdSignal, 4),
+    f(ticker.macdHistogram, 4),
+    fPrice(ticker.bbUpper),
+    fPrice(ticker.bbMiddle),
+    fPrice(ticker.bbLower),
+    fPct(ticker.bbWidth),
+    fPct(ticker.atrPct),
+    f(ticker.mfi, 2),
+    f(ticker.stochK, 2),
+    f(ticker.stochD, 2),
+    f(ticker.williamsR, 2),
+    f(ticker.cmf, 4),
+    f(ticker.tsi, 4),
+    fPct(ticker.ema50DistPct),
+    f(ticker.volTrend, 4),
+
+    // ── Strategy signals ──
+    f(ticker.momentumScore, 2),
+    q(ticker.momentumDirection ?? ''),
+    f(ticker.meanReversionScore, 2),
+    q(ticker.meanReversionDirection ?? ''),
+    f(ticker.trendFollowingScore, 2),
+    q(ticker.trendFollowingDirection ?? ''),
+    f(ticker.compositeScore, 2),
+    q(ticker.compositeDirection ?? ''),
+    ticker.signalCount != null ? ticker.signalCount.toString() : '',
+    f(ticker.positionSize, 4),
+
+    // ── On-chain metrics ──
+    f(ticker.onchainTvl, 2),
+    f(ticker.onchainFees1d, 2),
+    f(ticker.onchainChainTvl, 2),
+    f(ticker.onchainConfidence, 4),
+
+    // ── Market regime ──
+    q(ticker.regime ?? ''),
+    f(ticker.regimeConfidence, 4),
   ];
   return parts.join(',');
 }
