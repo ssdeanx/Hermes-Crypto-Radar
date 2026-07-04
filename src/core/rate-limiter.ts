@@ -7,9 +7,10 @@ export class RateLimiter {
   private readonly refillIntervalMs: number;
   private tokens: number;
   private lastRefill: number;
+  private readonly tokensPerInterval: number;
 
   /**
-   * Create a token-bucket rate limiter.
+   * Create a token-bucket rate limiter with gradual refill.
    * @param maxTokens Maximum tokens in the bucket
    * @param refillIntervalMs Time in ms to fully refill the bucket
    */
@@ -18,6 +19,8 @@ export class RateLimiter {
     this.refillIntervalMs = refillIntervalMs;
     this.tokens = maxTokens;
     this.lastRefill = Date.now();
+    // Calculate tokens per refill interval (at least 1 token per interval)
+    this.tokensPerInterval = Math.max(1, Math.floor(this.maxTokens));
   }
 
   /** Attempt to consume a token. Returns true if allowed, false if rate-limited. */
@@ -35,8 +38,8 @@ export class RateLimiter {
       this.tokens--;
       return 0;
     }
-    // Time until next token
-    return this.refillIntervalMs - (Date.now() - this.lastRefill);
+    // Time until next token (approximate)
+    return Math.max(1, Math.round(this.refillIntervalMs / this.tokensPerInterval));
   }
 
   /** How many tokens available */
@@ -48,9 +51,14 @@ export class RateLimiter {
   private refill(): void {
     const now = Date.now();
     const elapsed = now - this.lastRefill;
-    if (elapsed >= this.refillIntervalMs) {
-      this.tokens = this.maxTokens;
-      this.lastRefill = now;
+
+    // Gradual refill: add tokens proportionally based on elapsed time
+    if (elapsed > 0) {
+      const tokensToAdd = (elapsed / this.refillIntervalMs) * this.tokensPerInterval;
+      if (tokensToAdd >= 1) {
+        this.tokens = Math.min(this.maxTokens, this.tokens + Math.floor(tokensToAdd));
+        this.lastRefill = now;
+      }
     }
   }
 }

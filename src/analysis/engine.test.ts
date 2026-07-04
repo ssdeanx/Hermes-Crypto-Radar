@@ -46,9 +46,9 @@ function makeCtx(overrides: Partial<StrategyContext> = {}): StrategyContext {
 }
 
 describe('StrategyEngine', () => {
-  it('evaluates all registered strategies', () => {
+  it('evaluates all registered strategies', async () => {
     const engine = new StrategyEngine();
-    const result = engine.evaluate(makeCtx());
+    const result = await engine.evaluate(makeCtx());
 
     expect(result.signals).toHaveLength(3); // momentum, mean-reversion, trend-following
     expect(result.direction).toBeDefined();
@@ -56,7 +56,7 @@ describe('StrategyEngine', () => {
     expect(result.compositeConfidence).toBeLessThanOrEqual(1);
   });
 
-  it('produces buy direction for strong uptrend', () => {
+  it('produces buy direction for strong uptrend', async () => {
     const engine = new StrategyEngine();
     const ctx = makeCtx({
       ticker: makeTicker({ priceChangePercent: 8.5, quoteVolume: 50_000_000 }),
@@ -66,12 +66,12 @@ describe('StrategyEngine', () => {
       klineLows: Array.from({ length: 200 }, (_, i) => 98 + i * 0.5),
     });
 
-    const result = engine.evaluate(ctx);
+    const result = await engine.evaluate(ctx);
     expect(['buy', 'strong_buy']).toContain(result.direction);
     expect(result.compositeConfidence).toBeGreaterThan(0.5);
   });
 
-  it('produces sell direction for strong downtrend', () => {
+  it('produces sell direction for strong downtrend', async () => {
     const engine = new StrategyEngine();
     const ctx = makeCtx({
       ticker: makeTicker({ priceChangePercent: -7.2 }),
@@ -81,12 +81,12 @@ describe('StrategyEngine', () => {
       klineLows: Array.from({ length: 200 }, (_, i) => 198 - i * 0.5),
     });
 
-    const result = engine.evaluate(ctx);
+    const result = await engine.evaluate(ctx);
     expect(['sell', 'strong_sell']).toContain(result.direction);
     expect(result.compositeConfidence).toBeGreaterThan(0.5);
   });
 
-  it('returns neutral for conflicting signals', () => {
+  it('returns neutral for conflicting signals', async () => {
     const engine = new StrategyEngine();
     const ctx = makeCtx({
       ticker: makeTicker({ priceChangePercent: 0.5, quoteVolume: 100_000 }),
@@ -94,11 +94,11 @@ describe('StrategyEngine', () => {
       klineCloses: Array.from({ length: 200 }, () => 100), // flat
     });
 
-    const result = engine.evaluate(ctx);
+    const result = await engine.evaluate(ctx);
     expect(result.direction).toBe('neutral');
   });
 
-  it('produces strong_buy when momentum and trend align', () => {
+  it('produces strong_buy when momentum and trend align', async () => {
     const engine = new StrategyEngine();
     const ctx = makeCtx({
       ticker: makeTicker({ priceChangePercent: 12, quoteVolume: 100_000_000, spreadPct: 0.05 }),
@@ -108,12 +108,12 @@ describe('StrategyEngine', () => {
       klineLows: Array.from({ length: 200 }, (_, i) => 78 + i * 0.8),
     });
 
-    const result = engine.evaluate(ctx);
+    const result = await engine.evaluate(ctx);
     expect(result.direction).toBe('strong_buy');
     expect(result.compositeConfidence).toBeGreaterThan(0.7);
   });
 
-  it('handles strategy failure gracefully', () => {
+  it('handles strategy failure gracefully', async () => {
     // Create engine with a broken strategy
     const brokenStrategy = {
       name: 'broken',
@@ -122,14 +122,14 @@ describe('StrategyEngine', () => {
       evaluate: () => { throw new Error('Intentional failure'); },
     };
     const engine = new StrategyEngine([brokenStrategy]);
-    const result = engine.evaluate(makeCtx());
+    const result = await engine.evaluate(makeCtx());
 
     expect(result.signals).toHaveLength(1);
     expect(result.signals[0]!.strategy).toBe('broken');
     expect(result.signals[0]!.direction).toBe('neutral');
   });
 
-  it('generates alerts for extreme conditions', () => {
+  it('generates alerts for extreme conditions', async () => {
     const engine = new StrategyEngine();
     const ctx = makeCtx({
       ticker: makeTicker({ priceChangePercent: -6.5 }),
@@ -140,7 +140,7 @@ describe('StrategyEngine', () => {
       ],
     });
 
-    const result = engine.evaluate(ctx);
+    const result = await engine.evaluate(ctx);
     expect(result.alerts.some(a => a.includes('DIP'))).toBe(true);
     expect(result.alerts.some(a => a.includes('oversold'))).toBe(true);
     expect(result.alerts.some(a => a.includes('News'))).toBe(true);

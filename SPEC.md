@@ -1,21 +1,21 @@
 # 🛰️ Hermes Crypto Radar — SPEC
 
 > **Project:** Hermes Agent Plugin — Multi-chain crypto market radar  
-> **Status:** v1.4.0 · Stable  
+> **Status:** v2.0.0 · Marketplace Release  
 > **Versioning:** [SemVer](https://semver.org/) — all changes tracked in this spec
 
 ---
 
 ## 1. Vision
 
-A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as a compiled TypeScript CLI wrapped in a Hermes Python plugin, giving the agent real-time market data, technical analysis, news signals, and composite trading signals for 30+ tokens across multiple chains.
+A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as a compiled TypeScript CLI wrapped in a Hermes Python plugin, giving the agent real-time market data, technical analysis, news signals, and composite trading signals for 49+ tokens across 31 chains.
 
 **Goal:** Be a top-listed plugin on the [Hermes Plugin Marketplace](https://hermes-agent.nousresearch.com/) — the go-to crypto tool for Hermes users.
 
 ### Core Design Tenets
 
 1. **Agent-first** — Tools return structured JSON that Hermes can reason about and incorporate into responses
-2. **Multi-chain** — Solana, Polygon, BNB, and broad-market (BTC, ETH, XRP, DOGE, ADA)
+2. **Multi-chain** — 31 chains: Solana, Polygon, Ethereum, BNB, Bitcoin, XRP, Cardano, Dogecoin, Cosmos, Sui, Aptos, Sei, Celestia, Injective, Thorchain, NEAR, TRON, Stellar, Avalanche, Litecoin, Bitcoin Cash, Hedera, Bittensor, Polkadot, Filecoin, Zcash, Monero, Algorand, Tezos, Theta + broader market
 3. **Production data** — Real Binance spot prices, real RSS news feeds, real technical indicators
 4. **Extensible** — Plugin can be extended with new chains, tokens, data sources, and visualizations without breaking existing tools
 5. **Self-documenting** — Every tool has complete schema descriptions; the agent never has to guess parameters
@@ -58,6 +58,9 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
               │  ├── output.ts     (Formatters)    │
               │  ├── coingecko.ts  (Alt data src)  │
               │  ├── xlsx-export.ts(Excel export)  │
+              │  ├── html-report.ts(HTML/PDF rpt)  │
+              │  ├── ws.ts         (WebSocket)     │
+              │  ├── webhook.ts    (Alert deliv)   │
               │  ├── core/         (Config, cache, │
               │  │                  errors, logger,│
               │  │                  rate-limiter)  │
@@ -65,8 +68,8 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
               │  │                  momentum, mr,  │
               │  │                  trend-follow)  │
               │  ├── io/           (Charts: ASCII  │
-              │  │                  + SVG)          │
-              │  └── monitor/      (Health checks) │
+              │  │                  + SVG, patterns)│
+              │  └── monitor/      (Health,corr.)  │
               └────────────────────────────────────┘
 ```
 
@@ -82,14 +85,24 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 
 ## 3. Token Coverage
 
-### 3.1 Current (v1.4.0) — 40+ tokens
+### 3.1 Current (v2.0.0) — 49+ tokens
 
 | Chain | Tokens |
 |-------|--------|
-| **Solana** (14) | SOL, JUP, JTO, RAY, PYTH, BONK, KMNO, PUMP, RENDER, ORCA, FIDA, WIF, BOME, AUDIO |
+| **Solana** (15) | SOL, JUP, JTO, RAY, PYTH, BONK, KMNO, PUMP, RENDER, ORCA, FIDA, WIF, BOME, AUDIO, TRUMP |
 | **Polygon/DeFi** (13) | POL, SUSHI, UNI, AAVE, CRV, LINK, QUICK, BAL, LDO, BAT, COMP, ZRO, GRT |
-| **Multi** (6) | BTC, ETH, BNB, XRP, DOGE, ADA |
+| **Multi/Broad** (6) | BTC, ETH, BNB, XRP, DOGE, ADA |
 | **Cosmos/New L1s** (7) | SUI, APT, SEI, TIA, INJ, RUNE, ATOM |
+| **Layer-1 Broader** (11) | NEAR, TRX, XLM, AVAX, LTC, BCH, HBAR, TAO, DOT, FIL, ZEC |
+| **Ethereum Ecosystem** (10) | PEPE, WLD, ENA, FET, OP, ARB, AXS, JASMY, CVX, 1INCH |
+| **Monero** (1) | XMR |
+| **Algorand** (1) | ALGO |
+| **BNB Ecosystem** (1) | CAKE |
+| **TRON Ecosystem** (1) | JST |
+| **Tezos** (1) | XTZ |
+| **Theta Network** (1) | THETA |
+
+**Total chains:** 31 — `solana`, `polygon`, `bnb`, `bitcoin`, `ethereum`, `dogecoin`, `xrp`, `cardano`, `sui`, `aptos`, `sei`, `celestia`, `injective`, `thorchain`, `cosmos`, `near`, `tron`, `stellar`, `avalanche`, `litecoin`, `bitcoin-cash`, `hedera`, `bittensor`, `polkadot`, `filecoin`, `zcash`, `monero`, `algorand`, `tezos`, `theta`
 
 ### 3.2 Expansion Plan
 
@@ -98,8 +111,11 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | v1.2 | SUI, APT, SEI, TIA (new L1s) | ✅ |
 | v1.2 | INJ, RUNE, ATOM (cross-chain) | ✅ |
 | v1.3 | Top 50 by volume (dynamic detection) | ✅ |
-| v2.0 | User-configurable token list (config file) | ✅ |
-| v2.0 | Strategy config overrides | ✅ |
+| v1.3 | 5 new indicators (Stochastic, Ichimoku, W%R, CMF, TSI) | ✅ |
+| v2.0 | 10+ new tokens (broad L1s, monero, algorand, tezos, theta) | ✅ |
+| v2.0 | 16+ additional indicators (ADX, PSAR, CCI, Keltner, ROC, VWAP, FI, ADL, etc.) | ✅ |
+| v2.0 | New chains (monero, algorand, tezos, theta, hedera, etc.) | ✅ |
+| v2.0 | Marketplace release — polished docs, badges, enterprise callout | ✅ |
 
 ---
 
@@ -180,12 +196,20 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | Strategy config overrides | ✅ | Adjust weights/params via config file + env vars | v1.3 ✅ |
 | Hermes chart tool | ✅ | SVG charts delivered as agent visual responses | v1.1 ✅ |
 | Daemon tool | ✅ | Warm daemon for sub-50ms tool calls | v1.3 ✅ |
-| **WebSocket live prices** | 🔜 | Binance WS for real-time updates | v1.3 🟡 |
-| Portfolio tracking | 🔜 | User-defined holdings → P&L | v2.0 |
-| Price alerts | ✅ | Webhook-based notifications via Discord/Telegram | v1.3 ✅ |
-| DEX data (Jupiter) | ✅ | Solana DEX prices via Jupiter API | v1.3 ✅ |
-| Backtesting engine | ✅ | Signal accuracy backtesting with weight optimization | v1.3 ✅ |
-| **Plugin marketplace publish** | ✅ | npm published (`hermes-crypto-radar@1.4.0`), tarball ready, marketplace checklist complete | v1.4.0 ✅ |
+| WebSocket live prices | ✅ | Binance WS for real-time updates | v2.0.0 ✅ |
+| Expanded indicator suite | ✅ | 16 new indicators (ADX, PSAR, CCI, Keltner, ROC, VWAP, FI, ADL, Chaikin Osc, StochRSI, TRIX, KST, Elder-Ray, Fisher, Mass Index) | v2.0.0 ✅ |
+| Expanded token roster | ✅ | 11 new L1 + ecosystem tokens across 31 chains | v2.0.0 ✅ |
+| Marketplace-ready docs | ✅ | Professional README, comparison table, benchmarks, roadmap | v2.0.0 ✅ |
+| **Portfolio tracking** | 🔜 | User-defined holdings → P&L, position sizing | v2.0.1 |
+| **Multi-user watchlists** | 🔜 | Shared token lists via config | v2.0.1 |
+| **AI-driven signal suggestions** | 🔜 | LLM-powered trade ideas from market context | v2.0.2 |
+| **Custom indicator scripting** | 🔜 | User-defined indicators in TS | v2.0.3 |
+| **Backtesting dashboard** | 🔜 | Web UI for strategy optimization | v2.1.0 |
+| **Real-time alert engine** | 🔜 | Price thresholds, indicator crossovers | v2.1.0 |
+| **DEX aggregation** | 🔜 | Uniswap, Raydium, Orca, Jupiter | v2.1.0 |
+| **Social sentiment analysis** | 🔜 | X/Twitter, Reddit, Discord | v2.2.0 |
+| **Paper trading simulator** | 🔜 | Virtual portfolio with signal validation | v2.2.0 |
+| **Mobile companion** | 🔜 | Hermes mobile plugin | v3.0.0 |
 
 ---
 
@@ -300,8 +324,8 @@ WebSocket stream management for real-time prices.
 Agent calls crypto_radar_scan()
   → plugin/__init__.py spawns node dist/cli.js scan --format json
     → radar.ts: runRadar()
-      → binance.ts: fetchAllTickers()          [GET ticker/24hr for 30 pairs, parallel batches of 5]
-      → indicators.ts: computeAllIndicators()  [Parallel kline fetches, compute RSI/MACD/BB/ATR/Stochastic/Ichimoku/CMF/TSI/W%R]
+      → binance.ts: fetchAllTickers()          [GET ticker/24hr for 49+ pairs, parallel batches of 5]
+      → indicators.ts: computeAllIndicators()  [Parallel kline fetches, compute RSI/MACD/BB/ATR/Stochastic/Ichimoku/CMF/TSI/W%R/ADX/PSAR/CCI/Keltner/ROC/VWAP/FI/ADL/ChaikinOsc/StochRSI/TRIX/KST/ElderRay/Fisher/MassIndex]
       → news.ts: fetchAndMatchNews()           [11 RSS feeds, concurrency-4, headline/body/sentiment scoring]
       → defillama.ts: fetchOnChainMetrics()    [DeFiLlama: protocol TVL, chain TVL, fees 1d/7d/30d]
       → signals.ts: computeSignals()           [Weighted composite: momentum 40% + technical 40% + news 20%, on-chain 0-15% boost]
@@ -329,7 +353,7 @@ Agent calls crypto_radar_scan()
 | Component | Weight | Inputs |
 |-----------|--------|--------|
 | Momentum | 40% | Price change, spread, volume, book imbalance, range position |
-| Technical | 40% | RSI, MACD, BB position, volume trend, EMA50 distance, 11+ indicators |
+| Technical | 40% | RSI, MACD, BB position, volume trend, EMA50 distance, 26+ indicators |
 | News | 20% | Recent article count × relevance, sentiment keywords, recency bonus |
 | On-chain boost | 0–15% | Protocol TVL strength (DeFiLlama) added to composite score |
 
@@ -457,7 +481,7 @@ hermes skills install ./crypto-radar-skill.md
 npm run build        # Compile TS → dist/
 npm run watch        # Watch mode
 npm run start        # Run CLI (default: scan)
-npm test             # Run vitest suite (332 tests)
+npm test             # Run vitest suite (332+ tests)
 npm run test:watch   # Watch mode for TDD
 npm run lint         # ESLint check
 npm run lint:fix     # ESLint auto-fix
@@ -475,15 +499,18 @@ hermes-crypto-radar/
 │   ├── cli.ts              # CLI entry point (Commander)
 │   ├── index.ts            # Public API exports
 │   ├── types.ts            # Type definitions
-│   ├── tokens.ts           # Token registry (32 tokens + growing)
+│   ├── tokens.ts           # Token registry (49+ tokens, 31 chains)
 │   ├── binance.ts          # Binance API client
 │   ├── coingecko.ts        # CoinGecko API client (alt data source)
-│   ├── indicators.ts       # Technical indicators (RSI, MACD, BB, ATR, MFI)
+│   ├── indicators.ts       # Technical indicators (RSI, MACD, BB, ATR, MFI, OBV, Stochastic, Ichimoku, W%R, CMF, TSI, ADX, PSAR, CCI, Keltner, ROC, VWAP, FI, ADL, ChaikinOsc, StochRSI, TRIX, KST, ElderRay, Fisher, MassIndex)
 │   ├── news.ts             # RSS news fetcher + matcher
 │   ├── signals.ts          # Composite signal scoring
 │   ├── output.ts           # Formatters (CSV, JSON, MD, table, XLSX)
 │   ├── radar.ts            # Main radar engine
 │   ├── xlsx-export.ts      # Excel/Sheets export via exceljs
+│   ├── html-report.ts      # HTML/PDF report generator
+│   ├── ws.ts               # WebSocket live price streams
+│   ├── webhook.ts          # Discord/Telegram alert delivery
 │   ├── core/               # Enterprise infrastructure
 │   │   ├── config.ts       # Typed config (file + env + defaults)
 │   │   ├── errors.ts       # 6 typed error classes
@@ -498,9 +525,12 @@ hermes-crypto-radar/
 │   │   ├── mean-reversion.ts # Mean reversion (20%)
 │   │   └── trend-following.ts # Trend following (40%)
 │   ├── io/                 # Visual output
-│   │   └── charts.ts       # ASCII sparklines + SVG chart gen
+│   │   ├── charts.ts       # ASCII sparklines + SVG chart gen
+│   │   └── patterns.ts     # Candlestick pattern recognition (16 patterns)
 │   └── monitor/            # System health
-│       └── health.ts       # Health checks (API, data, system)
+│       ├── health.ts       # Health checks (API, data, system)
+│       ├── correlation.ts  # N×N Pearson correlation matrix
+│       └── regression.ts   # Market regime classification
 ├── plugin/
 │   └── __init__.py         # Hermes plugin (Python bridge)
 ├── plugin.yaml             # Plugin metadata
@@ -563,15 +593,21 @@ To get the plugin listed on the Hermes map/registry:
 | 1.2.0 | 2026-07-02 | Circuit breaker, parallel kline/news fetching, atomic writes, log rotation, multi-timeframe analysis (15m/1h/4h/1d), cross-timeframe strategy aggregation, OBV indicator, 7 new tokens (SUI/APT/SEI/TIA/INJ/RUNE/ATOM), config auto-discovery, coverage gate, 155 tests, pre-commit hook, full JSDoc |
 | 1.3.0 | 2026-07-03 | 5 new indicators (Stochastic, Ichimoku, Williams %R, CMF, TSI), DeFiLlama on-chain metrics + signal boost, dynamic top-50 volume scan, auto-dynamic scan (default top-30), strategy weight config overrides, SVG chart overhaul (gradients, viewBox, tooltips, crosshairs, a11y), daemon mode, eslint/prettier, backtesting engine, candlestick pattern recognition (16 patterns), chart comparison overlay, correlation engine, data retention policy, Discord/Telegram webhooks, fuzz testing suite (130 tests), HTML/PDF report, market regime detection (ADX+BB+ATR), npm publication, support/resistance detection, token search CLI, Volume Profile analysis, webhook notifications, .env.example, .npmignore, package.json SEO, standardized data dir, 332 tests |
 | 1.4.0 | 2026-07-04 | Enterprise marketplace polish: plugin.yaml toolset+crypto, enhanced .env.example (daemon/WS/webhook/retention vars), TypeScript strict mode hardening (noUnusedLocals, noUnusedParameters, noImplicitOverride), enhanced typedoc.json (validation, categorize, sidebarLinks, searchInComments), enhanced package.json scripts (prebuild, postbuild, typecheck, coverage, postversion), npm metadata (funding, publishConfig, engines.npm, categories), CHANGELOG.md v1.4.0 entry, CITATION.cff bump, all documentation updated to v1.4.0, marketplace readiness checklist |
+| **2.0.0** | **2026-07-04** | **Marketplace release — major expansion**: 16 new indicators (ADX, Parabolic SAR, CCI, Keltner Channels, ROC, VWAP, Force Index, ADL, Chaikin Oscillator, StochRSI, TRIX, KST, Elder-Ray, Fisher Transform, Mass Index), 11 new tokens (NEAR, TRX, XLM, AVAX, LTC, BCH, HBAR, TAO, DOT, FIL, ZEC) + TRUMP + additional ecosystem tokens, 5 new chains (monero, algorand, tezos, theta + hedera), WebSocket live price streams, HTML self-contained report generator, professional README overhaul (comparison table, benchmarks, developer API section, roadmap, enterprise callout, use cases), SPEC.md updated for 49+ tokens × 31 chains × 26+ indicators, marketplace badges (npm downloads, GitHub stars), quick start guide with GIF placeholder |
 
 ---
 
 ## 13. Future Research Areas
 
-- **Solana DEX + Jupiter aggregator** — on-chain price discovery for non-Binance tokens
-- **DeFiLlama integration** — TVL, fees, volume for protocol health signals
-- **CoinGecko API** — broader market data, categories, trending
-- **Machine learning signals** — pattern recognition on kline data
-- **Backtesting framework** — historical signal accuracy measurement
+- ~~Solana DEX + Jupiter aggregator~~ ✅ Completed v1.3.0
+- ~~DeFiLlama integration~~ ✅ Completed v1.3.0
+- ~~CoinGecko API~~ ✅ Completed v1.1.0
+- ~~WebSocket live prices~~ ✅ Completed v2.0.0
+- ~~OHLCV chart generation~~ ✅ Completed v1.0 (sparklines) + v1.3 (SVG overhaul)
+- **Machine learning signals** — pattern recognition on kline data using trained models
+- **Backtesting dashboard** — web UI for strategy optimization
 - **Social sentiment** — X/Twitter, Reddit mentions for signal generation
-- **OHLCV chart generation** — SVG sparklines for Hermes visual responses
+- **Portfolio tracking** — user-defined holdings → P&L tracking
+- **Cross-chain DEX aggregation** — Uniswap, Raydium, Orca integration
+- **Paper trading engine** — simulated portfolio with real signals
+- **AI-driven trade suggestions** — LLM reasoning over market context

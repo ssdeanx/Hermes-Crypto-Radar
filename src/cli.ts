@@ -6,6 +6,7 @@ import { Command } from 'commander';
 import { runRadar, displayRadar } from './radar.js';
 import type { Chain, SortMode, OutputFormat, KlineInterval } from './types.js';
 import { getTokenList } from './tokens.js';
+import type { TokenDef } from './tokens.js';
 import { getTopTokensByVolume } from './tokens.js';
 import { fetchKlines } from './binance.js';
 import { getBinancePair } from './tokens.js';
@@ -51,7 +52,7 @@ program
   .alias('s')
   .description('Run a full radar scan (prices + technicals + news + strategy signals)')
   .option('-f, --filter <symbols...>', 'Filter to specific tokens by symbol')
-  .option('--dynamic [count]', 'Auto-detect top N tokens by 24h volume (default: 50)')
+  .option('--dynamic [count]', 'Explicit control for auto-dynamic top-N (default when no --filter: top 30 by volume; use --dynamic or --dynamic 50 to override count)')
   .option('-c, --chain <chain>', 'Filter to chain (solana, polygon, bnb, xrp, etc.)')
   .option('--sort <mode>', 'Sort: alpha|change|volume|momentum', 'momentum')
   .option('--format <fmt>', 'Output format: table|json|csv|md|xlsx', 'table')
@@ -63,13 +64,14 @@ program
   .option('--period <interval>', 'Kline interval: 15m|1h|4h|1d (default: all)')
   .action(async (opts) => {
     try {
-      // Resolve token filter — auto-dynamic by default (top 30 by volume)
+      // ── Auto-dynamic mode by default ──
+      // When no --filter is provided, scan fetches the top N tokens by 24h
+      // Binance volume (default 30). --dynamic [N] overrides the count.
       let filter = opts.filter;
       if (!filter || filter.length === 0) {
-        // No explicit filter — use dynamic top tokens by default
         const count = typeof opts.dynamic === 'string' ? parseInt(opts.dynamic, 10) 
           : opts.dynamic !== undefined ? 50 
-          : 30; // default: top 30 by volume
+          : 30;
         try {
           const dynamicTokens = await getTopTokensByVolume(count);
           filter = dynamicTokens.map(t => t.sym);
@@ -198,29 +200,95 @@ program
 program
   .command('search')
   .alias('find')
-  .description('Search for tokens by symbol, name, or address')
-  .argument('<query>', 'Search query (symbol, name, or partial match)')
-  .option('--json', 'Output as JSON')
+  .description('Search for tokens by symbol, name, or address (fuzzy matching)')
+  .argument('<query>', 'Search query (symbol, name, or partial/fuzzy match)')
+  .option('--json', 'Output as JSON with match scores')
+  .option('--limit <n>', 'Max results', '20')
   .action((query, opts) => {
-    const q = query.toUpperCase();
+    const q = query.toLowerCase();
     const tokens = getTokenList();
-    const results = tokens.filter(t => 
-      t.sym.toUpperCase().includes(q) ||
-      t.name.toUpperCase().includes(q) ||
-      t.id.includes(q) ||
-      t.chain.toUpperCase().includes(q)
-    );
-    if (opts.json) {
-      console.log(JSON.stringify(results, null, 2));
-    } else {
-      console.table(results.map(t => ({
-        Symbol: t.sym, Name: t.name, Chain: t.chain, ID: t.id,
-      })));
+
+    // Score each token by relevance (fuzzy matching)
+    interface ScoredHit { token: TokenDef; score: number; matchField: string; }
+    const scored: ScoredHit[] = [];
+
+    for (const token of tokens) {
+      const sym = token.sym.toLowerCase();
+      const name = token.name.toLowerCase();
+      const id = token.id.toLowerCase();
+      const chain = token.chain.toLowerCase();
+
+      let bestScore = 0;
+      let matchField = '';
+
+      // Exact symbol match → highest priority
+      if (sym === q) { bestScore = 100; matchField = 'symbol'; }
+      else if (name === q) { bestScore = 95; matchField = 'name'; }
+      else if (id === q) { bestScore = 90; matchField = 'id'; }
+      // Prefix match
+      else if (sym.startsWith(q)) { bestScore = 80; matchField = 'symbol'; }
+      else if (name.startsWith(q)) { bestScore = 75; matchField = 'name'; }
+      // Substring match
+      else if (sym.includes(q)) { bestScore = 60; matchField = 'symbol'; }
+      else if (name.includes(q)) { bestScore = 55; matchField = 'name'; }
+      else if (id.includes(q)) { bestScore = 50; matchField = 'id'; }
+      else if (chain.includes(q)) { bestScore = 40; matchField = 'chain'; }
+      // Fuzzy: character overlap (for typos)
+      else {
+        const overlap = countOverlap(sym, q);
+        if (overlap >= q.length * 0.6) { bestScore = Math.round(overlap / q.length * 35); matchField = 'symbol'; }
+        else {
+          const nameOverlap = countOverlap(name, q);
+          if (nameOverlap >= q.length * 0.6) { bestScore = Math.round(nameOverlap / q.length * 30); matchField = 'name'; }
+        }
+      }
+
+      if (bestScore > 0) {
+        scored.push({ token, score: bestScore, matchField });
+      }
     }
-    if (results.length === 0) {
-      console.error(`No tokens matching "${query}"`);
+
+    // Sort by score descending
+    scored.sort((a, b) => b.score - a.score);
+
+    // Apply limit
+    const limit = parseInt(opts.limit, 10) || 20;
+    const limited = scored.slice(0, limit);
+
+    if (opts.json) {
+      console.log(JSON.stringify(limited.map(h => ({
+        symbol: h.token.sym,
+        name: h.token.name,
+        chain: h.token.chain,
+        id: h.token.id,
+        score: h.score,
+        matchField: h.matchField,
+        coingeckoId: h.token.coingeckoId,
+        ...(h.token.chains ? { chains: h.token.chains } : {}),
+      })), null, 2));
+    } else {
+      if (limited.length === 0) {
+        console.error(`No tokens matching "${query}"`);
+        return;
+      }
+      console.table(limited.map(h => ({
+        Symbol: h.token.sym,
+        Name: h.token.name,
+        Chain: h.token.chain,
+        ID: h.token.id,
+        Match: `${h.matchField} (${h.score}%)`,
+      })));
+      console.error(`\n${limited.length} result(s) for "${query}"`);
     }
   });
+
+function countOverlap(a: string, b: string): number {
+  let score = 0;
+  for (const ch of b) {
+    if (a.includes(ch)) score++;
+  }
+  return score;
+}
 
 // ── signals command ──
 program
@@ -546,7 +614,24 @@ program
   .action(async (opts) => {
     try {
       const fs = await import('fs');
-      const csvPath = opts.file;
+      const pathMod = await import('path');
+      const csvPath = pathMod.resolve(opts.file);
+
+      // Security: prevent path traversal — restrict to project directories
+      const projectRoot = pathMod.resolve('.');
+      const allowedPrefixes = [
+        projectRoot,
+        pathMod.resolve('data'),
+        pathMod.resolve('dist'),
+      ];
+      const isAllowed = allowedPrefixes.some(prefix =>
+        csvPath.startsWith(prefix + pathMod.sep) || csvPath === prefix,
+      );
+      if (!isAllowed) {
+        console.error(`❌ Security: file path is not in allowed directories`);
+        process.exit(1);
+      }
+
       if (!fs.existsSync(csvPath)) {
         console.error(`❌ File not found: ${csvPath}`);
         process.exit(1);

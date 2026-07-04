@@ -7,6 +7,8 @@ import { getTokenList, getBinancePair } from './tokens.js';
 import type { TokenDef } from './tokens.js';
 import { CircuitBreaker } from './core/circuit-breaker.js';
 import { logger } from './core/logger.js';
+import * as https from 'node:https';
+import * as http from 'node:http';
 
 const BASE_URL = 'https://data-api.binance.vision';
 
@@ -15,6 +17,10 @@ const binanceBreaker = new CircuitBreaker({ name: 'binance', failureThreshold: 3
 const FETCH_TIMEOUT_MS = 10_000;
 const MAX_RETRIES = 3;
 
+// ── HTTP keep-alive agents (reduces TCP handshake overhead on repeated requests) ──
+const HTTPS_AGENT = new https.Agent({ keepAlive: true, keepAliveMsecs: 60_000, maxSockets: 50, maxFreeSockets: 20 });
+const HTTP_AGENT = new http.Agent({ keepAlive: true, keepAliveMsecs: 60_000, maxSockets: 50, maxFreeSockets: 20 });
+
 /** Create a timeout signal that aborts after `ms` */
 function timeoutSignal(ms: number): AbortController {
   const ctrl = new AbortController();
@@ -22,12 +28,22 @@ function timeoutSignal(ms: number): AbortController {
   return ctrl;
 }
 
-/** Fetch with retries and 429 backoff */
+/** Pick the right keep-alive agent for the URL scheme */
+function pickAgent(url: string): http.Agent | https.Agent {
+  return url.startsWith('https') ? HTTPS_AGENT : HTTP_AGENT;
+}
+
+/** Fetch with retries, 429 backoff, and connection keep-alive */
 async function fetchWithRetry(url: string, retries = MAX_RETRIES): Promise<Response> {
+  const agent = pickAgent(url);
   for (let attempt = 1; attempt <= retries; attempt++) {
     const ctrl = timeoutSignal(FETCH_TIMEOUT_MS);
     try {
-      const res = await fetch(url, { signal: ctrl.signal });
+      const res = await fetch(url, {
+        signal: ctrl.signal,
+        // @ts-expect-error - Node.js >=20 supports the `agent` option on fetch
+        agent,
+      });
 
       // 429 rate limit — backoff
       if (res.status === 429) {

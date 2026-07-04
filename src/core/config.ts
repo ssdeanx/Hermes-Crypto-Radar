@@ -87,7 +87,8 @@ const DEFAULTS: RadarConfig = {
     coinGecko: false,
   },
   defiLlamaEnabled: false,
-  logRetentionDays: 0,   // 0 = disabled
+  logRetentionDays: 30,  // auto-prune logs older than 30 days
+  enableFileChecksums: true,
 };
 
 let _instance: RadarConfig | null = null;

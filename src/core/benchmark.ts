@@ -36,7 +36,7 @@ export async function runBenchmark(): Promise<BenchmarkResult> {
       ? Math.round((result.run.numTokens / durationMs) * 1000)
       : 0,
     timestamp: new Date().toISOString(),
-    version: '1.3.0',
+    version: '2.0.0',
   };
 }
 

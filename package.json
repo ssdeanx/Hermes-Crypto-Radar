@@ -1,7 +1,7 @@
 {
   "name": "hermes-crypto-radar",
-  "version": "1.4.0",
-  "description": "Hermes Agent plugin for multi-chain crypto market intelligence — tracks 40+ tokens across Solana, Polygon, Cosmos, and more with RSI, MACD, Bollinger Bands, ATR, MFI, OBV, Stochastic, Ichimoku, Williams %R, CMF, and TSI technical indicators. RSS news aggregation (11 feeds) with 3-strategy signal engine (momentum, mean-reversion, trend-following). Binance data integration, DeFiLlama on-chain metrics, configurable token whitelists, XLSX/CSV/JSON/MD report export, SVG charts, candlestick pattern recognition, volume profile analysis, support/resistance detection, market regime classification, correlation engine, backtesting engine, Discord/Telegram webhook alerts, WebSocket real-time prices, and a warm daemon mode for continuous monitoring.",
+  "version": "2.0.0",
+  "description": "Hermes Agent plugin for enterprise-grade multi-chain crypto market intelligence — tracks 49 tokens across 15+ chains with 26 technical indicators. RSS news aggregation from 11 feeds with 3-strategy signal engine (momentum, mean-reversion, trend-following), divergence detection, and ADX trend-strength filter. Binance data integration, DeFiLlama on-chain metrics, configurable token whitelists, XLSX/CSV/JSON/MD report export, SVG candlestick/dashboard charts, candlestick pattern recognition, volume profile analysis, support/resistance detection, market regime classification, N×N correlation engine, backtesting engine, Discord/Telegram webhook alerts, WebSocket real-time prices, and a warm daemon mode for continuous monitoring.",
   "type": "module",
   "main": "./dist/cli.js",
   "bin": {
@@ -21,6 +21,7 @@
     "crypto-radar.json",
     "README.md",
     "SPEC.md",
+    "SECURITY.md",
     "CHANGELOG.md",
     "LICENSE",
     ".env.example"
@@ -53,8 +54,7 @@
     "backtest": "node dist/cli.js backtest",
     "clean": "rm -rf dist",
     "prepare": "husky",
-    "prepublish": "npm run build && npm test && npm run lint",
-    "prepublishOnly": "npm run build && npm run test && npm run lint",
+    "prepublishOnly": "npm run build && npm test && npm run lint",
     "publish": "bash scripts/publish.sh",
     "postversion": "git push && git push --tags"
   },
@@ -148,5 +148,8 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.62.1",
     "vitest": "^4.1.9"
+  },
+  "overrides": {
+    "uuid": ">=11.1.1"
   }
 }

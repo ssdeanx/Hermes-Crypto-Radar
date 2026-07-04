@@ -77,7 +77,7 @@ export class StrategyEngine {
    * @param ctx Strategy context with ticker, technicals, news, and kline data
    * @returns AggregatedSignal with direction, confidence, and alerts
    */
-  evaluate(ctx: StrategyContext): AggregatedSignal {
+  async evaluate(ctx: StrategyContext): Promise<AggregatedSignal> {
     // Edge case: no kline data → neutral
     if (!ctx.klineCloses || ctx.klineCloses.length === 0) {
       return {
@@ -88,16 +88,20 @@ export class StrategyEngine {
         compositeReason: 'No kline data available',
       };
     }
-    const signals: StrategySignal[] = this.strategies.map(s => {
-      try { return s.evaluate(ctx); }
-      catch (err) {
-        logger.error(`Strategy "${s.name}" failed`, {
-          symbol: ctx.ticker.symbol,
-          error: err instanceof Error ? err.message : String(err),
-        });
-        return { strategy: s.name, direction: 'neutral' as const, confidence: 0, reason: `Error: ${err}`, indicators: {}, timeframe: s.timeframe };
-      }
-    });
+    // Evaluate all strategies in parallel — each is independent
+    const signalPromises = this.strategies.map(s =>
+      Promise.resolve().then(() => {
+        try { return s.evaluate(ctx); }
+        catch (err) {
+          logger.error(`Strategy "${s.name}" failed`, {
+            symbol: ctx.ticker.symbol,
+            error: err instanceof Error ? err.message : String(err),
+          });
+          return { strategy: s.name, direction: 'neutral' as const, confidence: 0, reason: `Error: ${err}`, indicators: {}, timeframe: s.timeframe };
+        }
+      }),
+    );
+    const signals = await Promise.all(signalPromises);
     if (ctx.technicalsByInterval && ctx.technicalsByInterval.size > 1) {
       return this.aggregateMultiTF(signals, ctx, ctx.technicalsByInterval);
     }
@@ -120,11 +124,11 @@ export class StrategyEngine {
     return adjusted;
   }
 
-  private aggregateMultiTF(
+  private async aggregateMultiTF(
     _baseSignals: ReturnType<SignalStrategy['evaluate']>[],
     ctx: StrategyContext,
     techByInterval: Map<string, TechnicalIndicators>,
-  ): AggregatedSignal {
+  ): Promise<AggregatedSignal> {
     // Redistribute TF weights if fewer intervals than expected
     const expectedIntervals = Object.keys(this.tfWeights);
     const effectiveTfWeights: Record<string, number> = { ...this.tfWeights };
@@ -137,24 +141,30 @@ export class StrategyEngine {
 
     const allSignals: StrategySignal[] = [];
     const tfReasons: string[] = [];
+    const tfSignalPromises: Promise<void>[] = [];
     for (const [interval, tech] of techByInterval.entries()) {
-      const tfCtx: StrategyContext = { ...ctx, technical: tech };
-      const tfSignals = this.strategies.map(s => {
-        try { return s.evaluate(tfCtx); }
-        catch (err) {
-          logger.error(`Strategy "${s.name}" failed on interval ${interval}`, {
-            symbol: ctx.ticker.symbol, error: err instanceof Error ? err.message : String(err),
+      tfSignalPromises.push(
+        Promise.resolve().then(() => {
+          const tfCtx: StrategyContext = { ...ctx, technical: tech };
+          const tfSignals = this.strategies.map(s => {
+            try { return s.evaluate(tfCtx); }
+            catch (err) {
+              logger.error(`Strategy "${s.name}" failed on interval ${interval}`, {
+                symbol: ctx.ticker.symbol, error: err instanceof Error ? err.message : String(err),
+              });
+              return { strategy: s.name, direction: 'neutral' as const, confidence: 0, reason: `Error: ${err}`, indicators: {}, timeframe: interval };
+            }
           });
-          return { strategy: s.name, direction: 'neutral' as const, confidence: 0, reason: `Error: ${err}`, indicators: {}, timeframe: interval };
-        }
-      });
-      tfSignals.forEach(s => { s.timeframe = interval; allSignals.push(s); });
-      const buySum = tfSignals.reduce((a, s) => a + (s.direction === 'buy' || s.direction === 'strong_buy' ? s.confidence : 0), 0);
-      const sellSum = tfSignals.reduce((a, s) => a + (s.direction === 'sell' || s.direction === 'strong_sell' ? s.confidence : 0), 0);
-      if (buySum > sellSum) tfReasons.push(`${interval}: bullish (${(buySum * 100).toFixed(0)}%)`);
-      else if (sellSum > buySum) tfReasons.push(`${interval}: bearish (${(sellSum * 100).toFixed(0)}%)`);
-      else tfReasons.push(`${interval}: neutral`);
+          tfSignals.forEach(s => { s.timeframe = interval; allSignals.push(s); });
+          const buySum = tfSignals.reduce((a, s) => a + (s.direction === 'buy' || s.direction === 'strong_buy' ? s.confidence : 0), 0);
+          const sellSum = tfSignals.reduce((a, s) => a + (s.direction === 'sell' || s.direction === 'strong_sell' ? s.confidence : 0), 0);
+          if (buySum > sellSum) tfReasons.push(`${interval}: bullish (${(buySum * 100).toFixed(0)}%)`);
+          else if (sellSum > buySum) tfReasons.push(`${interval}: bearish (${(sellSum * 100).toFixed(0)}%)`);
+          else tfReasons.push(`${interval}: neutral`);
+        }),
+      );
     }
+    await Promise.all(tfSignalPromises);
 
     const totalWeight = Array.from(this.weights.values()).reduce((a, b) => a + b, 0) || 1;
     let weightedConfidence = 0;

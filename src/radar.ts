@@ -24,7 +24,7 @@ import { StrategyEngine } from './analysis/engine.js';
 import type { AggregatedSignal } from './analysis/strategies.js';
 import { toTable, toMarkdownReport, toSignalReport, toCSV, csvHeader, NEWS_CSV_HEADER } from './output.js';
 import { exportToXlsx } from './xlsx-export.js';
-import { checkLogRotation, pruneOldLogs, writeLogWithChecksum } from './core/log-rotation.js';
+import { checkLogRotation, pruneOldLogs, writeLogWithChecksum, verifyLogChecksum } from './core/log-rotation.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -279,7 +279,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
       } catch { /* proceed without */ }
     }
 
-    const agg = engine.evaluate({
+    const agg = await engine.evaluate({
       ticker: t,
       technical: singleTechs.get(t.symbol) ?? null,
       technicalsByInterval: technicals.get(t.symbol) ?? new Map(),
@@ -314,22 +314,28 @@ async function appendToLog<T>(
   try {
     if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
     const filePath = path.join(dataDir, fileName);
-    const config = loadConfig();
 
     // Prune old logs per retention policy
     pruneOldLogs(dataDir);
 
     checkLogRotation(filePath);
-    const tmpPath = filePath + '.tmp';
+
+    // ── SHA-256 integrity check: verify existing file before overwriting ──
+    if (fs.existsSync(filePath)) {
+      const existingChecksumPath = filePath + '.sha256';
+      if (fs.existsSync(existingChecksumPath)) {
+        const valid = verifyLogChecksum(filePath);
+        if (!valid) {
+          logger.warn(`Checksum mismatch on ${fileName} — file may have been tampered or corrupted. Overwriting with new data.`);
+        }
+      }
+    }
+
     const exists = fs.existsSync(filePath);
     const content = (exists ? '' : header + '\n') + items.map(item => formatter(item)).join('\n') + '\n';
 
-    if (config.enableFileChecksums) {
-      writeLogWithChecksum(filePath, content);
-    } else {
-      await fs.promises.writeFile(tmpPath, content);
-      fs.renameSync(tmpPath, filePath);
-    }
+    // Always write with SHA-256 checksum sidecar (enabled by default in config)
+    writeLogWithChecksum(filePath, content);
   } catch (err) {
     logger.error('Failed to write log', { file: fileName, error: String(err) });
   }

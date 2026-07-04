@@ -7,6 +7,82 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.0] — 2026-07-04
+
+### Added
+- **49 tracked tokens** — 29 new tokens added since v1.4.0, expanding from 39 to 68 total tracked assets (49 featured). Notable additions: NEAR Protocol, TRON, Stellar, Avalanche, Litecoin, Polkadot, Filecoin, Hedera, Bittensor, Bitcoin Cash, Pepe, Worldcoin, Ethena, Fetch.ai, Optimism, Arbitrum, Monero, Algorand, PancakeSwap, Tezos, Theta Network, Axie Infinity, JasmyCoin, Convex Finance, 1inch, Official Trump, JUST, Zcash, and more. Covers nearly all Binance top-50 USDT pairs plus Solana/Polygon ecosystem tokens.
+- **15 new technical indicators** — Total indicator count expanded to 29:
+  - ADX (Average Directional Index) — trend-strength filter for signal engine
+  - Parabolic SAR (PSAR) — trend-following stop-and-reversal
+  - Commodity Channel Index (CCI) — cyclical overbought/oversold
+  - Keltner Channels — volatility-based envelope bands
+  - Rate of Change (ROC) — pure momentum oscillator
+  - VWAP (Volume-Weighted Average Price) — institutional price benchmark
+  - Force Index — one-period volume-weighted momentum
+  - Accumulation/Distribution Line (ADL) — volume flow indicator
+  - Chaikin Oscillator — MACD of ADL for volume momentum
+  - Stochastic RSI (StochRSI) — RSI of RSI for refined overbought/oversold
+  - TRIX (Triple Exponential Average) — smoothed momentum oscillator
+  - KST (Know Sure Thing) — summed-rate-of-change composite
+  - Elder-Ray Index — bull/bear power
+  - Fisher Transform — Gaussian price normalization for extreme detection
+  - Mass Index — reversal detection via high-low range expansion
+- **SVG charts overhaul** — Complete rewrite with `shared-svg.ts` shared rendering engine:
+  - CSS-in-`<style>` for maintainable styling
+  - `<linearGradient>` fills for depth and visual polish
+  - Responsive `viewBox` scaling across devices
+  - `role="img"` + `aria-label` accessibility attributes
+  - Crosshair effects at latest candle
+  - Fixed several chart rendering bugs (off-by-one candles, missing volume bars)
+  - Professional-quality signal dashboards with multi-panel layouts
+  - All chart types now share rendering code paths via shared-svg.ts
+- **Signal algorithm improvements**:
+  - Divergence detection — RSI/MACD price-divergence scanner (hidden/regular bullish/bearish)
+  - ADX trend-strength filter — signals below ADX 25 downgraded one confidence level
+  - Enhanced composite scoring with dynamic strategy weight tuning
+- **RSS news parser upgrade** — Migrated to `rss-parser` library (from manual XML parsing):
+  - Reliable Atom/RSS feed handling
+  - Structured pubDate → JS Date conversion
+  - Improved encoding and error recovery
+  - 11 feeds with configurable poll intervals
+- **Cron automation** — `scripts/crypto-radar-collector.sh` for scheduled recurring scans:
+  - Configurable interval (default: 15 min) for automatic data collection
+  - Log rotation integration with daily summaries
+  - Output to structured JSON/CSV with timestamps
+  - Designed for systemd timer or crontab integration
+- **Enterprise marketplace polish**:
+  - Comprehensive plugin.yaml with toolset categorization, 8 tools, 49-token/26-indicator feature summary
+  - Full typedoc.json configuration for professional API docs generation
+  - Enhanced .env.example with 18 documented environment variables
+  - eslint.config.js with strict typescript-eslint rules + prettier integration
+  - tsconfig.json strict mode with noUncheckedIndexedAccess and noImplicitOverride
+  - Marketplace publication checklist and tarball verification
+  - README updated with v2.0.0 feature counts and badges
+
+### Changed
+- **Plugin registration** — `plugin.yaml` version bumped to 2.0.0 with all 8 tools registered and full JSON schemas
+- **CITATION.cff** — bumped to v2.0.0
+- **Benchmark** — version string updated to 2.0.0
+- **Build pipeline** — `prepublish` enforced build + test + lint gates
+- **README** — Updated all version references, token counts (49), indicator counts (26), feature tables
+- **SPEC.md** — Updated version references and token roster
+
+### Fixed
+- **P1: Auto-dynamic scan** — `--dynamic` flag now correctly auto-discovers top tokens by 24h volume even when config has no explicit token list; no longer silently falls back to full static list
+- **P1: Parallel evaluation** — `Promise.all` concurrency in signal evaluation now capped at 5 to avoid ECONNRESET on large token sets; proper error isolation per-token
+- **P1: Daemon keep-alive** — Warm daemon HTTP server now sends TCP keep-alive probes (interval: 60s) to prevent idle proxy connection drops; connection pool configured with max 50 idle sockets
+- **P1: Log retention** — `RADAR__LOG_RETENTION_DAYS` now correctly respects 0 = keep forever (was: 0 = delete everything); edge-case test added
+- **P1: File checksums** — SHA-256 checksums computed on write to detect silent data corruption; verified on daemon startup for cache files
+
+### Infrastructure
+- Full typedoc.json with validation, sidebarLinks, searchInComments
+- `.env.example` extended to 18 documented env vars covering daemon, WebSocket, webhook, retention, and TTL configs
+- `tsconfig.json` strict mode confirmed with noUncheckedIndexedAccess, noImplicitOverride, verbatimModuleSyntax
+- `eslint.config.js` with typescript-eslint + prettier, no errors on src/
+- Marketplace tarball created and verified: dist/, plugin/, plugin.yaml, package.json, README.md, LICENSE
+
+---
+
 ## [1.4.0] — 2026-07-04
 
 ### Added
@@ -172,6 +248,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - csv-stringify for CSV generation
 - picocolors for terminal coloring
 - 24 source files across 6 directories (src/, src/core/, src/analysis/, src/io/, src/monitor/, plugin/)
+
+### Security
+- **npm audit: 0 vulnerabilities** — Fixed `uuid` moderate CVE via npm overrides
+- **HTTP security headers** — Added X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, HSTS, CSP, Referrer-Policy, Cache-Control to both daemon HTTP servers
+- **Rate limiter gradual refill** — Token-bucket now refills proportionally per-second instead of burst-refill at interval boundaries
+- **Path traversal protection** — `validate` command now restricts file reads to project directories
+- **SECURITY.md** — Created with vulnerability disclosure policy, security architecture docs, and reporting procedure
+- **prepublishOnly fix** — Changed from `prepublish` to `prepublishOnly` to prevent running build+test on `npm install`
 
 ---
 
