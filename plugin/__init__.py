@@ -99,7 +99,21 @@ def _run_cli(*args: str) -> str:
 
 
 def _handle_scan(args: dict, **kw) -> str:
-    """Run a full radar scan with optional filters."""
+    """Run a full radar scan with auto-dynamic mode by default.
+
+    When no filter is provided, the scan auto-selects the top 30 tokens
+    by 24h Binance volume (auto-dynamic mode). First-run detection provides
+    setup guidance to the agent.
+
+    Returns structured JSON with:
+      - success: bool
+      - tickers: enriched market data for each token
+      - signals: composite trading signals
+      - run: run metadata (tokens scanned, duration, dynamic count)
+      - source: "daemon" | "cli" | "first_run"
+      - first_run: bool — true if this is the first scan
+      - setup: setup guidance if first_run
+    """
     # Try daemon first (fast path — sub-50ms)
     daemon_data = _daemon_request("/scan")
     if daemon_data and daemon_data.get("tickers"):
@@ -118,13 +132,17 @@ def _handle_scan(args: dict, **kw) -> str:
             "signals": daemon_data.get("signals", []),
             "source": "daemon",
             "sorted_by": sort_by,
+            "first_run": False,
         }
         return json.dumps(result)
 
-    # Fallback to subprocess
+    # Fallback to subprocess — auto-dynamic mode by default
     cli_args = ["scan", "--format", "json"]
     if args.get("filter"):
         cli_args.extend(["--filter", *args["filter"]])
+    else:
+        # Auto-dynamic mode: top 30 by volume when no filter specified
+        cli_args.append("--dynamic")
     chain = args.get("chain")
     if chain:
         cli_args.extend(["--chain", chain])
@@ -136,7 +154,45 @@ def _handle_scan(args: dict, **kw) -> str:
         cli_args.append("--no-news")
     if args.get("no_log"):
         cli_args.append("--no-log")
-    return _run_cli(*cli_args)
+    if args.get("onchain"):
+        cli_args.append("--onchain")
+    output = _run_cli(*cli_args)
+
+    # First-run detection: check if log directory is empty
+    try:
+        import os
+        data_dir = os.path.expanduser("~/.hermes/data/crypto-radar")
+        is_first_run = not os.path.isdir(data_dir) or not any(f.endswith(".json") for f in os.listdir(data_dir)) if os.path.isdir(data_dir) else True
+    except Exception:
+        is_first_run = False
+
+    # Parse the output and add metadata
+    try:
+        parsed = json.loads(output)
+        if isinstance(parsed, dict) and parsed.get("success") is not False:
+            parsed["first_run"] = is_first_run
+            parsed["source"] = "cli"
+            if is_first_run:
+                parsed["setup"] = {
+                    "message": "First scan complete! Crypto Radar is now tracking real-time market data.",
+                    "tools": [
+                        "crypto_radar_scan — full market scan with indicators & signals",
+                        "crypto_radar_signals — composite trading signals",
+                        "crypto_radar_news — crypto news from 11 RSS feeds",
+                        "crypto_radar_tokens — list all 49 tracked tokens",
+                        "crypto_radar_chart — SVG candlestick/line/dashboard charts",
+                        "crypto_radar_daemon — start/stop/status warm daemon (<50ms calls)",
+                        "crypto_radar_onchain — DeFiLlama protocol & chain TVL",
+                        "crypto_radar_ws — real-time WebSocket price streams",
+                    ],
+                    "config": "Edit radar.config.json or set RADAR__* env vars to customize",
+                    "cron": "Run scripts/crypto-radar-collector.sh or use Hermes cron for 2h scans",
+                }
+            return json.dumps(parsed)
+    except (json.JSONDecodeError, ValueError):
+        pass
+
+    return output
 
 
 def _handle_signals(args: dict, **kw) -> str:
@@ -345,18 +401,31 @@ def _handle_ws(args: dict, **kw) -> str:
 
 CRYPTO_RADAR_SCAN_SCHEMA = {
     "name": "crypto_radar_scan",
-    "description": "🛰️ Run a full crypto market radar scan. Fetches live prices from Binance for 30+ tokens, computes technical indicators (RSI, MACD, BB, ATR), matches crypto news, and generates composite signals. Returns JSON with enriched tickers.",
+    "description": (
+        "🛰️ Run a full crypto market radar scan. Fetches live prices from Binance "
+        "for up to 49 tracked tokens, computes 26 technical indicators (RSI, MACD, BB, "
+        "ATR, Stochastic, Ichimoku, Williams%%R, CMF, TSI, ADX, PSAR, CCI, Keltner, ROC, "
+        "VWAP, StochRSI, TRIX, KST, Elder-Ray, Fisher, Mass Index, and more), matches "
+        "crypto news from 11 RSS feeds, runs 3-strategy signal engine with divergence "
+        "detection and ADX trend filter, and generates composite trading signals with "
+        "confidence scoring. Returns structured JSON with enriched tickers, signals, "
+        "and run metadata.\n\n"
+        "AUTO-DYNAMIC MODE: When no filter is provided, automatically selects the top 30 "
+        "tokens by 24h Binance volume for a focused, high-signal scan.\n\n"
+        "FIRST-RUN: On first use, returns setup guidance including all 8 tool "
+        "descriptions and cron automation instructions."
+    ),
     "parameters": {
         "type": "object",
         "properties": {
             "filter": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Filter to specific token symbols (e.g. ['SOL', 'BTC', 'ETH'])",
+                "description": "Filter to specific token symbols (e.g. ['SOL', 'BTC', 'ETH']). When omitted, auto-selects top 30 tokens by 24h volume.",
             },
             "chain": {
                 "type": "string",
-                "enum": ["solana", "polygon", "bnb", "xrp", "ethereum", "bitcoin", "dogecoin", "cardano"],
+                "enum": ["solana", "polygon", "bnb", "xrp", "ethereum", "bitcoin", "dogecoin", "cardano", "sui", "aptos", "sei", "celestia", "injective", "thorchain", "cosmos", "near", "tron", "stellar", "avalanche", "litecoin", "bitcoin-cash", "hedera", "bittensor", "polkadot", "filecoin", "zcash", "monero", "algorand", "tezos", "theta"],
                 "description": "Filter to a specific blockchain chain",
             },
             "sort_by": {
@@ -366,15 +435,19 @@ CRYPTO_RADAR_SCAN_SCHEMA = {
             },
             "no_tech": {
                 "type": "boolean",
-                "description": "Skip technical indicator computation (faster)",
+                "description": "Skip technical indicator computation (faster scan, ~2x speed)",
             },
             "no_news": {
                 "type": "boolean",
-                "description": "Skip news fetching (faster)",
+                "description": "Skip news fetching (faster scan)",
             },
             "no_log": {
                 "type": "boolean",
                 "description": "Skip logging results to CSV",
+            },
+            "onchain": {
+                "type": "boolean",
+                "description": "Include DeFiLlama on-chain metrics (TVL, fees) — adds ~3s to scan time",
             },
         },
     },
