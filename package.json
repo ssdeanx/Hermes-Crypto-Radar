@@ -25,6 +25,9 @@
     "main-banner.png",
     "CHANGELOG.md",
     "LICENSE",
+    "scripts/crypto-radar-collector.sh",
+    "scripts/install.sh",
+    "scripts/install.ps1",
     ".env.example"
   ],
   "scripts": {
@@ -40,7 +43,6 @@
     "daemon:stop": "node dist/cli.js daemon --stop",
     "export-sqlite": "node dist/cli.js export-sqlite",
     "collector": "bash scripts/crypto-radar-collector.sh",
-    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
