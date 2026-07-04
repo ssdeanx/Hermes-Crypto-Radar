@@ -1,8 +1,9 @@
 name: crypto-radar
-version: 1.3.0
-description: "🛰️ Crypto Radar — Enterprise crypto market intelligence for Hermes Agent. Multi-chain token tracking (40+ tokens across solana, polygon, bnb, bitcoin, ethereum, dogecoin, xrp, cardano, sui, aptos, sei, celestia, injective, thorchain, & cosmos), technical indicators (RSI/MACD/BB/ATR), news signals from 9 RSS feeds, 3-strategy signal engine (momentum/mean-reversion/trend-following), terminal+SVG charts, health monitoring, XLSX/CSV/JSON/MD export, on-chain metrics (protocol TVL, chain TVL, DEX fees), WebSocket real-time price streaming, and a warm daemon for sub-50ms tool calls. 8 tools — full-spectrum crypto intelligence for Hermes Agent."
+version: 1.4.0
+description: "🛰️ Enterprise crypto market intelligence for Hermes Agent. Tracks 40+ tokens across 10 chains (solana, polygon, bnb, bitcoin, ethereum, dogecoin, xrp, cardano, sui, aptos, sei, celestia, injective, thorchain, cosmos). Features 10 technical indicators (RSI/MACD/BB/ATR/MFI/OBV/Stochastic/Ichimoku/Williams%%R/CMF/TSI), 3-strategy signal engine (momentum/mean-reversion/trend-following), 11 RSS news feeds with relevance scoring, DeFiLlama on-chain metrics (protocol TVL, chain TVL, DEX fees), WebSocket real-time price streaming, warm daemon for sub-50ms tool calls, SVG/candlestick charts, candlestick pattern recognition (16 patterns), support/resistance detection, volume profile analysis, market regime detection, N×N correlation engine, backtesting engine, Discord/Telegram webhook alerts, HTML/PDF report export, and XLSX/CSV/JSON/MD export. 8 full-spectrum agent tools."
 author: Sam
 kind: backend
+toolset: crypto
 provides_tools:
   - crypto_radar_scan
   - crypto_radar_signals

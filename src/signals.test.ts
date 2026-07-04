@@ -94,27 +94,29 @@ describe('computeSignals', () => {
   it('generates DIP alert for large drops', () => {
     const tickers = [makeTicker({ priceChangePercent: -8 })];
     const signals = computeSignals(tickers, new Map(), []);
-    expect(signals[0]!.alerts).toContain('🔴 DIP (>5% drop)');
+    expect(signals[0]!.alerts[0]).toContain('DIP (>5% drop)');
+    expect(signals[0]!.alerts[0]).toContain('CRITICAL');
   });
 
   it('generates PUMP alert for large gains', () => {
     const tickers = [makeTicker({ priceChangePercent: 12 })];
     const signals = computeSignals(tickers, new Map(), []);
-    expect(signals[0]!.alerts).toContain('🟢 PUMP (>5% gain)');
+    expect(signals[0]!.alerts[0]).toContain('PUMP (>5% gain)');
+    expect(signals[0]!.alerts[0]).toContain('CRITICAL');
   });
 
   it('generates overbought alert for high RSI', () => {
     const tickers = [makeTicker()];
     const technicals = new Map([['TEST', makeTech({ rsi: 78 })]]);
     const signals = computeSignals(tickers, technicals, []);
-    expect(signals[0]!.alerts).toContain('Overbought (RSI > 70)');
+    expect(signals[0]!.alerts.find(a => a.includes('Overbought'))).toBeTruthy();
   });
 
   it('generates oversold alert for low RSI', () => {
     const tickers = [makeTicker()];
     const technicals = new Map([['TEST', makeTech({ rsi: 25 })]]);
     const signals = computeSignals(tickers, technicals, []);
-    expect(signals[0]!.alerts).toContain('Oversold (RSI < 30)');
+    expect(signals[0]!.alerts.find(a => a.includes('Oversold'))).toBeTruthy();
   });
 
   it('news score contribution increases with more articles', () => {
@@ -249,6 +251,6 @@ describe('computeSignals with onchain', () => {
       fetchedAt: '2026-07-03T00:00:00Z',
     };
     const signals = computeSignals(tickers, new Map(), [], onchain);
-    expect(signals[0]!.alerts).toContain('Strong on-chain TVL');
+    expect(signals[0]!.alerts.find(a => a.includes('Strong on-chain'))).toBeTruthy();
   });
 });

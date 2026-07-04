@@ -18,63 +18,532 @@
 //   1. priceSvgChart      — basic line chart with gradient fill
 //   2. multiPanelSvgChart — price + RSI dashboard
 //   3. candlestickSvgChart — OHLCV candlestick chart with EMA overlays
+//
+// Shared rendering primitives now live in shared-svg.ts.
+// ═══════════════════════════════════════════════════════════════════════
 
 import asciichart from 'asciichart';
+import pc from 'picocolors';
 import type { Kline } from '../types.js';
+import { findSupportResistance } from '../analysis/support-resistance.js';
+import type { PriceLevel } from '../analysis/support-resistance.js';
+import type {
+  ChartLayout,
+} from './shared-svg.js';
+import {
+  escapeXml,
+  formatYLabel,
+  formatTime,
+  getLayout,
+  chartStyles,
+  chartDefs,
+  svgOpen as sharedSvgOpen,
+  SVG_CLOSE,
+  renderWatermark as sharedRenderWatermark,
+  renderTitle as sharedRenderTitle,
+  renderYGrid,
+  renderXLabels,
+  renderMinMaxMarkers,
+  renderCrosshair,
+  renderVolumeBars,
+  calcCandleWidth,
+  applyLogScale,
+} from './shared-svg.js';
+
+// Re-export for backward compatibility
+export type { ChartLayout } from './shared-svg.js';
+export { escapeXml, formatYLabel, formatTime, getLayout } from './shared-svg.js';
 
 // ── Terminal ASCII Charts ──
 
 export interface ChartOptions {
   height?: number;
   showLabels?: boolean;
+  /** Desired terminal width for downsampling indicator rows (default: 60) */
+  width?: number;
+  /** Show support/resistance levels below the chart */
+  showSR?: boolean;
+  /** Period for trend direction analysis (default: 5) */
+  trendPeriod?: number;
+}
+
+// ── Format helpers ──
+
+/**
+ * Format a price value for compact display.
+ * Auto-scales: $1.23K, $1.23M, $0.00001234, etc.
+ */
+function formatPriceCompact(v: number): string {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}K`;
+  if (v >= 1) return v.toFixed(2);
+  if (v >= 0.01) return v.toFixed(4);
+  if (v >= 0.0001) return v.toFixed(6);
+  return v.toExponential(2);
 }
 
 /**
+ * Sample an array down to fit within `maxLen` elements
+ * using nearest-neighbor decimation.
+ */
+function downsample<T>(arr: T[], maxLen: number): T[] {
+  if (arr.length <= maxLen || maxLen <= 0) return [...arr];
+  const step = arr.length / maxLen;
+  const result: T[] = [];
+  for (let i = 0; i < maxLen; i++) {
+    result.push(arr[Math.min(Math.floor(i * step), arr.length - 1)]!);
+  }
+  return result;
+}
+
+// ── Indicator rows ──
+
+/**
+ * Render a colorful volume-bars row using picocolors.
+ * Down-sampled to fit the specified width.
+ */
+function renderVolumeBarsRow(volumes: number[], width: number): string {
+  const maxVol = Math.max(...volumes) || 1;
+  const sampled = downsample(volumes, width);
+  return sampled.map(v => {
+    const ratio = v / maxVol;
+    if (ratio > 0.8) return pc.cyan('█');
+    if (ratio > 0.6) return pc.cyan('▓');
+    if (ratio > 0.3) return pc.cyan('▒');
+    return pc.dim('░');
+  }).join('');
+}
+
+/**
+ * Render a color-coded RSI indicator row.
+ *   Green  █  oversold (≤30)
+ *   Yellow ▓  approaching extremes (30-40 / 60-70)
+ *   Red    █  overbought (≥70)
+ *   Dim    ░  neutral zone
+ */
+function renderRSIRow(rsiValues: (number | null)[], width: number): string {
+  const sampled = downsample(rsiValues, width);
+  return sampled.map(r => {
+    if (r == null) return ' ';
+    if (r >= 80) return pc.red('█');
+    if (r >= 70) return pc.red('▓');
+    if (r >= 60) return pc.yellow('▒');
+    if (r >= 40) return pc.dim('░');
+    if (r >= 30) return pc.yellow('▒');
+    if (r >= 20) return pc.green('▓');
+    return pc.green('█');
+  }).join('');
+}
+
+/**
+ * Render a volume-profile row showing bid/ask imbalance.
+ * Uses takerBuyQuoteVol vs total quoteVolume to show buying pressure.
+ * C > 75% = strong buying (green), < 25% = strong selling (red).
+ */
+function renderVolumeProfileRow(
+  takerBuyQuoteVols: number[],
+  quoteVolumes: number[],
+  width: number,
+): string {
+  const ratios = takerBuyQuoteVols.map((t, i) => {
+    const total = quoteVolumes[i] ?? 1;
+    return total > 0 ? t / total : 0.5;
+  });
+  const sampled = downsample(ratios, width);
+  return sampled.map(r => {
+    if (r > 0.75) return pc.green('█');
+    if (r > 0.6) return pc.green('▓');
+    if (r > 0.45) return pc.dim('░');
+    if (r > 0.25) return pc.red('▓');
+    return pc.red('█');
+  }).join('');
+}
+
+// ── Marker helpers ──
+
+/**
+ * Find the min and max value indices in a series.
+ */
+function findMinMaxIndices(values: number[]): { minIdx: number; maxIdx: number; minVal: number; maxVal: number } {
+  let minIdx = 0;
+  let maxIdx = 0;
+  for (let i = 1; i < values.length; i++) {
+    if (values[i]! < values[minIdx]!) minIdx = i;
+    if (values[i]! > values[maxIdx]!) maxIdx = i;
+  }
+  return { minIdx, maxIdx, minVal: values[minIdx]!, maxVal: values[maxIdx]! };
+}
+
+/**
+ * Compute a simple trend direction string from recent prices.
+ */
+function computeTrendLine(closes: number[], period: number): string {
+  if (closes.length < 2) return '—';
+  const lookback = Math.min(period, closes.length);
+  const start = closes[closes.length - lookback]!;
+  const end = closes[closes.length - 1]!;
+  const change = ((end - start) / (start || 1)) * 100;
+  const arrow = change > 2 ? pc.green('↑') : change > 0.5 ? pc.green('↗') : change < -2 ? pc.red('↓') : change < -0.5 ? pc.red('↘') : pc.dim('→');
+  const sign = change >= 0 ? '+' : '';
+  return `${arrow} ${sign}${change.toFixed(1)}%`;
+}
+
+/**
+ * Render a support/resistance level summary line.
+ */
+function renderSRSummary(
+  closes: number[],
+  klines: Kline[],
+  symbol: string,
+): string {
+  if (klines.length < 21) return '';
+  try {
+    const sr = findSupportResistance(symbol, klines, { maxLevels: 3 });
+    if (!sr.nearestSupport && !sr.nearestResistance) return '';
+    const parts: string[] = [];
+    if (sr.nearestSupport) {
+      parts.push(`${pc.green('▲')} ${sr.nearestSupport.label} ${pc.green(formatPriceCompact(sr.nearestSupport.price))}`);
+    }
+    if (sr.nearestResistance) {
+      parts.push(`${pc.red('▼')} ${sr.nearestResistance.label} ${pc.red(formatPriceCompact(sr.nearestResistance.price))}`);
+    }
+    if (parts.length > 0) {
+      return `SR  ${parts.join('  │  ')}`;
+    }
+  } catch {
+    // S/R detection may fail on insufficient data
+  }
+  return '';
+}
+
+// ── Existing ASCII chart functions (refactored) ──
+
+/**
  * Generate a terminal sparkline chart for price data.
- * Uses asciichart for compact inline display.
+ * Enhanced with picocolors, volume bars, mini RSI, and optional S/R overlay.
  */
 export function priceSparkline(klines: Kline[], opts: ChartOptions = {}): string {
   const closes = klines.map(k => k.close);
-  return asciichart.plot(closes, {
-    height: opts.height ?? 10,
-  });
+  const chartWidth = opts.width ?? 60;
+  const height = opts.height ?? 10;
+
+  const chart = asciichart.plot(closes, { height });
+
+  // Color based on overall trend
+  const trend = closes.length > 1 && closes[closes.length - 1]! >= closes[0]! ? 'up' : 'down';
+  const colorFn = trend === 'up' ? pc.green : pc.red;
+  const coloredChart = colorFn(chart);
+
+  // Volume bars row (enhanced)
+  const volumes = klines.map(k => k.quoteVolume);
+  const volRow = renderVolumeBarsRow(volumes, chartWidth);
+
+  // Color-coded RSI row
+  const rsiValues = calculateSeriesRsi(closes, 14);
+  const rsiRow = renderRSIRow(rsiValues, chartWidth);
+
+  // Min/max price labels
+  const lastPrice = closes[closes.length - 1]!;
+  const { minVal, maxVal } = findMinMaxIndices(closes);
+  const header = `${pc.yellow('⤒')} ${pc.bold(pc.yellow(formatPriceCompact(maxVal)))}  ${pc.yellow('⤓')} ${pc.bold(pc.yellow(formatPriceCompact(minVal)))}`;
+
+  // Trend line
+  const trendLine = computeTrendLine(closes, opts.trendPeriod ?? 5);
+  const lastRsi = rsiValues.filter((v): v is number => v != null).pop();
+  const rsiStr = lastRsi != null ? `RSI(14) ${lastRsi.toFixed(1)}` : '';
+
+  // Stats line
+  const stats = [
+    trendLine,
+    rsiStr,
+    `Latest ${pc.cyan(formatPriceCompact(lastPrice))}`,
+  ].filter(Boolean).join('  │  ');
+
+  let result = `${coloredChart}\n`;
+  result += `${header}\n`;
+  result += `${stats}\n`;
+  result += `Vol ${volRow}\n`;
+  result += `RSI ${rsiRow}\n`;
+
+  // S/R overlay if requested
+  if (opts.showSR) {
+    const sr = renderSRSummary(closes, klines, '');
+    if (sr) result += `${sr}\n`;
+  }
+
+  return result;
 }
 
 /**
  * Generate a dual-line sparkline (price + volume).
+ * Enhanced with picocolors, volume bars, and stats.
  */
 export function dualSparkline(klines: Kline[], opts: ChartOptions = {}): string {
   const closes = klines.map(k => k.close);
   const volumes = klines.map(k => k.quoteVolume);
+  const chartWidth = opts.width ?? 60;
+  const height = opts.height ?? 12;
 
-  return asciichart.plot([closes, volumes], {
-    height: opts.height ?? 12,
+  const chart = asciichart.plot([closes, volumes], {
+    height,
     colors: [
       asciichart.green,
       asciichart.cyan,
     ],
   });
+
+  // Color based on trend
+  const trend = closes.length > 1 && closes[closes.length - 1]! >= closes[0]! ? 'up' : 'down';
+  const colorFn = trend === 'up' ? pc.green : pc.red;
+  const coloredChart = colorFn(chart);
+
+  // Enhanced volume bars row
+  const volRow = renderVolumeBarsRow(volumes, chartWidth);
+
+  // RSI row (color-coded)
+  const rsiValues = calculateSeriesRsi(closes, 14);
+  const rsiRow = renderRSIRow(rsiValues, chartWidth);
+
+  // Latest price + stats
+  const lastPrice = closes[closes.length - 1]!;
+  const trendLine = computeTrendLine(closes, opts.trendPeriod ?? 5);
+  const lastRsi = rsiValues.filter((v): v is number => v != null).pop();
+  const rsiStr = lastRsi != null ? `RSI ${lastRsi.toFixed(1)}` : '';
+
+  const stats = [
+    trendLine,
+    rsiStr,
+    `Latest ${pc.cyan(formatPriceCompact(lastPrice))}`,
+  ].filter(Boolean).join('  │  ');
+
+  // Min/max
+  const { minVal, maxVal } = findMinMaxIndices(closes);
+  const header = `${pc.yellow('⤒')} ${formatPriceCompact(maxVal)}  ${pc.yellow('⤓')} ${formatPriceCompact(minVal)}`;
+
+  let result = `${coloredChart}\n`;
+  result += `${header}\n`;
+  result += `${stats}\n`;
+  result += `Vol ${volRow}\n`;
+  result += `RSI ${rsiRow}\n`;
+
+  // S/R overlay
+  if (opts.showSR) {
+    const sr = renderSRSummary(closes, klines, '');
+    if (sr) result += `${sr}\n`;
+  }
+
+  return result;
 }
 
 /**
  * Multi-series chart: price, EMA20, EMA50
+ * Enhanced with picocolors, volume bars, color-coded RSI, trendlines, and S/R overlay.
  */
 export function multiMaSparkline(klines: Kline[], opts: ChartOptions = {}): string {
   const closes = klines.map(k => k.close);
+  const chartWidth = opts.width ?? 60;
+  const height = opts.height ?? 12;
+
   const ema20 = calculateSeriesEma(closes, 20).map(v => v ?? 0);
   const ema50 = calculateSeriesEma(closes, 50).map(v => v ?? 0);
 
-  return asciichart.plot([closes, ema20, ema50], {
-    height: opts.height ?? 12,
+  const chart = asciichart.plot([closes, ema20, ema50], {
+    height,
     colors: [
       asciichart.green,
       asciichart.yellow,
       asciichart.red,
     ],
   });
+
+  // Color based on trend
+  const trend = closes.length > 1 && closes[closes.length - 1]! >= closes[0]! ? 'up' : 'down';
+  const colorFn = trend === 'up' ? pc.green : pc.red;
+  const coloredChart = colorFn(chart);
+
+  // Enhanced volume bars row
+  const volumes = klines.map(k => k.quoteVolume);
+  const volRow = renderVolumeBarsRow(volumes, chartWidth);
+
+  // Color-coded RSI indicator row
+  const rsiValues = calculateSeriesRsi(closes, 14);
+  const rsiRow = renderRSIRow(rsiValues, chartWidth);
+
+  // Volume profile (bid/ask imbalance)
+  const takerBuyVols = klines.map(k => k.takerBuyQuoteVol);
+  const vpRow = renderVolumeProfileRow(takerBuyVols, volumes, chartWidth);
+
+  // Min/max
+  const lastPrice = closes[closes.length - 1]!;
+  const { minVal, maxVal } = findMinMaxIndices(closes);
+  const header = `${pc.yellow('⤒')} ${pc.bold(pc.yellow(formatPriceCompact(maxVal)))}  ${pc.yellow('⤓')} ${pc.bold(pc.yellow(formatPriceCompact(minVal)))}`;
+
+  // Trend + stats
+  const trendLine = computeTrendLine(closes, opts.trendPeriod ?? 5);
+  const lastRsi = rsiValues.filter((v): v is number => v != null).pop();
+  const rsiStr = lastRsi != null ? `RSI(14) ${lastRsi.toFixed(1)}` : '';
+  const stats = [
+    trendLine,
+    rsiStr,
+    `Latest ${pc.cyan(formatPriceCompact(lastPrice))}`,
+  ].filter(Boolean).join('  │  ');
+
+  let result = `${coloredChart}\n`;
+  result += `${header}\n`;
+  result += `${stats}\n`;
+  result += `Vol ${volRow}\n`;
+  result += `Bid ${vpRow}\n`;
+  result += `RSI ${rsiRow}\n`;
+
+  // S/R overlay
+  if (opts.showSR) {
+    const sr = renderSRSummary(closes, klines, '');
+    if (sr) result += `${sr}\n`;
+  }
+
+  return result;
 }
 
-// ── Shared Helpers ──
+// ── Multi-pane ASCII layout ──
+
+export interface MultiPaneOptions {
+  /** Whether to show the price chart pane */
+  showPrice?: boolean;
+  /** Whether to show the volume chart pane */
+  showVolume?: boolean;
+  /** Whether to show the RSI indicator pane */
+  showRSI?: boolean;
+  /** Height for each pane (default: 8) */
+  paneHeight?: number;
+  /** Width for downsampling indicator rows (default: 60) */
+  width?: number;
+}
+
+/**
+ * Generate a multi-pane ASCII terminal layout combining price, volume, and RSI.
+ * Each pane is stacked vertically with clear headers and annotations.
+ *
+ * Layout:
+ *   ┌─ Price ─────────────────────────┐
+ *   │  [asciichart price sparkline]   │
+ *   │  S/R levels, min/max markers    │
+ *   ├─ Volume ────────────────────────┤
+ *   │  [asciichart volume series]     │
+ *   │  Bid/Ask imbalance row          │
+ *   ├─ RSI ───────────────────────────┤
+ *   │  [color-coded RSI indicator]    │
+ *   │  Value + zone label             │
+ *   └─────────────────────────────────┘
+ */
+export function multiPaneAsciiChart(
+  klines: Kline[],
+  symbol: string,
+  opts: MultiPaneOptions = {},
+): string {
+  const { showPrice = true, showVolume = true, showRSI = true, paneHeight = 8, width = 60 } = opts;
+  const lines: string[] = [];
+  const closes = klines.map(k => k.close);
+  const volumes = klines.map(k => k.quoteVolume);
+  const takerBuyVols = klines.map(k => k.takerBuyQuoteVol);
+  const rsiValues = calculateSeriesRsi(closes, 14);
+
+  const sep = pc.dim('─').repeat(width + 6);
+
+  // ── Price Pane ──
+  if (showPrice && closes.length > 0) {
+    const priceChart = asciichart.plot(closes, { height: paneHeight });
+    const trend = closes.length > 1 && closes[closes.length - 1]! >= closes[0]! ? 'up' : 'down';
+    const colorFn = trend === 'up' ? pc.green : pc.red;
+    lines.push(pc.bold(pc.cyan('┌─ Price ')) + pc.dim('─'.repeat(width - 4)));
+    lines.push(colorFn(priceChart));
+    lines.push('');
+
+    // Min/max markers
+    const { minVal, maxVal } = findMinMaxIndices(closes);
+    lines.push(`  ${pc.yellow('⤒')} ${pc.bold(pc.yellow(formatPriceCompact(maxVal)))}  ${pc.yellow('⤓')} ${pc.bold(pc.yellow(formatPriceCompact(minVal)))}`);
+
+    // Trend annotation
+    const trendLine = computeTrendLine(closes, 5);
+    const lastPrice = closes[closes.length - 1]!;
+    const latestLabel = `${pc.cyan('◀')} Latest ${pc.bold(pc.cyan(formatPriceCompact(lastPrice)))}`;
+    lines.push(`  ${trendLine}  │  ${latestLabel}`);
+
+    // Volume bars row
+    const volRow = renderVolumeBarsRow(volumes, width);
+    lines.push(`  Vol ${volRow}`);
+
+    // S/R levels
+    try {
+      const sr = findSupportResistance(symbol, klines, { maxLevels: 3 });
+      const srParts: string[] = [];
+      if (sr.nearestSupport) {
+        srParts.push(`${pc.green('▲')} ${sr.nearestSupport.label} ${pc.green(formatPriceCompact(sr.nearestSupport.price))}`);
+      }
+      if (sr.nearestResistance) {
+        srParts.push(`${pc.red('▼')} ${sr.nearestResistance.label} ${pc.red(formatPriceCompact(sr.nearestResistance.price))}`);
+      }
+      if (srParts.length > 0) {
+        lines.push(`  SR  ${srParts.join('  │  ')}`);
+      }
+    } catch {
+      // S/R requires minimum data
+    }
+
+    lines.push(pc.dim(`  ${sep}`));
+  }
+
+  // ── Volume Pane ──
+  if (showVolume && volumes.length > 0) {
+    lines.push(pc.bold(pc.magenta('┌─ Volume ')) + pc.dim('─'.repeat(width - 3)));
+    const volChart = asciichart.plot(volumes, { height: paneHeight });
+    lines.push(pc.cyan(volChart));
+    lines.push('');
+
+    // Bid/Ask imbalance row
+    const vpRow = renderVolumeProfileRow(takerBuyVols, volumes, width);
+    lines.push(`  Bid/Ask ${vpRow}`);
+
+    // Volume min/max
+    const { minVal: vMin, maxVal: vMax } = findMinMaxIndices(volumes);
+    lines.push(`  ${pc.yellow('⤒')} ${pc.bold(pc.yellow(formatPriceCompact(vMax)))}  ${pc.yellow('⤓')} ${pc.bold(pc.yellow(formatPriceCompact(vMin)))}`);
+
+    lines.push(pc.dim(`  ${sep}`));
+  }
+
+  // ── RSI Pane ──
+  if (showRSI) {
+    const lastRsi = rsiValues.filter((v): v is number => v != null).pop();
+    const rsiValue = lastRsi != null ? lastRsi.toFixed(1) : 'N/A';
+    let zoneLabel: string;
+    let zoneColor: typeof pc.green;
+    if (lastRsi == null) { zoneLabel = '—'; zoneColor = pc.dim; }
+    else if (lastRsi >= 70) { zoneLabel = 'Overbought'; zoneColor = pc.red; }
+    else if (lastRsi >= 60) { zoneLabel = 'Upper Neutral'; zoneColor = pc.yellow; }
+    else if (lastRsi >= 40) { zoneLabel = 'Neutral'; zoneColor = pc.dim; }
+    else if (lastRsi >= 30) { zoneLabel = 'Lower Neutral'; zoneColor = pc.yellow; }
+    else { zoneLabel = 'Oversold'; zoneColor = pc.green; }
+
+    lines.push(pc.bold(pc.yellow('┌─ RSI(14) ')) + pc.dim('─'.repeat(width - 6)));
+
+    // Full RSI indicator row
+    const rsiRow = renderRSIRow(rsiValues, width);
+    lines.push(`  ${rsiRow}`);
+    lines.push('');
+
+    // RSI value with zone
+    lines.push(`  RSI ${pc.bold(zoneColor(rsiValue))}  —  ${zoneColor(zoneLabel)}`);
+
+    // Overbought/Oversold markers
+    lines.push(`  ${pc.red('┄'.repeat(Math.round(width * 0.7)))} 70 OB`);
+    lines.push(`  ${pc.green('┄'.repeat(Math.round(width * 0.3)))} 30 OS`);
+
+    lines.push(pc.dim(`  ${sep}`));
+  }
+
+  return lines.join('\n');
+}
+
+// ── Shared Helpers (kept for SVG code compatibility) ──
 
 function calculateSeriesEma(values: number[], period: number): (number | null)[] {
   if (!values || values.length < period) return new Array(values.length).fill(null);
@@ -87,336 +556,46 @@ function calculateSeriesEma(values: number[], period: number): (number | null)[]
   return result;
 }
 
-function formatYLabel(v: number): string {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
-  if (v >= 1) return `$${v.toFixed(2)}`;
-  if (v >= 0.01) return `$${v.toFixed(4)}`;
-  return `$${v.toFixed(6)}`;
-}
-
-function escapeXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function formatTime(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
-}
-
-interface ChartLayout {
-  padding: { top: number; right: number; bottom: number; left: number };
-  width: number;
-  height: number;
-  plotW: number;
-  plotH: number;
-}
-
-function getLayout(width: number, height: number, bottomPad = 50): ChartLayout {
-  const padding = { top: 30, right: 20, bottom: bottomPad, left: 60 };
-  return {
-    padding,
-    width,
-    height,
-    plotW: width - padding.left - padding.right,
-    plotH: height - padding.top - padding.bottom,
-  };
-}
-
-/** Shared CSS styles block injected into every SVG */
-function sharedStyles(): string {
-  return `<style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;display=swap');
-    .bg { fill: #0f172a; }
-    .title { fill: #f1f5f9; font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 13px; font-weight: 700; }
-    .grid-line { stroke: #1e293b; stroke-width: 1; }
-    .grid-label { fill: #475569; font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 10px; }
-    .price-line { fill: none; stroke: url(#priceGrad); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-    .price-fill { fill: url(#priceFillGrad); }
-    .ema20-line { fill: none; stroke: #f59e0b; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
-    .ema50-line { fill: none; stroke: #8b5cf6; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
-    .crosshair-line { stroke: rgba(148,163,184,0.5); stroke-width: 1; stroke-dasharray: 4,4; }
-    .label-bg { fill: #1e293b; stroke: rgba(34,211,238,0.3); rx: 4; }
-    .label-text { fill: #22d3ee; font-family: 'Inter', monospace; font-size: 11px; font-weight: 700; }
-    .label-text-white { fill: #f1f5f9; font-family: 'Inter', monospace; font-size: 10px; }
-    .minmax-line { stroke: #facc15; stroke-width: 1; stroke-dasharray: 3,2; }
-    .minmax-text { fill: #facc15; font-family: 'Inter', monospace; font-size: 9px; }
-    .vol-bar-up { fill: rgba(34,197,94,0.5); }
-    .vol-bar-down { fill: rgba(239,68,68,0.5); }
-    .candle-up { fill: rgba(34,197,94,0.7); stroke: #22c55e; }
-    .candle-down { fill: rgba(239,68,68,0.7); stroke: #ef4444; }
-    .wick-up { stroke: #22c55e; stroke-width: 1; }
-    .wick-down { stroke: #ef4444; stroke-width: 1; }
-    .watermark { fill: rgba(148,163,184,0.25); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 10px; }
-    .axis-label { fill: #64748b; font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 9px; }
-    .rsi-line { fill: none; stroke: url(#rsiGrad); stroke-width: 1.5; stroke-linejoin: round; }
-    .rsi-label { fill: #94a3b8; font-family: 'Inter', monospace; font-size: 9px; }
-    .rsi-ob { stroke: rgba(239,68,68,0.5); stroke-width: 1; stroke-dasharray: 4,3; }
-    .rsi-os { stroke: rgba(34,197,94,0.5); stroke-width: 1; stroke-dasharray: 4,3; }
-    .rsi-bound { stroke: rgba(148,163,184,0.15); stroke-width: 1; }
-    /* Volume Profile styles */
-    .vp-bar-normal { fill: rgba(148,163,184,0.15); }
-    .vp-bar-hvn { fill: rgba(34,197,94,0.35); }
-    .vp-bar-lvn { fill: rgba(239,68,68,0.3); }
-    .vp-poc-line { stroke: #22d3ee; stroke-width: 1.5; stroke-dasharray: 3,2; }
-    .vp-poc-label { fill: #22d3ee; font-family: 'Inter', monospace; font-size: 9px; font-weight: 700; }
-    .vp-label { fill: #64748b; font-family: 'Inter', monospace; font-size: 9px; }
-    .vp-va-area { fill: rgba(34,211,238,0.06); stroke: rgba(34,211,238,0.15); stroke-width: 0.5; }
-    /* Comparison chart styles */
-    .comp-grid-line { stroke: #1e293b; stroke-width: 1; }
-    .comp-grid-line-zero { stroke: #334155; stroke-width: 2; stroke-dasharray: 5,3; }
-    .comp-grid-label { fill: #475569; font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 9px; }
-    .comp-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-    .comp-hover-dot { fill: transparent; }
-    .comp-legend-text { fill: #f1f5f9; font-family: 'Inter', monospace; font-size: 10px; }
-    .comp-pct-up { fill: #22c55e; }
-    .comp-pct-down { fill: #ef4444; }
-    .comp-pct-zero { fill: #94a3b8; }
-    /* Light mode overrides */
-    @media (prefers-color-scheme: light) {
-      .bg { fill: #ffffff; }
-      .title { fill: #1e293b; }
-      .grid-line { stroke: #e2e8f0; }
-      .grid-label { fill: #475569; }
-      .axis-label { fill: #64748b; }
-      .label-bg { fill: #f1f5f9; stroke: rgba(34,211,238,0.4); }
-      .label-text { fill: #0891b2; }
-      .label-text-white { fill: #1e293b; }
-      .rsi-label { fill: #64748b; }
-      .watermark { fill: rgba(100,116,139,0.35); }
-      .comp-grid-line { stroke: #e2e8f0; }
-      .comp-grid-line-zero { stroke: #cbd5e1; }
-      .comp-grid-label { fill: #64748b; }
-      .comp-legend-text { fill: #1e293b; }
-      .vol-bar-up { fill: rgba(22,163,74,0.35); }
-      .vol-bar-down { fill: rgba(220,38,38,0.35); }
-      .candle-up { fill: rgba(22,163,74,0.6); stroke: #16a34a; }
-      .candle-down { fill: rgba(220,38,38,0.6); stroke: #dc2626; }
-      .wick-up { stroke: #16a34a; }
-      .wick-down { stroke: #dc2626; }
-    }
-    /* Hyperframe animations */
-    @keyframes pulse-glow {
-      0%, 100% { opacity: 0.6; }
-      50% { opacity: 1; }
-    }
-    @keyframes gradient-shift {
-      0% { stop-color: #0f172a; }
-      50% { stop-color: #1e293b; }
-      100% { stop-color: #0f172a; }
-    }
-    .latest-candle { animation: pulse-glow 2s ease-in-out infinite; }
-    .pulse-dot { animation: pulse-glow 2s ease-in-out infinite; }
-    .data-point { transition: opacity 0.3s, stroke-width 0.3s, r 0.3s; }
-    .data-point:hover { opacity: 1; stroke-width: 3; r: 5; }
-    .frame-counter { fill: rgba(148,163,184,0.3); font-family: 'Inter', monospace; font-size: 8px; }
-    /* Glassmorphism panel */
-    .panel { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: rgba(30, 41, 59, 0.8); border-radius: 8px; }
-    @media (prefers-color-scheme: light) {
-      .panel { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); background: rgba(255, 255, 255, 0.9); }
-    }
-    /* Typography */
-    .tabular-nums { font-variant-numeric: tabular-nums; }
-    /* Accessibility: reduced motion */
-    @media (prefers-reduced-motion: reduce) {
-      .latest-candle, .pulse-dot, .data-point { animation: none; transition: none; }
-    }
-  </style>`;
-}
-
-/** Shared defs block: gradients used across chart types */
-function sharedDefs(): string {
-  return `<defs>
-    <linearGradient id="priceGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.5"/>
-      <stop offset="50%" stop-color="#22d3ee" stop-opacity="0.85"/>
-      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.95"/>
-    </linearGradient>
-    <linearGradient id="priceFillGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.15"/>
-      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.02"/>
-    </linearGradient>
-    <linearGradient id="volGrad" x1="0" y1="1" x2="0" y2="0">
-      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.05"/>
-      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.25"/>
-    </linearGradient>
-    <linearGradient id="rsiGrad" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="#a78bfa" stop-opacity="0.5"/>
-      <stop offset="100%" stop-color="#8b5cf6" stop-opacity="0.9"/>
-    </linearGradient>
-    <linearGradient id="candleVolUpGrad" x1="0" y1="1" x2="0" y2="0">
-      <stop offset="0%" stop-color="rgba(34,197,94,0.1)"/>
-      <stop offset="100%" stop-color="rgba(34,197,94,0.5)"/>
-    </linearGradient>
-    <linearGradient id="candleVolDownGrad" x1="0" y1="1" x2="0" y2="0">
-      <stop offset="0%" stop-color="rgba(239,68,68,0.1)"/>
-      <stop offset="100%" stop-color="rgba(239,68,68,0.5)"/>
-    </linearGradient>
-    <filter id="lineGlow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="2.5" result="blur"/>
-      <feMerge>
-        <feMergeNode in="blur"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-    <filter id="glassMorphism" x="-10%" y="-10%" width="120%" height="120%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="1.5" result="blur"/>
-      <feSpecularLighting in="blur" surfaceScale="2" specularConstant="0.2" specularExponent="20" lighting-color="#ffffff" result="specOut">
-        <fePointLight x="200" y="100" z="200"/>
-      </feSpecularLighting>
-      <feComposite in="specOut" in2="SourceAlpha" operator="in" result="specOut2"/>
-      <feComposite in="SourceGraphic" in2="specOut2" operator="arithmetic" k1="0" k2="1" k3="0.08" k4="0"/>
-    </filter>
-    <!-- Gradient-shift animation background gradients -->
-    <linearGradient id="bgGradShift" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#0f172a">
-        <animate attributeName="stop-color" values="#0f172a;#1e293b;#0f172a" dur="8s" repeatCount="indefinite"/>
-      </stop>
-      <stop offset="100%" stop-color="#0f172a">
-        <animate attributeName="stop-color" values="#0f172a;#1e293b;#0f172a" dur="8s" repeatCount="indefinite"/>
-      </stop>
-    </linearGradient>
-  </defs>`;
-}
-
-// ── Grid & Axis Renderers ──
-
-/**
- * Render horizontal grid lines and Y-axis labels
- */
-function renderYGrid(layout: ChartLayout, min: number, max: number, lines = 5): string {
-  const { padding, plotW, plotH, width } = layout;
-  const range = max - min || 1;
-  let out = '';
-  for (let i = 0; i <= lines; i++) {
-    const yRatio = i / lines;
-    const y = padding.top + plotH * yRatio;
-    const val = max - range * yRatio;
-    out += `<line x1="${padding.left}" y1="${y.toFixed(1)}" x2="${(width - padding.right).toFixed(1)}" y2="${y.toFixed(1)}" class="grid-line"/>\n`;
-    out += `<text x="${(padding.left - 8).toFixed(1)}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" class="grid-label">${formatYLabel(val)}</text>\n`;
+function calculateSeriesRsi(values: number[], period: number): (number | null)[] {
+  if (!values || values.length < period + 1) return new Array(values.length).fill(null);
+  const result: (number | null)[] = new Array(values.length).fill(null);
+  const changes: number[] = [];
+  for (let i = 1; i < values.length; i++) {
+    changes.push(values[i]! - values[i - 1]!);
   }
-  return out;
-}
-
-/**
- * Render X-axis time labels (last few timestamps)
- */
-function renderXLabels(layout: ChartLayout, klines: Kline[], count = 5): string {
-  const { padding, plotW, height, plotH } = layout;
-  const n = klines.length;
-  if (n === 0) return '';
-  const step = Math.max(1, Math.floor(n / (count - 1)));
-  let out = '';
-  for (let i = 0; i < n; i += step) {
-    const x = padding.left + (i / (n - 1)) * plotW;
-    const k = klines[i]!;
-    const label = formatTime(k.openTime);
-    out += `<text x="${x.toFixed(1)}" y="${(height - padding.bottom + 18).toFixed(1)}" text-anchor="middle" class="axis-label">${escapeXml(label)}</text>\n`;
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 0; i < period; i++) {
+    avgGain += Math.max(changes[i]!, 0);
+    avgLoss += Math.max(-changes[i]!, 0);
   }
-  // Last one
-  const lastK = klines[n - 1]!;
-  const lastX = padding.left + plotW;
-  out += `<text x="${lastX.toFixed(1)}" y="${(height - padding.bottom + 18).toFixed(1)}" text-anchor="end" class="axis-label">${formatTime(lastK.openTime)}</text>\n`;
-  return out;
-}
-
-/**
- * Render min/max price markers with horizontal lines and labels
- */
-function renderMinMaxMarkers(layout: ChartLayout, klines: Kline[], min: number, max: number): string {
-  const { padding, plotW, plotH, width } = layout;
-  const range = max - min || 1;
-  const n = klines.length;
-  let out = '';
-
-  // Highest high
-  let highIdx = 0;
-  let highest = klines[0]?.high ?? 0;
-  for (let i = 1; i < n; i++) {
-    if ((klines[i]?.high ?? 0) > highest) { highest = klines[i]!.high; highIdx = i; }
+  avgGain /= period;
+  avgLoss /= period;
+  result[period] = 100 - (100 / (1 + (avgGain / (avgLoss || 0.001))));
+  for (let i = period + 1; i < values.length; i++) {
+    const change = changes[i - 1]!;
+    avgGain = (avgGain * (period - 1) + Math.max(change, 0)) / period;
+    avgLoss = (avgLoss * (period - 1) + Math.max(-change, 0)) / period;
+    result[i] = 100 - (100 / (1 + (avgGain / (avgLoss || 0.001))));
   }
-  const highX = padding.left + (highIdx / (n - 1)) * plotW;
-  const highY = padding.top + plotH - ((highest - min) / range) * plotH;
-  out += `<line x1="${padding.left}" y1="${highY.toFixed(1)}" x2="${(width - padding.right).toFixed(1)}" y2="${highY.toFixed(1)}" class="minmax-line"/>\n`;
-  out += `<rect x="${(highX + 4).toFixed(1)}" y="${(highY - 11).toFixed(1)}" width="68" height="16" rx="3" fill="#1e293b" stroke="rgba(250,204,21,0.3)"/>\n`;
-  out += `<text x="${(highX + 8).toFixed(1)}" y="${(highY + 1).toFixed(1)}" class="minmax-text">⬆ ${formatYLabel(highest)}</text>\n`;
-
-  // Lowest low
-  let lowIdx = 0;
-  let lowest = klines[0]?.low ?? 0;
-  for (let i = 1; i < n; i++) {
-    if ((klines[i]?.low ?? Infinity) < lowest) { lowest = klines[i]!.low; lowIdx = i; }
-  }
-  const lowX = padding.left + (lowIdx / (n - 1)) * plotW;
-  const lowY = padding.top + plotH - ((lowest - min) / range) * plotH;
-  out += `<line x1="${padding.left}" y1="${lowY.toFixed(1)}" x2="${(width - padding.right).toFixed(1)}" y2="${lowY.toFixed(1)}" class="minmax-line"/>\n`;
-  out += `<rect x="${(lowX + 4).toFixed(1)}" y="${(lowY - 11).toFixed(1)}" width="68" height="16" rx="3" fill="#1e293b" stroke="rgba(250,204,21,0.3)"/>\n`;
-  out += `<text x="${(lowX + 8).toFixed(1)}" y="${(lowY + 1).toFixed(1)}" class="minmax-text">⬇ ${formatYLabel(lowest)}</text>\n`;
-
-  return out;
+  return result;
 }
 
-/**
- * Render crosshair at the latest candle with price/date tooltip
- */
-function renderCrosshair(layout: ChartLayout, klines: Kline[], min: number, max: number): string {
-  const { padding, plotW, plotH, width } = layout;
-  const range = max - min || 1;
-  const n = klines.length;
-  const lastK = klines[n - 1];
-  if (!lastK) return '';
+// ── Local SVG helpers (keep localized for backward compat) ──
 
-  const x = padding.left + plotW;
-  const y = padding.top + plotH - ((lastK.close - min) / range) * plotH;
-
-  return `<line x1="${x.toFixed(1)}" y1="${(padding.top - 5).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(padding.top + plotH + 5).toFixed(1)}" class="crosshair-line"/>\n` +
-    `<rect x="${(x + 5).toFixed(1)}" y="${(y - 10).toFixed(1)}" width="90" height="20" rx="4" class="label-bg"/>\n` +
-    `<text x="${(x + 10).toFixed(1)}" y="${(y + 3).toFixed(1)}" class="label-text">${formatYLabel(lastK.close)}</text>\n` +
-    `<rect x="${(padding.left - 5).toFixed(1)}" y="${(y - 10).toFixed(1)}" width="90" height="20" rx="4" class="label-bg"/>\n` +
-    `<text x="${padding.left.toFixed(1)}" y="${(y + 3).toFixed(1)}" class="label-text">${formatTime(lastK.openTime)}</text>\n`;
-}
-
-/**
- * Render volume bars with gradient fill
- */
-function renderVolumeBars(layout: ChartLayout, klines: Kline[], barMaxHeight: number): string {
-  const { padding, plotW, height } = layout;
-  const n = klines.length;
-  const volumes = klines.map(k => k.quoteVolume);
-  const maxVol = Math.max(...volumes) || 1;
-  let out = '';
-  for (let i = 0; i < n; i++) {
-    const volRatio = volumes[i]! / maxVol;
-    const x = padding.left + (i / (n - 1)) * plotW;
-    const barH = volRatio * barMaxHeight;
-    const barY = height - padding.bottom + 5;
-    out += `<rect x="${(x - 1).toFixed(1)}" y="${(barY - barH).toFixed(1)}" width="2" height="${barH.toFixed(1)}" fill="url(#volGrad)">
-      <animate attributeName="height" from="0" to="${barH.toFixed(1)}" dur="0.5s" fill="freeze"/>
-      <animate attributeName="y" from="${barY}" to="${(barY - barH).toFixed(1)}" dur="0.5s" fill="freeze"/>
-    </rect>\n`;
-  }
-  return out;
-}
-
-/** Watermark branding */
-function renderWatermark(layout: ChartLayout): string {
-  const { width, height } = layout;
-  return `<text x="${(width - 12).toFixed(1)}" y="${(height - 8).toFixed(1)}" text-anchor="end" class="watermark">🛰️ Hermes Crypto Radar</text>`;
-}
-
-/** Opening SVG tag with accessibility attributes */
+/** Wrapper using shared svgOpen — alias for internal use */
 function svgOpen(width: number, height: number, title: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(title)}">
-  ${sharedStyles()}
-  ${sharedDefs()}
-  <rect width="${width}" height="${height}" class="bg" rx="8"/>`;
+  return sharedSvgOpen(width, height, title);
 }
 
-const SVG_CLOSE = '</svg>';
-
-/** Render title centered */
+/** Render title centered with shared primitive */
 function renderTitle(layout: ChartLayout, title: string): string {
-  return `<text x="${(layout.width / 2).toFixed(1)}" y="20" text-anchor="middle" class="title">${escapeXml(title)}</text>`;
+  return sharedRenderTitle(layout.width, 20, title);
+}
+
+/** Render watermark branding with shared primitive */
+function renderWatermark(layout: ChartLayout): string {
+  return sharedRenderWatermark(layout.width, layout.height);
 }
 
 // ── SVG Chart Generation ──
@@ -424,45 +603,59 @@ function renderTitle(layout: ChartLayout, title: string): string {
 /**
  * Generate an inline SVG price chart (line chart).
  * Enhanced with gradients, crosshair, tooltips, axis labels, min/max markers, and branding.
- * Self-contained — no external deps, renders in any browser/markdown viewer.
+ * Supports optional log scale via logScale parameter.
  */
 export function priceSvgChart(
   title: string,
   klines: Kline[],
   width = 600,
   height = 300,
+  logScale = false,
 ): string {
   const closes = klines.map(k => k.close);
-  const min = Math.min(...closes);
-  const max = Math.max(...closes);
+  const n = closes.length;
+
+  // Division-by-zero guard: early return if no data or single datapoint
+  if (n < 2) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40"><rect width="200" height="40" fill="#0f172a" rx="4"/><text x="100" y="24" text-anchor="middle" fill="#94a3b8" font-family="'Inter', sans-serif" font-size="12">${n === 0 ? 'No data' : 'Insufficient data points'}</text></svg>`;
+  }
+
+  // Apply log scale if enabled
+  const scaledCloses = logScale ? closes.map(v => applyLogScale(v, true)) : closes;
+
+  const min = Math.min(...scaledCloses);
+  const max = Math.max(...scaledCloses);
   const range = max - min || 1;
   const layout = getLayout(width, height);
   const { padding, plotW, plotH } = layout;
-  const n = closes.length;
 
   // Generate SVG path data
-  const points = closes.map((v, i) => {
+  const points = scaledCloses.map((v, i) => {
     const x = padding.left + (i / (n - 1)) * plotW;
     const y = padding.top + plotH - ((v - min) / range) * plotH;
     return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
   });
   const pathData = points.join(' ');
 
+  // Original min/max for labels
+  const origMin = Math.min(...closes);
+  const origMax = Math.max(...closes);
+
   // Tooltip <title> elements on every data point
   let tooltipSvg = '';
   for (let i = 0; i < n; i++) {
     const x = padding.left + (i / (n - 1)) * plotW;
-    const y = padding.top + plotH - ((closes[i]! - min) / range) * plotH;
+    const y = padding.top + plotH - ((scaledCloses[i]! - min) / range) * plotH;
     tooltipSvg += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" class="data-point">
-      <title>${formatTime(klines[i]!.openTime)} — ${formatYLabel(closes[i]!)}</title>
+      <title>${formatTime(klines[i]!.openTime)} — ${formatYLabel(closes[i]!)}${logScale ? ' (log)' : ''}</title>
     </circle>\n`;
   }
 
   const svg = `${svgOpen(width, height, `Price Chart: ${title}`)}
   ${renderTitle(layout, title)}
 
-  <!-- Grid & Y-axis -->
-  ${renderYGrid(layout, min, max)}
+  <!-- Grid & Y-axis (show original prices on labels) -->
+  ${renderYGrid(layout, origMin, origMax)}
 
   <!-- Volume bars -->
   ${renderVolumeBars(layout, klines, 20)}
@@ -477,16 +670,16 @@ export function priceSvgChart(
   ${tooltipSvg}
 
   <!-- Crosshair + labels -->
-  ${renderCrosshair(layout, klines, min, max)}
+  ${renderCrosshair(layout, klines, origMin, origMax)}
 
   <!-- Pulsing latest data point -->
-  <circle cx="${(padding.left + plotW).toFixed(1)}" cy="${(padding.top + plotH - ((closes[n-1]! - min) / range) * plotH).toFixed(1)}" r="4" class="pulse-dot data-point"/>
+  <circle cx="${(padding.left + plotW).toFixed(1)}" cy="${(padding.top + plotH - ((scaledCloses[n - 1]! - min) / range) * plotH).toFixed(1)}" r="4" class="pulse-dot data-point"/>
 
   <!-- Frame counter -->
   <text x="6" y="${(height - 8).toFixed(1)}" class="frame-counter">FRM-${Math.floor(Math.random() * 90000 + 10000)}</text>
 
   <!-- Min/max markers -->
-  ${renderMinMaxMarkers(layout, klines, min, max)}
+  ${renderMinMaxMarkers(layout, klines, origMin, origMax)}
 
   <!-- X-axis labels -->
   ${renderXLabels(layout, klines)}
@@ -501,6 +694,7 @@ ${SVG_CLOSE}`;
 
 /**
  * Generate a multi-panel SVG dashboard with price + RSI.
+ * Panels are perfectly aligned with equal-width axes and no overlapping elements.
  */
 export function multiPanelSvgChart(
   title: string,
@@ -509,19 +703,51 @@ export function multiPanelSvgChart(
   width = 600,
   height = 400,
 ): string {
-  const panelH = Math.floor((height - 20) / 2);
   const closes = klines.map(k => k.close);
+  const n = klines.length;
+
+  // Division-by-zero guard
+  if (n < 2) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40"><rect width="200" height="40" fill="#0f172a" rx="4"/><text x="100" y="24" text-anchor="middle" fill="#94a3b8" font-family="'Inter', sans-serif" font-size="12">${n === 0 ? 'No data' : 'Insufficient data points'}</text></svg>`;
+  }
+
   const min = Math.min(...closes);
   const max = Math.max(...closes);
   const range = max - min || 1;
 
-  // ── Price panel layout ──
-  const priceLayout = getLayout(width, panelH + 40);
-  const n = klines.length;
+  // ── Layout: divide height evenly between price and RSI panels ──
+  const panelGap = 24;           // gap between panels (divider + padding)
+  const panelH = Math.floor((height - panelGap) / 2);
+  const titleH = 20;             // top title area height
+  const availPlotH = panelH - titleH;
+  const padding = { top: 0, right: 20, bottom: 0, left: 60 };
+  const plotW = width - padding.left - padding.right;
 
+  // Price panel
+  const pricePad = { top: titleH, right: 20, bottom: 0, left: 60 };
+  const pricePlotH = availPlotH - 26; // leave room for x-labels at bottom
+  const priceBottom = 26;
+
+  // RSI panel
+  const rsiPad = { top: 8, right: 20, bottom: 12, left: 60 };
+  const rsiPlotH = availPlotH - rsiPad.top - rsiPad.bottom;
+  const rsiPanelTop = titleH + availPlotH + panelGap;
+
+  const priceLayout: ChartLayout = {
+    padding: pricePad, width, height,
+    plotW,
+    plotH: pricePlotH,
+  };
+  const rsiLayout: ChartLayout = {
+    padding: rsiPad, width, height: rsiPlotH,
+    plotW,
+    plotH: rsiPlotH,
+  };
+
+  // ── Price panel: line path ──
   const points = closes.map((v, i) => {
-    const x = priceLayout.padding.left + (i / (n - 1)) * priceLayout.plotW;
-    const y = priceLayout.padding.top + priceLayout.plotH - ((v - min) / range) * priceLayout.plotH;
+    const x = padding.left + (i / (n - 1)) * plotW;
+    const y = pricePad.top + pricePlotH - ((v - min) / range) * pricePlotH;
     return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
   });
   const pathData = points.join(' ');
@@ -529,42 +755,99 @@ export function multiPanelSvgChart(
   // Tooltips for price panel
   let priceTooltips = '';
   for (let i = 0; i < n; i++) {
-    const x = priceLayout.padding.left + (i / (n - 1)) * priceLayout.plotW;
-    const y = priceLayout.padding.top + priceLayout.plotH - ((closes[i]! - min) / range) * priceLayout.plotH;
+    const x = padding.left + (i / (n - 1)) * plotW;
+    const y = pricePad.top + pricePlotH - ((closes[i]! - min) / range) * pricePlotH;
     priceTooltips += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" class="data-point">
       <title>${formatTime(klines[i]!.openTime)} — ${formatYLabel(closes[i]!)}</title>
     </circle>\n`;
   }
 
-  const priceCrosshair = renderCrosshair(priceLayout, klines, min, max);
-  const priceMarkers = renderMinMaxMarkers(priceLayout, klines, min, max);
-  const priceXLabels = renderXLabels(priceLayout, klines);
-  const priceWatermark = renderWatermark(priceLayout);
+  // ── Price panel grid ──
+  let priceGrid = '';
+  const gridLines = 4;
+  for (let i = 0; i <= gridLines; i++) {
+    const yRatio = i / gridLines;
+    const y = pricePad.top + pricePlotH * yRatio;
+    const val = max - range * yRatio;
+    priceGrid += `<line x1="${padding.left}" y1="${y.toFixed(1)}" x2="${(width - padding.right).toFixed(1)}" y2="${y.toFixed(1)}" class="grid-line"/>\n`;
+    priceGrid += `<text x="${(padding.left - 8).toFixed(1)}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" class="grid-label">${formatYLabel(val)}</text>\n`;
+  }
+
+  // ── Price crosshair ──
+  const lastK = klines[n - 1];
+  const crossX = padding.left + plotW;
+  const crossY = pricePad.top + pricePlotH - ((lastK?.close ?? min) - min) / range * pricePlotH;
+  let priceCrosshair = '';
+  if (lastK) {
+    const tooltipW = 90;
+    const rlx = crossX + 5 + tooltipW > width ? crossX - tooltipW - 5 : crossX + 5;
+    const clampedY = Math.max(pricePad.top + 2, Math.min(pricePad.top + pricePlotH - 20, crossY - 10));
+    priceCrosshair = `<line x1="${crossX.toFixed(1)}" y1="${(pricePad.top - 5).toFixed(1)}" x2="${crossX.toFixed(1)}" y2="${(pricePad.top + pricePlotH + 5).toFixed(1)}" class="crosshair-line"/>\n` +
+      `<rect x="${rlx.toFixed(1)}" y="${clampedY.toFixed(1)}" width="${tooltipW}" height="20" rx="4" class="label-bg"/>\n` +
+      `<text x="${(rlx + 5).toFixed(1)}" y="${(clampedY + 13).toFixed(1)}" class="label-text">${formatYLabel(lastK.close)}</text>\n`;
+  }
+
+  // ── Price min/max markers ──
+  let highest = klines[0]?.high ?? 0, lowest = klines[0]?.low ?? 0;
+  for (let i = 1; i < n; i++) {
+    if ((klines[i]?.high ?? 0) > highest) { highest = klines[i]!.high; }
+    if ((klines[i]?.low ?? Infinity) < lowest) { lowest = klines[i]!.low; }
+  }
+  const highY = pricePad.top + pricePlotH - ((highest - min) / range) * pricePlotH;
+  const lowY = pricePad.top + pricePlotH - ((lowest - min) / range) * pricePlotH;
+  let priceMarkers = '';
+  const mmClampY = (y: number) => Math.max(pricePad.top + 2, Math.min(pricePad.top + pricePlotH - 18, y - 8));
+  priceMarkers += `<line x1="${padding.left}" y1="${highY.toFixed(1)}" x2="${(width - padding.right).toFixed(1)}" y2="${highY.toFixed(1)}" class="minmax-line"/>\n`;
+  priceMarkers += `<rect x="${(padding.left + 4).toFixed(1)}" y="${mmClampY(highY).toFixed(1)}" width="72" height="16" rx="3" fill="#1e293b" stroke="rgba(250,204,21,0.3)"/>\n`;
+  priceMarkers += `<text x="${(padding.left + 8).toFixed(1)}" y="${(mmClampY(highY) + 12).toFixed(1)}" class="minmax-text">⬆ ${formatYLabel(highest)}</text>\n`;
+  priceMarkers += `<line x1="${padding.left}" y1="${lowY.toFixed(1)}" x2="${(width - padding.right).toFixed(1)}" y2="${lowY.toFixed(1)}" class="minmax-line"/>\n`;
+  priceMarkers += `<rect x="${(padding.left + 4).toFixed(1)}" y="${mmClampY(lowY).toFixed(1)}" width="72" height="16" rx="3" fill="#1e293b" stroke="rgba(250,204,21,0.3)"/>\n`;
+  priceMarkers += `<text x="${(padding.left + 8).toFixed(1)}" y="${(mmClampY(lowY) + 12).toFixed(1)}" class="minmax-text">⬇ ${formatYLabel(lowest)}</text>\n`;
+
+  // ── Price volume bars ──
+  const volumes = klines.map(k => k.quoteVolume);
+  const maxVol = Math.max(...volumes) || 1;
+  const volBarMax = 12;
+  let volSvg = '';
+  for (let i = 0; i < n; i++) {
+    const volRatio = volumes[i]! / maxVol;
+    const x = padding.left + (i / (n - 1)) * plotW;
+    const barH = volRatio * volBarMax;
+    const barY = pricePad.top + pricePlotH + 4;
+    volSvg += `<rect x="${(x - 1).toFixed(1)}" y="${(barY - barH).toFixed(1)}" width="2" height="${barH.toFixed(1)}" fill="url(#volGrad)">
+      <animate attributeName="height" from="0" to="${barH.toFixed(1)}" dur="0.5s" fill="freeze"/>
+      <animate attributeName="y" from="${barY}" to="${(barY - barH).toFixed(1)}" dur="0.5s" fill="freeze"/>
+    </rect>\n`;
+  }
+
+  // ── Price x-axis labels ──
+  let priceXLabels = '';
+  const xLabelCount = 5;
+  for (let i = 0; i < n; i += Math.max(1, Math.floor(n / (xLabelCount - 1)))) {
+    const x = padding.left + (i / (n - 1)) * plotW;
+    const label = formatTime(klines[i]!.openTime);
+    priceXLabels += `<text x="${x.toFixed(1)}" y="${(pricePad.top + pricePlotH + priceBottom - 4).toFixed(1)}" text-anchor="middle" class="axis-label">${escapeXml(label)}</text>\n`;
+  }
 
   // ── RSI panel ──
-  const rsiLayout = getLayout(width, panelH, 30);
-  const rsiPanelTop = panelH + 10;
-  const rsiPlotH = rsiLayout.plotH;
-
-  // Filter out null RSI values but maintain x positions
   const rsiMin = 0;
   const rsiMax = 100;
 
   let rsiPath = '';
-  let idx = 0;
+  let rsiIdx = 0;
   for (let i = 0; i < n; i++) {
     const rsi = rsiValues[i];
     if (rsi == null) continue;
     const x = rsiLayout.padding.left + (i / (n - 1)) * rsiLayout.plotW;
-    const y = rsiPanelTop + rsiLayout.padding.top + rsiPlotH - ((rsi - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
-    rsiPath += `${idx === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
-    idx++;
+    const y = rsiPanelTop + rsiPad.top + rsiPlotH - ((rsi - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
+    rsiPath += `${rsiIdx === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`;
+    rsiIdx++;
   }
 
-  // Overbought/oversold lines
-  const obY = rsiPanelTop + rsiLayout.padding.top + rsiPlotH - ((70 - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
-  const osY = rsiPanelTop + rsiLayout.padding.top + rsiPlotH - ((30 - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
-  const midY = rsiPanelTop + rsiLayout.padding.top + rsiPlotH - ((50 - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
+  // Overbought/oversold/mid lines
+  const obY = rsiPanelTop + rsiPad.top + rsiPlotH - ((70 - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
+  const osY = rsiPanelTop + rsiPad.top + rsiPlotH - ((30 - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
+  const midY = rsiPanelTop + rsiPad.top + rsiPlotH - ((50 - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
 
   // RSI tooltips
   let rsiTooltips = '';
@@ -572,7 +855,7 @@ export function multiPanelSvgChart(
     const rsi = rsiValues[i];
     if (rsi == null) continue;
     const x = rsiLayout.padding.left + (i / (n - 1)) * rsiLayout.plotW;
-    const y = rsiPanelTop + rsiLayout.padding.top + rsiPlotH - ((rsi - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
+    const y = rsiPanelTop + rsiPad.top + rsiPlotH - ((rsi - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
     rsiTooltips += `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" class="data-point">
       <title>${formatTime(klines[i]!.openTime)} — RSI: ${rsi.toFixed(1)}</title>
     </circle>\n`;
@@ -580,20 +863,21 @@ export function multiPanelSvgChart(
 
   // RSI crosshair
   const lastRsi = rsiValues.filter((v): v is number => v != null).pop();
-  const lastClose = closes[n - 1] ?? 0;
   let rsiCrosshair = '';
   if (lastRsi != null) {
-    const x = rsiLayout.padding.left + rsiLayout.plotW;
-    const y = rsiPanelTop + rsiLayout.padding.top + rsiPlotH - ((lastRsi - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
-    rsiCrosshair = `<line x1="${x.toFixed(1)}" y1="${(rsiPanelTop + rsiLayout.padding.top - 5).toFixed(1)}" x2="${x.toFixed(1)}" y2="${(rsiPanelTop + rsiLayout.padding.top + rsiPlotH + 5).toFixed(1)}" class="crosshair-line"/>\n`;
-    rsiCrosshair += `<rect x="${(x + 5).toFixed(1)}" y="${(y - 10).toFixed(1)}" width="60" height="18" rx="4" class="label-bg"/>\n`;
-    rsiCrosshair += `<text x="${(x + 10).toFixed(1)}" y="${(y + 3).toFixed(1)}" class="label-text">RSI ${lastRsi.toFixed(1)}</text>\n`;
+    const rsiCrossY = rsiPanelTop + rsiPad.top + rsiPlotH - ((lastRsi - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
+    const rsiCrossX = rsiLayout.padding.left + rsiLayout.plotW;
+    const rlx = rsiCrossX + 5 + 60 > width ? rsiCrossX - 60 - 5 : rsiCrossX + 5;
+    const clampedY = Math.max(rsiPanelTop + rsiPad.top + 2, Math.min(rsiPanelTop + rsiPad.top + rsiPlotH - 18, rsiCrossY - 10));
+    rsiCrosshair = `<line x1="${rsiCrossX.toFixed(1)}" y1="${(rsiPanelTop + rsiPad.top - 5).toFixed(1)}" x2="${rsiCrossX.toFixed(1)}" y2="${(rsiPanelTop + rsiPad.top + rsiPlotH + 5).toFixed(1)}" class="crosshair-line"/>\n`;
+    rsiCrosshair += `<rect x="${rlx.toFixed(1)}" y="${clampedY.toFixed(1)}" width="60" height="18" rx="4" class="label-bg"/>\n`;
+    rsiCrosshair += `<text x="${(rlx + 5).toFixed(1)}" y="${(clampedY + 12).toFixed(1)}" class="label-text">RSI ${lastRsi.toFixed(1)}</text>\n`;
   }
 
   // RSI grid
   let rsiGrid = '';
   for (let v = 0; v <= 100; v += 10) {
-    const y = rsiPanelTop + rsiLayout.padding.top + rsiPlotH - ((v - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
+    const y = rsiPanelTop + rsiPad.top + rsiPlotH - ((v - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH;
     rsiGrid += `<line x1="${rsiLayout.padding.left}" y1="${y.toFixed(1)}" x2="${(width - rsiLayout.padding.right).toFixed(1)}" y2="${y.toFixed(1)}" stroke="#1e293b" stroke-width="${v === 50 ? 0.5 : 0.3}"/>\n`;
     if (v > 0 && v < 100) {
       rsiGrid += `<text x="${(rsiLayout.padding.left - 6).toFixed(1)}" y="${(y + 3).toFixed(1)}" text-anchor="end" class="grid-label">${v}</text>\n`;
@@ -601,21 +885,18 @@ export function multiPanelSvgChart(
   }
 
   const svg = `${svgOpen(width, height, `Dashboard: ${title}`)}
-  ${renderTitle(rsiLayout, title)}
+  ${renderTitle({ ...priceLayout, width, height: pricePlotH }, title)}
 
   <!-- ==================== PRICE PANEL ==================== -->
-  <g transform="translate(0, 0)">
+  <g>
     <!-- Panel bg -->
-    <rect x="${priceLayout.padding.left}" y="${priceLayout.padding.top}" width="${priceLayout.plotW}" height="${priceLayout.plotH}" fill="rgba(255,255,255,0.01)" rx="2"/>
+    <rect x="${padding.left}" y="${pricePad.top}" width="${plotW}" height="${pricePlotH}" fill="rgba(255,255,255,0.01)" rx="2"/>
 
     <!-- Grid & Y-axis -->
-    ${renderYGrid(priceLayout, min, max)}
-
-    <!-- Volume bars -->
-    ${renderVolumeBars(priceLayout, klines, 15)}
+    ${priceGrid}
 
     <!-- Price fill (gradient) -->
-    <path d="${pathData} L${(priceLayout.padding.left + priceLayout.plotW).toFixed(1)},${(priceLayout.padding.top + priceLayout.plotH).toFixed(1)} L${priceLayout.padding.left.toFixed(1)},${(priceLayout.padding.top + priceLayout.plotH).toFixed(1)} Z" class="price-fill"/>
+    <path d="${pathData} L${(padding.left + plotW).toFixed(1)},${(pricePad.top + pricePlotH).toFixed(1)} L${padding.left.toFixed(1)},${(pricePad.top + pricePlotH).toFixed(1)} Z" class="price-fill"/>
 
     <!-- Price line -->
     <path d="${pathData}" class="price-line"/>
@@ -626,23 +907,23 @@ export function multiPanelSvgChart(
     <!-- Crosshair -->
     ${priceCrosshair}
 
+    <!-- Volume bars -->
+    ${volSvg}
+
     <!-- Min/max markers -->
     ${priceMarkers}
 
     <!-- X-axis labels -->
     ${priceXLabels}
-
-    <!-- Branding -->
-    ${priceWatermark}
   </g>
 
   <!-- ==================== RSI PANEL ==================== -->
-  <g transform="translate(0, 0)">
+  <g>
     <!-- Divider -->
-    <line x1="${rsiLayout.padding.left}" y1="${panelH + 5}" x2="${(width - rsiLayout.padding.right)}" y2="${panelH + 5}" stroke="#1e293b" stroke-width="1"/>
+    <line x1="${rsiLayout.padding.left}" y1="${rsiPanelTop - panelGap / 2}" x2="${(width - rsiLayout.padding.right)}" y2="${rsiPanelTop - panelGap / 2}" stroke="#334155" stroke-width="1"/>
 
     <!-- Panel bg -->
-    <rect x="${rsiLayout.padding.left}" y="${(rsiPanelTop + rsiLayout.padding.top)}" width="${rsiLayout.plotW}" height="${rsiPlotH}" fill="rgba(255,255,255,0.01)" rx="2"/>
+    <rect x="${rsiLayout.padding.left}" y="${(rsiPanelTop + rsiPad.top)}" width="${rsiLayout.plotW}" height="${rsiPlotH}" fill="rgba(255,255,255,0.01)" rx="2"/>
 
     <!-- RSI Grid -->
     ${rsiGrid}
@@ -668,11 +949,14 @@ export function multiPanelSvgChart(
     ${rsiCrosshair}
 
     <!-- Pulsing latest data point -->
-    <circle cx="${(rsiLayout.padding.left + rsiLayout.plotW).toFixed(1)}" cy="${(rsiPanelTop + rsiLayout.padding.top + rsiPlotH - ((lastRsi ?? 50 - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH).toFixed(1)}" r="4" class="pulse-dot data-point"/>
+    ${lastRsi != null ? `<circle cx="${(rsiLayout.padding.left + rsiLayout.plotW).toFixed(1)}" cy="${(rsiPanelTop + rsiPad.top + rsiPlotH - ((lastRsi - rsiMin) / (rsiMax - rsiMin)) * rsiPlotH).toFixed(1)}" r="4" class="pulse-dot data-point"/>` : ''}
 
     <!-- Label -->
-    <text x="${rsiLayout.padding.left.toFixed(1)}" y="${(rsiPanelTop + rsiLayout.height - 8).toFixed(1)}" class="rsi-label">RSI (14)</text>
+    <text x="${rsiLayout.padding.left.toFixed(1)}" y="${(rsiPanelTop + rsiPad.top + rsiPlotH + rsiPad.bottom - 6).toFixed(1)}" class="rsi-label">RSI (14)</text>
   </g>
+
+  <!-- Watermark (single, bottom-right of full chart) -->
+  <text x="${(width - 12).toFixed(1)}" y="${(height - 8).toFixed(1)}" text-anchor="end" class="watermark">🛰️ Hermes Crypto Radar</text>
 
   <!-- Frame counter -->
   <text x="6" y="${(height - 8).toFixed(1)}" class="frame-counter">FRM-${Math.floor(Math.random() * 90000 + 10000)}</text>
@@ -689,9 +973,7 @@ ${SVG_CLOSE}`;
  * Candlesticks: green body with wick for up candles, red for down.
  * EMA20 (amber), EMA50 (purple) overlay lines.
  *
- * When volumeProfile is provided, renders a horizontal volume profile histogram
- * on the right side of the chart (standard TradingView layout).
- * POC highlighted in cyan, HVN in green, LVN in red.
+ * Uses responsive candle width calculation that adapts to the number of candles.
  */
 export function candlestickSvgChart(
   title: string,
@@ -708,7 +990,12 @@ export function candlestickSvgChart(
   const closes = klines.map(k => k.close);
   const highs = klines.map(k => k.high);
   const lows = klines.map(k => k.low);
-  const opens = klines.map(k => k.open);
+  const n = klines.length;
+
+  // Division-by-zero guard
+  if (n < 2) {
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40"><rect width="200" height="40" fill="#0f172a" rx="4"/><text x="100" y="24" text-anchor="middle" fill="#94a3b8" font-family="'Inter', sans-serif" font-size="12">${n === 0 ? 'No data' : 'Insufficient data points'}</text></svg>`;
+  }
 
   const min = Math.min(...lows);
   const max = Math.max(...highs);
@@ -720,11 +1007,9 @@ export function candlestickSvgChart(
     layout.plotW = width - layout.padding.left - layout.padding.right;
   }
   const { padding, plotW, plotH } = layout;
-  const n = klines.length;
 
-  // ── Candlesticks ──
-  const candleWidth = Math.max(2, Math.min(8, (plotW / n) * 0.6));
-  const halfWick = Math.max(0.5, candleWidth * 0.15);
+  // ── Responsive candle width ──
+  const candleWidth = calcCandleWidth(plotW, n);
 
   let candleSvg = '';
   let volSvg = '';
@@ -805,13 +1090,11 @@ Vol: ${(k.volume / 1).toFixed(1)}</title>
   const crossY = padding.top + plotH - ((lastClose - min) / range) * plotH;
 
   // ── EMA Legend ──
-  const legendSvg = `<rect x="${(padding.left + 4).toFixed(1)}" y="${(padding.top + 4).toFixed(1)}" width="120" height="48" rx="4" fill="#0f172a" stroke="#1e293b"/>
+  const legendSvg = `<rect x="${(padding.left + 4).toFixed(1)}" y="${(padding.top + 4).toFixed(1)}" width="120" height="48" rx="4" fill="rgba(15,23,42,0.85)" stroke="rgba(148,163,184,0.15)"/>
   <line x1="${(padding.left + 10).toFixed(1)}" y1="${(padding.top + 16).toFixed(1)}" x2="${(padding.left + 26).toFixed(1)}" y2="${(padding.top + 16).toFixed(1)}" stroke="#f59e0b" stroke-width="1.5"/>
   <text x="${(padding.left + 30).toFixed(1)}" y="${(padding.top + 19).toFixed(1)}" fill="#f59e0b" font-family="'Inter', monospace" font-size="9">EMA20</text>
   <line x1="${(padding.left + 10).toFixed(1)}" y1="${(padding.top + 32).toFixed(1)}" x2="${(padding.left + 26).toFixed(1)}" y2="${(padding.top + 32).toFixed(1)}" stroke="#8b5cf6" stroke-width="1.5"/>
   <text x="${(padding.left + 30).toFixed(1)}" y="${(padding.top + 35).toFixed(1)}" fill="#8b5cf6" font-family="'Inter', monospace" font-size="9">EMA50</text>
-  <line x1="${(padding.left + 10).toFixed(1)}" y1="${(padding.top + 46).toFixed(1)}" x2="${(padding.left + 26).toFixed(1)}" y2="${(padding.top + 46).toFixed(1)}" stroke="#22c55e" stroke-width="1.5"/>
-  <text x="${(padding.left + 30).toFixed(1)}" y="${(padding.top + 49).toFixed(1)}" fill="#22c55e" font-family="'Inter', monospace" font-size="9">Price</text>
   <rect x="${(padding.left + 10).toFixed(1)}" y="${(padding.top + 38).toFixed(1)}" width="16" height="8" rx="1" fill="rgba(34,197,94,0.7)" stroke="#22c55e"/>
   <text x="${(padding.left + 30).toFixed(1)}" y="${(padding.top + 49).toFixed(1)}" fill="#22c55e" font-family="'Inter', monospace" font-size="9">Price</text>`;
 
@@ -835,14 +1118,14 @@ Vol: ${(k.volume / 1).toFixed(1)}</title>
       const yTop = padding.top + plotH - ((node.priceHigh - min) / range) * plotH;
       const yBot = padding.top + plotH - ((node.priceLow - min) / range) * plotH;
       const barY = yBot;
-      const barH = Math.max(1, yTop - yBot);
-      const barW = (node.volumePercent / 100) * vpWidth;
+      const barH_n = Math.max(1, yTop - yBot);
+      const barW_n = (node.volumePercent / 100) * vpWidth;
 
       let barClass = 'vp-bar-normal';
       if (node.type === 'hvn') barClass = 'vp-bar-hvn';
       else if (node.type === 'lvn') barClass = 'vp-bar-lvn';
 
-      vpSvg += `<rect x="${vpLeft.toFixed(1)}" y="${barY.toFixed(1)}" width="${Math.max(1, barW).toFixed(1)}" height="${barH.toFixed(1)}" class="${barClass}" />\n`;
+      vpSvg += `<rect x="${vpLeft.toFixed(1)}" y="${barY.toFixed(1)}" width="${Math.max(1, barW_n).toFixed(1)}" height="${barH_n.toFixed(1)}" class="${barClass}" />\n`;
     }
 
     // POC line — cyan dashed
@@ -916,6 +1199,7 @@ ${SVG_CLOSE}`;
  * Each token gets a different colored line.
  * Prices are normalized to percentage change from start for fair comparison.
  * Dark theme matching existing charts. Y-axis shows percentage change (0% at center).
+ * Now includes timestamps instead of #1, #2, ... labels.
  */
 export function comparisonSvgChart(
   title: string,
@@ -923,6 +1207,7 @@ export function comparisonSvgChart(
   symbols: string[],               // ordered list to display
   width = 700,
   height = 400,
+  timestamps?: number[],           // optional timestamps for x-axis labels
 ): string {
   const n = symbols.length;
   if (n === 0 || priceMap.size === 0) {
@@ -935,7 +1220,6 @@ export function comparisonSvgChart(
   symbols.forEach((s, i) => lineColors.set(s, palette[i % palette.length]!));
 
   // Normalize each series to percentage change from first value
-  // pctChange[i] = (price[i] - price[0]) / price[0] * 100
   const normalizedMap = new Map<string, number[]>();
   let globalMin = 0;
   let globalMax = 0;
@@ -959,13 +1243,11 @@ export function comparisonSvgChart(
 
   // Expand range to at least ±5% and round to nice grid values
   const absMax = Math.max(Math.abs(globalMin), Math.abs(globalMax), 5);
-  // Round up to next 5% multiple
   const chartMax = Math.ceil(absMax / 5) * 5;
 
-  const padding = { top: 30, right: 20, bottom: 50, left: 60 };
-  const plotW = width - padding.left - padding.right;
-  const plotH = height - padding.top - padding.bottom;
-  const layout: ChartLayout = { padding, width, height, plotW, plotH };
+  // Use consistent layout matching other chart types
+  const layout = getLayout(width, height);
+  const { padding, plotW, plotH } = layout;
 
   const yRange = chartMax * 2; // from -chartMax to +chartMax
   const centerY = padding.top + plotH / 2;
@@ -989,7 +1271,6 @@ export function comparisonSvgChart(
   for (const sym of symbols) {
     const pctChanges = normalizedMap.get(sym);
     if (!pctChanges || pctChanges.length < 2) continue;
-    const color = lineColors.get(sym) ?? '#22d3ee';
     const seriesLen = pctChanges.length;
 
     let path = '';
@@ -1020,31 +1301,40 @@ export function comparisonSvgChart(
     const isCenter = v === 0;
     const cls = isCenter ? 'comp-grid-line-zero' : 'comp-grid-line';
     yGridSvg += `<line x1="${padding.left}" y1="${y.toFixed(1)}" x2="${(width - padding.right).toFixed(1)}" y2="${y.toFixed(1)}" class="${cls}"/>\n`;
-    const textFill = v > 0 ? '#475569' : (v < 0 ? '#475569' : '#475569');
-    yGridSvg += `<text x="${(padding.left - 8).toFixed(1)}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" class="comp-grid-label" fill="${textFill}">${v >= 0 ? '+' : ''}${v}%</text>\n`;
+    yGridSvg += `<text x="${(padding.left - 8).toFixed(1)}" y="${(y + 3.5).toFixed(1)}" text-anchor="end" class="comp-grid-label">${v >= 0 ? '+' : ''}${v}%</text>\n`;
   }
 
-  // ── Legend (top-right corner) ──
+  // ── Legend (top-right corner, dynamic width based on longest label) ──
+  const maxLabelLen = Math.max(...symbols.map(s => s.length), 4);
   const legendItemH = 18;
   const legendPad = 6;
-  const legendW = 80;
-  const legendH = n * legendItemH + legendPad * 2;
-  let legendSvg = `<rect x="${(width - padding.right - legendW - 4).toFixed(1)}" y="${(padding.top + 4).toFixed(1)}" width="${legendW}" height="${legendH}" rx="4" fill="rgba(15,23,42,0.85)" stroke="#1e293b"/>\n`;
+  const legendW = Math.max(80, maxLabelLen * 7 + 32);
+  const legendH_val = n * legendItemH + legendPad * 2;
+  const legendRightX = width - padding.right;
+  let legendSvg = `<rect x="${(legendRightX - legendW - 4).toFixed(1)}" y="${(padding.top + 4).toFixed(1)}" width="${legendW}" height="${legendH_val}" rx="4" fill="rgba(15,23,42,0.85)" stroke="rgba(148,163,184,0.15)"/>\n`;
   for (let i = 0; i < symbols.length; i++) {
     const sym = symbols[i]!;
     const color = lineColors.get(sym) ?? '#22d3ee';
     const ly = padding.top + 4 + legendPad + i * legendItemH;
-    legendSvg += `<line x1="${(width - padding.right - legendW - 4 + 8).toFixed(1)}" y1="${(ly + 7).toFixed(1)}" x2="${(width - padding.right - legendW - 4 + 22).toFixed(1)}" y2="${(ly + 7).toFixed(1)}" stroke="${color}" stroke-width="2"/>\n`;
-    legendSvg += `<text x="${(width - padding.right - legendW - 4 + 26).toFixed(1)}" y="${(ly + 10).toFixed(1)}" class="comp-legend-text">${escapeXml(sym)}</text>\n`;
+    const lx = legendRightX - legendW - 4;
+    legendSvg += `<line x1="${(lx + 8).toFixed(1)}" y1="${(ly + 7).toFixed(1)}" x2="${(lx + 22).toFixed(1)}" y2="${(ly + 7).toFixed(1)}" stroke="${color}" stroke-width="2"/>\n`;
+    legendSvg += `<text x="${(lx + 26).toFixed(1)}" y="${(ly + 10).toFixed(1)}" class="comp-legend-text">${escapeXml(sym)}</text>\n`;
   }
 
-  // ── X-axis labels ──
+  // ── X-axis labels (using timestamps if available) ──
   let xLabelsSvg = '';
   const xLabelCount = 5;
   for (let i = 0; i <= xLabelCount; i++) {
     const x = padding.left + (i / xLabelCount) * plotW;
     const idx = Math.round((i / xLabelCount) * (maxPoints - 1));
-    xLabelsSvg += `<text x="${x.toFixed(1)}" y="${(height - padding.bottom + 18).toFixed(1)}" text-anchor="${i === 0 ? 'start' : (i === xLabelCount ? 'end' : 'middle')}" class="axis-label">#${idx + 1}</text>\n`;
+    let labelText: string;
+    if (timestamps && timestamps.length > idx) {
+      labelText = formatTime(timestamps[idx]!);
+    } else {
+      // Use index-based label as fallback
+      labelText = `#${idx + 1}`;
+    }
+    xLabelsSvg += `<text x="${x.toFixed(1)}" y="${(height - padding.bottom + 18).toFixed(1)}" text-anchor="${i === 0 ? 'start' : (i === xLabelCount ? 'end' : 'middle')}" class="axis-label">${escapeXml(labelText)}</text>\n`;
   }
 
   // ── Zero center label ──
@@ -1067,9 +1357,8 @@ export function comparisonSvgChart(
     const lastX = padding.left + plotW;
     const lastY = centerY - ((pctChanges?.[pctChanges.length - 1] ?? 0) / yRange) * plotH;
     const pctSign = lastVal >= 0 ? '+' : '';
-    const pctClass = lastVal >= 0 ? 'comp-pct-up' : 'comp-pct-down';
     return `${path ? `<path d="${path}" class="comp-line" stroke="${color}" filter="url(#lineGlow)"/>` : ''}
-    <rect x="${(lastX + 4).toFixed(1)}" y="${(lastY - 7).toFixed(1)}" width="50" height="14" rx="3" fill="#0f172a" stroke="${color}" stroke-width="0.5"/>
+    <rect x="${(lastX + 4).toFixed(1)}" y="${(lastY - 7).toFixed(1)}" width="50" height="14" rx="3" fill="rgba(15,23,42,0.85)" stroke="${color}" stroke-width="0.5"/>
     <text x="${(lastX + 8).toFixed(1)}" y="${(lastY + 3).toFixed(1)}" fill="${color}" font-family="'Inter', monospace" font-size="9" font-weight="700">${pctSign}${lastVal.toFixed(1)}%</text>
     <circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="4" class="pulse-dot data-point" fill="${color}"/>`;
   }).filter(Boolean).join('\n')}
@@ -1080,7 +1369,7 @@ export function comparisonSvgChart(
   <!-- Legend -->
   ${legendSvg}
 
-  <!-- X-axis labels -->
+  <!-- X-axis (timestamps) -->
   ${xLabelsSvg}
 
   <!-- Branding -->

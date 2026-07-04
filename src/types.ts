@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 /** Blockchain chain identifier */
-export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'dogecoin' | 'cardano' | 'sui' | 'aptos' | 'sei' | 'celestia' | 'injective' | 'thorchain' | 'cosmos' | 'near' | 'tron' | 'stellar' | 'avalanche' | 'litecoin' | 'bitcoin-cash' | 'hedera' | 'bittensor' | 'polkadot' | 'filecoin' | 'zcash' | 'multi';
+export type Chain = 'solana' | 'polygon' | 'bnb' | 'xrp' | 'ethereum' | 'bitcoin' | 'dogecoin' | 'cardano' | 'sui' | 'aptos' | 'sei' | 'celestia' | 'injective' | 'thorchain' | 'cosmos' | 'near' | 'tron' | 'stellar' | 'avalanche' | 'litecoin' | 'bitcoin-cash' | 'hedera' | 'bittensor' | 'polkadot' | 'filecoin' | 'zcash' | 'monero' | 'algorand' | 'tezos' | 'theta' | 'multi';
 
 /** Supported output formats */
 export type OutputFormat = 'csv' | 'json' | 'md' | 'table' | 'xlsx';
@@ -107,6 +107,26 @@ export interface EnrichedTicker {
   ema50DistPct?: number;
   volTrend?: number;
 
+  // ── New Technical Indicators ──
+  adx?: number;
+  psar?: number;
+  cci?: number;
+  keltnerWidth?: number;
+  keltnerPos?: number;
+  roc?: number;
+  forceIndex?: number;
+  adl?: number;
+  chaikinOsc?: number;
+  stochRsi?: number;
+  stochRsiK?: number;
+  stochRsiD?: number;
+  trix?: number;
+  kst?: number;
+  elderBullPower?: number;
+  elderBearPower?: number;
+  fisher?: number;
+  massIndex?: number;
+
   // ── Strategy Signals ──
   momentumScore?: number;
   momentumDirection?: string;
@@ -143,6 +163,41 @@ export interface IchimokuResult {
   laggingSpan: number | null;
 }
 
+/** Parabolic SAR (Stop and Reverse) result */
+export interface ParabolicSarResult {
+  sar: number;
+  acceleration: number;
+  isReversal: boolean;
+}
+
+/** Keltner Channels (volatility bands using ATR) */
+export interface KeltnerChannelsResult {
+  upper: number;
+  middle: number;
+  lower: number;
+  width: number;
+  position: number;
+}
+
+/** StochRSI — stochastic applied to RSI values */
+export interface StochRSIResult {
+  stochRsi: number | null;
+  k: number | null;
+  d: number | null;
+}
+
+/** Elder Ray Index — bull and bear power */
+export interface ElderRayResult {
+  bullPower: number;
+  bearPower: number;
+}
+
+/** Know Sure Thing (KST) result with signal line */
+export interface KSTResult {
+  kst: number;
+  signal: number | null;
+}
+
 /** Technical indicators computed from kline/candlestick data */
 export interface TechnicalIndicators {
   rsi: number | null;
@@ -164,6 +219,36 @@ export interface TechnicalIndicators {
   cmf?: number | null;
   /** True Strength Index */
   tsi?: number | null;
+  /** Average Directional Index (trend strength, 0-100) */
+  adx?: number | null;
+  /** Parabolic SAR — trend reversal detection */
+  psar?: ParabolicSarResult | null;
+  /** CCI (Commodity Channel Index) — cyclical detection */
+  cci?: number | null;
+  /** Keltner Channels — ATR-based volatility bands */
+  keltner?: KeltnerChannelsResult | null;
+  /** ROC (Rate of Change) — simple momentum */
+  roc?: number | null;
+  /** VWAP (Volume Weighted Average Price) — intraday valuation */
+  vwap?: number | null;
+  /** Force Index — price * volume momentum */
+  forceIndex?: number | null;
+  /** ADL (Accumulation/Distribution Line) */
+  adl?: number | null;
+  /** Chaikin Oscillator — MACD of ADL */
+  chaikinOsc?: number | null;
+  /** StochRSI — stochastic on RSI values */
+  stochRsi?: StochRSIResult | null;
+  /** TRIX — triple exponential average oscillator */
+  trix?: number | null;
+  /** KST (Know Sure Thing) — summed ROC oscillator */
+  kst?: KSTResult | null;
+  /** Elder Ray Index — bull/bear power */
+  elderRay?: ElderRayResult | null;
+  /** Fisher Transform — Gaussian normalization */
+  fisher?: number | null;
+  /** Mass Index — volatility reversal detection */
+  massIndex?: number | null;
 }
 
 export interface BBandsResult {
@@ -228,6 +313,14 @@ export interface TokenSignal {
   signalBreakdown?: SignalBreakdown;
   /** Current market regime if determined */
   regime?: string;
+  /** ADX trend strength (0–100) from technical indicators */
+  adx?: number | null;
+  /** ADX trend strength category label */
+  adxStrength?: string;
+  /** Detected price/RSI divergence if any */
+  divergence?: { type: string; strength: number; description: string };
+  /** ATR-based volatility factor (0–1) for position sizing guidance */
+  volatilityFactor?: number;
 }
 
 /** Radar run options */

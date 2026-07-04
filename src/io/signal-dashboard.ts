@@ -20,12 +20,30 @@
 //   │  (mini heatmap)│  (TVL bars + fees)  │
 //   └───────────────┴─────────────────────┘
 //   │  FOOTER: generated timestamp, source
+//
+// Shared utilities now live in shared-svg.ts.
 // ═══════════════════════════════════════════════════════════════════════
 
 import type { EnrichedTicker } from '../types.js';
 import type { AggregatedSignal, SignalDirection } from '../analysis/strategies.js';
 import type { OnChainMetrics } from '../onchain.js';
 import type { RegimeResult } from '../analysis/regime.js';
+import {
+  BG,
+  TEXT,
+  ACCENT,
+  SUBTLE,
+  MUTED,
+  GRID_LINE,
+  escapeXml,
+  fmtDollar,
+  fmtPct,
+  clamp,
+  lerpColor,
+  correlationColor,
+  shortPct,
+  svgClose,
+} from './shared-svg.js';
 
 // ── Exported Types ──────────────────────────────────────────────────────
 
@@ -38,69 +56,8 @@ export interface DashboardOptions {
   marketBreadth?: { up: number; down: number; total: number };
 }
 
-// ── Constants ───────────────────────────────────────────────────────────
+// ── Direction helpers ──────────────────────────────────────────────────
 
-const BG = '#0f172a';
-const TEXT = '#f1f5f9';
-const ACCENT = '#22d3ee';
-const SUBTLE = '#64748b';
-const MUTED = '#1e293b';
-const GRID_LINE = '#1e293b';
-
-// ── Shared utilities ────────────────────────────────────────────────────
-
-function escapeXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function fmtDollar(v: number): string {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(1)}K`;
-  if (v >= 1) return `$${v.toFixed(2)}`;
-  if (v >= 0.01) return `$${v.toFixed(4)}`;
-  return `$${v.toFixed(6)}`;
-}
-
-function fmtPct(v: number): string {
-  return `${v >= 0 ? '+' : ''}${v.toFixed(2)}%`;
-}
-
-/** Clamp v to [min, max] */
-function clamp(v: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, v));
-}
-
-function shortPct(v: number): string {
-  return `${v >= 0 ? '+' : ''}${v.toFixed(1)}%`;
-}
-
-/**
- * Interpolate between two hex colors.
- */
-function lerpColor(c1: string, c2: string, t: number): string {
-  const a = parseInt(c1.replace('#', ''), 16);
-  const b = parseInt(c2.replace('#', ''), 16);
-  const r = Math.round(((a >> 16) & 0xff) * (1 - t) + ((b >> 16) & 0xff) * t);
-  const g = Math.round(((a >> 8) & 0xff) * (1 - t) + ((b >> 8) & 0xff) * t);
-  const bl = Math.round((a & 0xff) * (1 - t) + (b & 0xff) * t);
-  return `#${((r << 16) | (g << 8) | bl).toString(16).padStart(6, '0')}`;
-}
-
-/**
- * Map a correlation value [-1, 1] to a color.
- */
-function correlationColor(v: number): string {
-  const vv = clamp(v, -1, 1);
-  if (vv >= 0) {
-    if (vv <= 0.5) return lerpColor('#334155', '#22c55e', vv / 0.5);
-    return lerpColor('#22c55e', '#166534', (vv - 0.5) / 0.5);
-  }
-  const abs = Math.abs(vv);
-  if (abs <= 0.5) return lerpColor('#334155', '#ef4444', abs / 0.5);
-  return lerpColor('#ef4444', '#991b1b', (abs - 0.5) / 0.5);
-}
-
-/** Direction color for badges */
 function directionColor(dir: SignalDirection): string {
   switch (dir) {
     case 'strong_buy': return '#16a34a';
@@ -148,7 +105,7 @@ function dashboardStyles(): string {
     .d-gauge-fill { fill: none; stroke-linecap: round; }
     .d-watermark { fill: rgba(148, 163, 184, 0.2); font-family: 'Inter', system-ui, -apple-system, sans-serif; font-size: 9px; }
     .d-onchain-bar { rx: 3; }
-    /* Light mode overrides */
+    /* Light mode overrides with fixed panel backgrounds */
     @media (prefers-color-scheme: light) {
       .d-bg { fill: #ffffff; }
       .d-header-title { fill: #0f172a; }
@@ -158,11 +115,11 @@ function dashboardStyles(): string {
       .d-label { fill: #475569; }
       .d-value { fill: #0f172a; }
       .d-small { fill: #64748b; }
-      .d-card-bg { fill: rgba(241,245,249,0.7); stroke: rgba(100,116,139,0.1); }
+      .d-card-bg { fill: rgba(241, 245, 249, 0.85); stroke: rgba(100, 116, 139, 0.15); }
       .d-bar-bg { fill: #e2e8f0; }
       .d-conf-bg { fill: #e2e8f0; }
       .d-grid-line { stroke: #e2e8f0; }
-      .d-watermark { fill: rgba(100,116,139,0.35); }
+      .d-watermark { fill: rgba(100, 116, 139, 0.35); }
       .d-gauge-track { stroke: #e2e8f0; }
     }
     /* Hyperframe animations */
@@ -194,10 +151,6 @@ function dashboardStyles(): string {
 
 function svgOpen(w: number, h: number, title: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${w} ${h}" width="100%" height="100%" preserveAspectRatio="xMidYMid meet" role="img" aria-label="${escapeXml(title)}">\n${dashboardStyles()}\n<rect width="${w}" height="${h}" class="d-bg" rx="8"/>`;
-}
-
-function svgClose(): string {
-  return '</svg>';
 }
 
 // ── Panel Dividers ──────────────────────────────────────────────────────
@@ -235,7 +188,7 @@ export function signalDashboard(
   const pad = 14;
   const headerH = 54;
   const footerH = 22;
-  const dividerGap = 6; // gap between panels
+  const dividerGap = 8; // gap between panels
   const availW = width - pad * 2;
   const availH = height - headerH - footerH - pad * 2;
   const halfW = (availW - dividerGap) / 2;
@@ -276,6 +229,12 @@ export function signalDashboard(
         <animate attributeName="stop-color" values="#0f172a;#1e293b;#0f172a" dur="8s" repeatCount="indefinite"/>
       </stop>
     </linearGradient>
+    <!-- Gradient for thermometer gauge -->
+    <linearGradient id="brGaugeGrad" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#ef4444" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#64748b" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#22c55e"/>
+    </linearGradient>
   </defs>`;
 
   // ── HEADER ──
@@ -299,6 +258,9 @@ export function signalDashboard(
 
   // Right-aligned timestamp in header
   svg += `<text x="${width - pad}" y="${statusY}" text-anchor="end" class="d-status">${escapeXml(timestamp)}</text>\n`;
+
+  // Frame counter in header
+  svg += `<text x="${width - pad}" y="${statusY + 12}" text-anchor="end" class="d-frame-counter">FRM-${Math.floor(Math.random() * 90000 + 10000)}</text>\n`;
 
   // ── Panel Dividers ──
   const midX = pad + halfW + dividerGap / 2;
@@ -346,8 +308,12 @@ export function signalDashboard(
         const dirCol = directionColor(dir);
         const badgeW = dir === 'neutral' ? 45 : 72;
         const badgeH = 14;
-        svg += `<rect x="${px + innerPad + 4}" y="${cy + 4}" width="${badgeW}" height="${badgeH}" fill="${dirCol}" class="d-badge"/>\n`;
-        svg += `<text x="${px + innerPad + 4 + badgeW / 2}" y="${cy + 4 + 10}" text-anchor="middle" fill="#ffffff" class="d-badge">${directionLabel(dir)}</text>\n`;
+        svg += `<g class="d-pulse">
+        <rect x="${px + innerPad + 4}" y="${cy + 4}" width="${badgeW}" height="${badgeH}" fill="${dirCol}" class="d-badge">
+          <animate attributeName="opacity" from="0" to="1" dur="0.4s" fill="freeze"/>
+        </rect>
+        <text x="${px + innerPad + 4 + badgeW / 2}" y="${cy + 4 + 10}" text-anchor="middle" fill="#ffffff" class="d-badge">${directionLabel(dir)}</text>
+        </g>\n`;
         svg += `<title>${escapeXml(sig.symbol)}: ${directionLabel(dir)} (${(sig.compositeConfidence * 100).toFixed(0)}% confidence)</title>\n`;
 
         // Symbol + price
@@ -400,12 +366,13 @@ export function signalDashboard(
     // Background track
     svg += `<rect x="${(gaugeCX - gaugeW / 2).toFixed(1)}" y="${gaugeTop}" width="${gaugeW}" height="${gaugeH}" rx="${gaugeW / 2}" fill="#1e293b"/>\n`;
 
-    // Fill
+    // Fill — use pre-defined gradient from defs (no inline <defs> bug)
     const fillH = (upPct / 100) * gaugeH;
     const fillTop = gaugeTop + gaugeH - fillH;
-    const gradId = 'brGaugeGrad';
-    svg += `<defs>\n<linearGradient id="${gradId}" x1="0" y1="1" x2="0" y2="0">\n<stop offset="0%" stop-color="#ef4444" stop-opacity="0.9"/>\n<stop offset="50%" stop-color="#64748b" stop-opacity="0.5"/>\n<stop offset="100%" stop-color="#22c55e"/>\n</linearGradient>\n</defs>\n`;
-    svg += `<rect x="${(gaugeCX - gaugeW / 2 + 2).toFixed(1)}" y="${fillTop.toFixed(1)}" width="${(gaugeW - 4).toFixed(1)}" height="${Math.max(1, fillH).toFixed(1)}" rx="${(gaugeW - 4) / 2}" fill="url(#${gradId})"/>\n`;
+    svg += `<rect x="${(gaugeCX - gaugeW / 2 + 2).toFixed(1)}" y="${fillTop.toFixed(1)}" width="${(gaugeW - 4).toFixed(1)}" height="${Math.max(1, fillH).toFixed(1)}" rx="${(gaugeW - 4) / 2}" fill="url(#brGaugeGrad)">
+      <animate attributeName="height" from="0" to="${Math.max(1, fillH).toFixed(1)}" dur="0.8s" fill="freeze"/>
+      <animate attributeName="y" from="${gaugeTop + gaugeH}" to="${fillTop.toFixed(1)}" dur="0.8s" fill="freeze"/>
+    </rect>\n`;
 
     // Bulb
     svg += `<circle cx="${gaugeCX}" cy="${(gaugeTop + gaugeH).toFixed(1)}" r="${(gaugeW / 2 + 2)}" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>\n`;
@@ -453,7 +420,7 @@ export function signalDashboard(
     // Group tickers by chain
     const chainMap = new Map<string, { up: number; down: number; total: number }>();
     for (const t of tickers) {
-      const chain = (t as any).chain ?? 'Other';
+      const chain = t.chain ?? 'Other';
       if (!chainMap.has(chain)) chainMap.set(chain, { up: 0, down: 0, total: 0 });
       const entry = chainMap.get(chain)!;
       entry.total++;
@@ -474,7 +441,9 @@ export function signalDashboard(
       const by = chainBarY + i * (chainBarH + chainGap);
       const barW = Math.max(chainBarMaxW * (stats.total / maxChainCt), 10);
       svg += `<rect x="${chainBarX}" y="${by}" width="${chainBarMaxW}" height="${chainBarH}" class="d-bar-bg" rx="2"/>\n`;
-      svg += `<rect x="${chainBarX}" y="${by}" width="${barW.toFixed(1)}" height="${chainBarH}" class="d-bar-up" rx="2"/>\n`;
+      svg += `<rect x="${chainBarX}" y="${by}" width="${barW.toFixed(1)}" height="${chainBarH}" class="d-bar-up d-hover-data" rx="2">
+        <animate attributeName="width" from="0" to="${barW.toFixed(1)}" dur="0.5s" fill="freeze"/>
+      </rect>\n`;
       svg += `<text x="${chainBarX + 4}" y="${by + chainBarH - 2}" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="9" font-weight="600">${escapeXml(name)}</text>\n`;
       svg += `<text x="${chainBarX + chainBarMaxW - 4}" y="${by + chainBarH - 2}" text-anchor="end" fill="#94a3b8" font-family="'Inter', monospace" font-size="9">${stats.up}/${stats.down}</text>\n`;
       svg += `<title>${escapeXml(name)}: ${stats.total} tokens (${stats.up} up, ${stats.down} down)</title>\n`;
@@ -528,7 +497,7 @@ export function signalDashboard(
           const x = gridX + c * cellSize;
           const y = gridY + r * cellSize;
           const color = correlationColor(v);
-          svg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(cellSize - 1).toFixed(1)}" height="${(cellSize - 1).toFixed(1)}" fill="${color}" rx="1">\n`;
+          svg += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${(cellSize - 1).toFixed(1)}" height="${(cellSize - 1).toFixed(1)}" fill="${color}" rx="1" class="d-hover-data">\n`;
           svg += `  <title>${escapeXml(topTokens[r]!)} / ${escapeXml(topTokens[c]!)}: ${v.toFixed(3)}</title>\n`;
           svg += `</rect>\n`;
 
@@ -550,7 +519,8 @@ export function signalDashboard(
       for (let c = 0; c < n; c++) {
         const x = gridX + c * cellSize + cellSize / 2;
         const y = gridY + n * cellSize + 4;
-        svg += `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="end" transform="rotate(30, ${x.toFixed(1)}, ${y.toFixed(1)})" fill="#f1f5f9" font-family="'Inter', sans-serif" font-size="${n > 5 ? 7 : 8}" font-weight="600">${escapeXml(topTokens[c]!)}</text>\n`;
+        const rotDeg = n > 5 ? 30 : 0;
+        svg += `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" text-anchor="${rotDeg > 0 ? 'end' : 'middle'}" transform="rotate(${rotDeg}, ${x.toFixed(1)}, ${y.toFixed(1)})" fill="#f1f5f9" font-family="'Inter', sans-serif" font-size="${n > 5 ? 7 : 8}" font-weight="600">${escapeXml(topTokens[c]!)}</text>\n`;
       }
 
       // Diagonal
@@ -582,7 +552,6 @@ export function signalDashboard(
       const barH = 14;
       const barGap = 4;
       const barMaxW = pw - innerPad * 2 - 10;
-      const labelW = 50;
 
       for (let i = 0; i < top5.length; i++) {
         const p = top5[i]!;
@@ -595,7 +564,9 @@ export function signalDashboard(
         // Fill with gradient
         const tvlColors = ['#22d3ee', '#8b5cf6', '#22c55e', '#f59e0b', '#ec4899'];
         const fillColor = tvlColors[i % tvlColors.length]!;
-        svg += `<rect x="${px + innerPad + 1}" y="${by + 1}" width="${(tw - 1).toFixed(1)}" height="${barH - 2}" fill="${fillColor}" opacity="0.8" class="d-onchain-bar"/>\n`;
+        svg += `<rect x="${px + innerPad + 1}" y="${by + 1}" width="${(tw - 1).toFixed(1)}" height="${barH - 2}" fill="${fillColor}" opacity="0.8" class="d-onchain-bar d-hover-data">
+          <animate attributeName="width" from="0" to="${(tw - 1).toFixed(1)}" dur="0.5s" fill="freeze"/>
+        </rect>\n`;
 
         // Protocol name (in the bar)
         svg += `<text x="${px + innerPad + 5}" y="${by + barH - 3}" fill="#ffffff" font-family="'Inter', sans-serif" font-size="9" font-weight="700">${escapeXml(p.name)}</text>\n`;
@@ -606,7 +577,7 @@ export function signalDashboard(
 
         // Fee badge if available
         if (p.fees1d != null && tw > 80) {
-          svg += `<text x="${px + innerPad + tw + 6}" y="${by + barH - 3}" class="d-small" font-size="9">fees: ${fmtDollar(p.fees1d)}/1d</text>\n`;
+          svg += `<text x="${(px + innerPad + barMaxW + 6).toFixed(1)}" y="${(by + barH - 3).toFixed(1)}" class="d-small" font-size="9">fees: ${fmtDollar(p.fees1d)}/1d</text>\n`;
         }
       }
 

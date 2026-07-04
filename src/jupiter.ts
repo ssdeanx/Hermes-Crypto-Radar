@@ -237,7 +237,7 @@ export async function fetchJupiterTokenList(): Promise<
   Array<{ address: string; symbol: string; name: string; decimals: number }>
 > {
   try {
-    const url = 'https://api.jup.ag/tokens/v1/tag/verified';
+    const url = 'https://api.jup.ag/tokens/v2/tag/verified';
     const res = await fetch(url, {
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       headers: { 'Accept': 'application/json' },

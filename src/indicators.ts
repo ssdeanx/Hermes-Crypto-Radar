@@ -2,7 +2,7 @@
 // Hermes Crypto Radar — Technical Indicators
 // ═══════════════════════════════════════════════════════════════════════
 
-import type { Kline, TechnicalIndicators, BBandsResult, MACDResult, StochasticResult, IchimokuResult } from './types.js';
+import type { Kline, TechnicalIndicators, BBandsResult, MACDResult, StochasticResult, IchimokuResult, ParabolicSarResult, KeltnerChannelsResult, StochRSIResult, ElderRayResult, KSTResult } from './types.js';
 
 /**
  * Simple Moving Average.
@@ -458,6 +458,21 @@ export function computeAllIndicators(klines: Kline[]): TechnicalIndicators {
     williamsR: computeWilliamsR(highs, lows, closes),
     cmf: computeCMF(highs, lows, closes, volumes),
     tsi: computeTSI(closes),
+    adx: computeADX(highs, lows, closes),
+    psar: computePSAR(highs, lows, closes),
+    cci: computeCCI(highs, lows, closes),
+    keltner: computeKeltner(highs, lows, closes),
+    roc: computeROC(closes),
+    vwap: computeVWAP(highs, lows, closes, volumes),
+    forceIndex: computeForceIndex(closes, volumes),
+    adl: computeADL(highs, lows, closes, volumes),
+    chaikinOsc: computeChaikinOsc(highs, lows, closes, volumes),
+    stochRsi: computeStochRSI(closes),
+    trix: computeTRIX(closes),
+    kst: computeKST(closes),
+    elderRay: computeElderRay(highs, lows, closes),
+    fisher: computeFisher(highs, lows, closes),
+    massIndex: computeMassIndex(highs, lows),
   };
 }
 
@@ -618,4 +633,705 @@ export function computeVolVsAvg(volumes: number[]): number | null {
   const avgVolume = volumes.slice(-20).reduce((a, b) => a + b, 0) / 20;
   if (avgVolume === 0) return null;
   return (currentVolume / avgVolume) - 1;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// NEW HIGH-VALUE INDICATORS
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Compute Parabolic SAR (Stop and Reverse).
+ *
+ * Tracks price reversals by plotting dots below price in uptrends
+ * and above price in downtrends. The acceleration factor increases
+ * as the trend extends, causing the SAR to converge on price.
+ *
+ * Uses Wilder's original method: initial trend determined from first
+ * `start` bars, AF starts at `accelStart`, increments by `accelIncrement`
+ * each time a new extreme point is made, capped at `accelMax`.
+ *
+ * @param highs High price array
+ * @param lows Low price array
+ * @param closes Close price array (for initial trend detection)
+ * @param accelStart Acceleration factor start (default: 0.02)
+ * @param accelIncrement Acceleration increment (default: 0.02)
+ * @param accelMax Maximum acceleration factor (default: 0.20)
+ * @returns ParabolicSarResult or null if insufficient data
+ */
+export function computePSAR(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  accelStart = 0.02,
+  accelIncrement = 0.02,
+  accelMax = 0.20,
+): ParabolicSarResult | null {
+  if (!highs || highs.length < 5) return null;
+
+  // Determine initial trend from first few bars
+  let isUp = closes[1]! >= closes[0]!;
+  let sar: number;
+  let ep: number;
+  let af = accelStart;
+
+  if (isUp) {
+    sar = Math.min(...lows.slice(0, 2));
+    ep = Math.max(...highs.slice(0, 2));
+  } else {
+    sar = Math.max(...highs.slice(0, 2));
+    ep = Math.min(...lows.slice(0, 2));
+  }
+
+  let prevSar = sar;
+  let prevEp = ep;
+  let prevAf = af;
+  let reversal = false;
+
+  for (let i = 2; i < highs.length; i++) {
+    const hi = highs[i]!;
+    const lo = lows[i]!;
+    const prevHi = highs[i - 1]!;
+    const prevLo = lows[i - 1]!;
+
+    // Calculate SAR for this bar
+    sar = prevSar + prevAf * (prevEp - prevSar);
+
+    if (isUp) {
+      // SAR cannot be above the prior two lows
+      sar = Math.min(sar, prevLo, i >= 3 ? lows[i - 2]! : prevLo);
+      // If price crosses below SAR → reversal
+      if (lo < sar) {
+        isUp = false;
+        reversal = true;
+        sar = prevEp;
+        ep = lo;
+        af = accelStart;
+      } else {
+        reversal = false;
+        if (hi > prevEp) {
+          ep = hi;
+          af = Math.min(af + accelIncrement, accelMax);
+        }
+      }
+    } else {
+      // SAR cannot be below the prior two highs
+      sar = Math.max(sar, prevHi, i >= 3 ? highs[i - 2]! : prevHi);
+      // If price crosses above SAR → reversal
+      if (hi > sar) {
+        isUp = true;
+        reversal = true;
+        sar = prevEp;
+        ep = hi;
+        af = accelStart;
+      } else {
+        reversal = false;
+        if (lo < prevEp) {
+          ep = lo;
+          af = Math.min(af + accelIncrement, accelMax);
+        }
+      }
+    }
+
+    prevSar = sar;
+    prevEp = ep;
+    prevAf = af;
+  }
+
+  return { sar, acceleration: af, isReversal: reversal };
+}
+
+/**
+ * Compute Commodity Channel Index (CCI).
+ *
+ * Measures current price level relative to an average over a period.
+ * CCI above +100 indicates overbought (above avg), below -100 oversold.
+ * Commonly used for cyclical detection and divergence spotting.
+ *
+ * @param highs High price array
+ * @param lows Low price array
+ * @param closes Closing price array
+ * @param period Lookback period (default: 20)
+ * @returns CCI value or null if insufficient data
+ */
+export function computeCCI(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 20,
+): number | null {
+  if (!closes || closes.length < period) return null;
+
+  const startIdx = closes.length - period;
+  const typicalPrices: number[] = [];
+
+  for (let i = startIdx; i < closes.length; i++) {
+    typicalPrices.push((highs[i]! + lows[i]! + closes[i]!) / 3);
+  }
+
+  const sma = typicalPrices.reduce((a, b) => a + b, 0) / period;
+  let meanDev = 0;
+  for (const tp of typicalPrices) {
+    meanDev += Math.abs(tp - sma);
+  }
+  meanDev /= period;
+
+  const currentTP = typicalPrices[typicalPrices.length - 1]!;
+  if (meanDev === 0) return 0;
+
+  return (currentTP - sma) / (0.015 * meanDev);
+}
+
+/**
+ * Compute Keltner Channels.
+ *
+ * Volatility bands centred on an EMA with ATR-based width.
+ * Price touching upper band indicates overextension;
+ * channel width expands/contracts with volatility.
+ *
+ * @param highs High price array
+ * @param lows Low price array
+ * @param closes Closing price array
+ * @param period EMA period (default: 20)
+ * @param multiplier ATR multiplier (default: 2)
+ * @returns KeltnerChannelsResult or null if insufficient data
+ */
+export function computeKeltner(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 20,
+  multiplier = 2,
+): KeltnerChannelsResult | null {
+  if (!closes || closes.length < period + 1) return null;
+
+  const middle = ema(closes, period);
+  if (middle === null) return null;
+
+  // Compute ATR over the same period
+  const trueRanges: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    trueRanges.push(Math.max(
+      highs[i]! - lows[i]!,
+      Math.abs(highs[i]! - closes[i - 1]!),
+      Math.abs(lows[i]! - closes[i - 1]!),
+    ));
+  }
+  const atr = trueRanges.slice(-period).reduce((a, b) => a + b, 0) / period;
+
+  const upper = middle + multiplier * atr;
+  const lower = middle - multiplier * atr;
+  const width = middle > 0 ? (upper - lower) / middle : 0;
+  const close = closes[closes.length - 1]!;
+  const position = upper - lower > 0 ? (close - lower) / (upper - lower) : 0.5;
+
+  return { upper, middle, lower, width, position };
+}
+
+/**
+ * Compute Rate of Change (ROC).
+ *
+ * Simple momentum oscillator measuring percentage change between
+ * current price and the price N periods ago.
+ * Positive = upward momentum, Negative = downward momentum.
+ *
+ * @param closes Closing price array
+ * @param period Lookback period (default: 12)
+ * @returns ROC as percentage or null if insufficient data
+ */
+export function computeROC(closes: number[], period = 12): number | null {
+  if (!closes || closes.length <= period) return null;
+  const current = closes[closes.length - 1]!;
+  const prior = closes[closes.length - 1 - period]!;
+  if (prior === 0) return 0;
+  return ((current - prior) / prior) * 100;
+}
+
+/**
+ * Compute VWAP (Volume Weighted Average Price).
+ *
+ * Calculated as the cumulative sum of (Typical Price × Volume)
+ * divided by cumulative volume over the available data window.
+ * Often used as an intraday fair-value benchmark.
+ *
+ * @param highs High price array
+ * @param lows Low price array
+ * @param closes Closing price array
+ * @param volumes Volume array
+ * @returns VWAP value or null if insufficient data
+ */
+export function computeVWAP(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  volumes: number[],
+): number | null {
+  if (!closes || closes.length < 1) return null;
+
+  let tpvSum = 0;
+  let volSum = 0;
+
+  for (let i = 0; i < closes.length; i++) {
+    const tp = (highs[i]! + lows[i]! + closes[i]!) / 3;
+    tpvSum += tp * volumes[i]!;
+    volSum += volumes[i]!;
+  }
+
+  if (volSum === 0) return null;
+  return tpvSum / volSum;
+}
+
+/**
+ * Compute Force Index.
+ *
+ * Measures momentum of price movements adjusted by volume.
+ * Positive Force Index confirms upward price movement,
+ * negative confirms downward movement. Smoothed with EMA.
+ *
+ * @param closes Closing price array
+ * @param volumes Volume array
+ * @param period Smoothing period (default: 13)
+ * @returns Force Index value or null if insufficient data
+ */
+export function computeForceIndex(
+  closes: number[],
+  volumes: number[],
+  period = 13,
+): number | null {
+  if (!closes || closes.length < period + 1) return null;
+
+  // Raw 1-period force index: volume * (close_t - close_t-1)
+  const rawForce: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    rawForce.push(volumes[i]! * (closes[i]! - closes[i - 1]!));
+  }
+
+  // Smooth with EMA
+  return ema(rawForce, period);
+}
+
+/**
+ * Compute Accumulation/Distribution Line (ADL).
+ *
+ * A volume-weighted measure of cumulative money flow.
+ * Rises when price closes in the upper portion of the range,
+ * falls when price closes in the lower portion.
+ * Divergence between ADL and price can signal trend reversals.
+ *
+ * @param highs High price array
+ * @param lows Low price array
+ * @param closes Closing price array
+ * @param volumes Volume array
+ * @returns ADL value or null if insufficient data
+ */
+export function computeADL(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  volumes: number[],
+): number | null {
+  if (!closes || closes.length < 2) return null;
+
+  let adl = 0;
+  for (let i = 0; i < closes.length; i++) {
+    const hi = highs[i]!;
+    const lo = lows[i]!;
+    const range = hi - lo;
+    // CLV (Close Location Value): ranges from -1 to +1
+    const clv = range > 0 ? ((closes[i]! - lo) - (hi - closes[i]!)) / range : 0;
+    adl += clv * volumes[i]!;
+  }
+
+  return adl;
+}
+
+/**
+ * Compute Chaikin Oscillator.
+ *
+ * The MACD of the Accumulation/Distribution Line. Calculated as
+ * the difference between a short-period EMA of ADL and a
+ * long-period EMA of ADL.
+ *
+ * @param highs High price array
+ * @param lows Low price array
+ * @param closes Closing price array
+ * @param volumes Volume array
+ * @param shortPeriod Short EMA period (default: 3)
+ * @param longPeriod Long EMA period (default: 10)
+ * @returns Chaikin Oscillator value or null if insufficient data
+ */
+export function computeChaikinOsc(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  volumes: number[],
+  shortPeriod = 3,
+  longPeriod = 10,
+): number | null {
+  if (!closes || closes.length < longPeriod + 2) return null;
+
+  // Build the ADL series
+  const adlSeries: number[] = [];
+  let adl = 0;
+  for (let i = 0; i < closes.length; i++) {
+    const hi = highs[i]!;
+    const lo = lows[i]!;
+    const range = hi - lo;
+    const clv = range > 0 ? ((closes[i]! - lo) - (hi - closes[i]!)) / range : 0;
+    adl += clv * volumes[i]!;
+    adlSeries.push(adl);
+  }
+
+  const shortEma = ema(adlSeries, shortPeriod);
+  const longEma = ema(adlSeries, longPeriod);
+
+  if (shortEma === null || longEma === null) return null;
+  return shortEma - longEma;
+}
+
+/**
+ * Compute StochRSI.
+ *
+ * Applies the Stochastic Oscillator formula to RSI values rather
+ * than price data. Identifies overbought/oversold conditions in
+ * RSI itself. Values near 1.0 indicate RSI is near its high,
+ * values near 0 indicate RSI is near its low.
+ *
+ * @param closes Closing price array
+ * @param rsiPeriod RSI period (default: 14)
+ * @param stochPeriod Stochastic lookback period (default: 14)
+ * @param smoothK %K smoothing factor (default: 3)
+ * @param smoothD %D smoothing factor (default: 3)
+ * @returns StochRSIResult with stochRsi (raw 0-1), k and d (0-100)
+ */
+export function computeStochRSI(
+  closes: number[],
+  rsiPeriod = 14,
+  stochPeriod = 14,
+  smoothK = 3,
+  smoothD = 3,
+): StochRSIResult | null {
+  // Need enough data for RSI + stochastic period
+  if (!closes || closes.length < rsiPeriod + stochPeriod + 1) {
+    return { stochRsi: null, k: null, d: null };
+  }
+
+  // Get the RSI series
+  const rsiVals = rsiSeries(closes, rsiPeriod);
+  const validRsi: number[] = rsiVals.filter((v): v is number => v != null);
+
+  if (validRsi.length < stochPeriod) {
+    return { stochRsi: null, k: null, d: null };
+  }
+
+  // Compute raw stochRSI (0 to 1)
+  const window = validRsi.slice(-stochPeriod);
+  const minRsi = Math.min(...window);
+  const maxRsi = Math.max(...window);
+  const currentRsi = validRsi[validRsi.length - 1]!;
+  const range = maxRsi - minRsi;
+  const stochRsi = range === 0 ? 0.5 : (currentRsi - minRsi) / range;
+
+  // Compute smoothed %K and %D (0-100 scale) similar to computeStochastic
+  const rawK: number[] = [];
+  for (let i = stochPeriod - 1; i < validRsi.length; i++) {
+    const slice = validRsi.slice(i - stochPeriod + 1, i + 1);
+    const sliceMin = Math.min(...slice);
+    const sliceMax = Math.max(...slice);
+    const sliceRange = sliceMax - sliceMin;
+    rawK.push(sliceRange === 0 ? 50 : ((validRsi[i]! - sliceMin) / sliceRange) * 100);
+  }
+
+  if (rawK.length < smoothK) {
+    return { stochRsi, k: null, d: null };
+  }
+
+  const kSeries: number[] = [];
+  for (let i = smoothK - 1; i < rawK.length; i++) {
+    const w = rawK.slice(i - smoothK + 1, i + 1);
+    kSeries.push(w.reduce((a, b) => a + b, 0) / smoothK);
+  }
+
+  const k = kSeries[kSeries.length - 1]!;
+  const d = kSeries.length >= smoothD
+    ? kSeries.slice(kSeries.length - smoothD).reduce((a, b) => a + b, 0) / smoothD
+    : null;
+
+  return { stochRsi, k, d };
+}
+
+/**
+ * Compute TRIX (Triple Exponential Average).
+ *
+ * Applies three EMAs to price data and computes the period-over-period
+ * percentage change of the final EMA. Filters out short-term noise
+ * while capturing underlying momentum.
+ * Positive values indicate upward momentum, negative downward.
+ *
+ * @param closes Closing price array
+ * @param period EMA period (default: 15)
+ * @returns TRIX value as percentage change, or null if insufficient data
+ */
+export function computeTRIX(closes: number[], period = 15): number | null {
+  // Need at least 3 * period data points for triple smoothing
+  if (!closes || closes.length < period * 3) return null;
+
+  const ema1 = emaSeries(closes, period);
+  const validEma1: number[] = ema1.filter((v): v is number => v != null);
+
+  if (validEma1.length < period) return null;
+
+  const ema2 = emaSeries(validEma1, period);
+  const validEma2: number[] = ema2.filter((v): v is number => v != null);
+
+  if (validEma2.length < period) return null;
+
+  const ema3 = emaSeries(validEma2, period);
+  const validEma3: number[] = ema3.filter((v): v is number => v != null);
+
+  if (validEma3.length < 2) return null;
+
+  const current = validEma3[validEma3.length - 1]!;
+  const prior = validEma3[validEma3.length - 2]!;
+
+  if (prior === 0) return 0;
+  return ((current - prior) / prior) * 100;
+}
+
+/**
+ * Compute KST (Know Sure Thing).
+ *
+ * A summed ROC oscillator that combines four different rate-of-change
+ * calculations, each smoothed separately, then weighted and summed.
+ * Designed to identify major trend shifts with reduced noise.
+ *
+ * Standard configuration:
+ *   RCMA1 = SMA(ROC(close, 10), 10)  weight 1
+ *   RCMA2 = SMA(ROC(close, 15), 10)  weight 2
+ *   RCMA3 = SMA(ROC(close, 20), 10)  weight 3
+ *   RCMA4 = SMA(ROC(close, 30), 15)  weight 4
+ *   KST   = sum of weighted RCMAs
+ *   Signal = SMA(KST, 9)
+ *
+ * @param closes Closing price array
+ * @returns KSTResult with kst and signal line, or null if insufficient data
+ */
+export function computeKST(closes: number[]): KSTResult | null {
+  // Need at least 30 (ROC4 period) + 15 (SMA period) = 45 bars
+  if (!closes || closes.length < 45) return { kst: 0, signal: null };
+
+  const rocPeriods = [10, 15, 20, 30];
+  const smaPeriods = [10, 10, 10, 15];
+  const weights = [1, 2, 3, 4];
+
+  const rcmas: number[] = [];
+
+  for (let r = 0; r < rocPeriods.length; r++) {
+    const rocPeriod = rocPeriods[r]!;
+    const smaPeriod = smaPeriods[r]!;
+
+    // Compute ROC series
+    const rocSeries: number[] = [];
+    for (let i = rocPeriod; i < closes.length; i++) {
+      const prior = closes[i - rocPeriod]!;
+      rocSeries.push(prior !== 0 ? ((closes[i]! - prior) / prior) * 100 : 0);
+    }
+
+    if (rocSeries.length < smaPeriod) return null;
+
+    // SMA of ROC series
+    const smaVal = rocSeries.slice(-smaPeriod).reduce((a, b) => a + b, 0) / smaPeriod;
+    rcmas.push(smaVal);
+  }
+
+  // Weighted sum
+  let kst = 0;
+  for (let r = 0; r < rcmas.length; r++) {
+    kst += rcmas[r]! * weights[r]!;
+  }
+
+  // Signal line: compute trailing KST history then SMA of last 9
+  const kstHistory: number[] = [];
+  const maxHistory = Math.min(30, closes.length - 50);
+  for (let offset = 0; offset < maxHistory; offset++) {
+    const kstComp: number[] = [];
+    let enough = true;
+
+    for (let r = 0; r < rocPeriods.length; r++) {
+      const rocP = rocPeriods[r]!;
+      const smaP = smaPeriods[r]!;
+      const endIdx = closes.length - 1 - offset;
+
+      if (endIdx < rocP + smaP) { enough = false; break; }
+
+      const rocSeries: number[] = [];
+      for (let i = endIdx - smaP + 1; i <= endIdx; i++) {
+        if (i < rocP) { enough = false; break; }
+        const prior = closes[i - rocP]!;
+        rocSeries.push(prior !== 0 ? ((closes[i]! - prior) / prior) * 100 : 0);
+      }
+      if (!enough) break;
+
+      if (rocSeries.length < smaP) { enough = false; break; }
+      const smaV = rocSeries.reduce((a, b) => a + b, 0) / smaP;
+      kstComp.push(smaV);
+    }
+
+    if (enough && kstComp.length === 4) {
+      const kstVal = kstComp[0]! * weights[0]! + kstComp[1]! * weights[1]! +
+                     kstComp[2]! * weights[2]! + kstComp[3]! * weights[3]!;
+      kstHistory.push(kstVal);
+    }
+  }
+
+  const signal = kstHistory.length >= 9
+    ? kstHistory.slice(0, 9).reduce((a, b) => a + b, 0) / 9
+    : null;
+
+  return { kst, signal };
+}
+
+/**
+ * Compute Elder Ray Index (Bull/Bear Power).
+ *
+ * Bull Power = High - EMA(close)
+ * Bear Power = Low - EMA(close)
+ *
+ * Positive Bull Power indicates buyers are in control,
+ * negative Bear Power indicates sellers are in control.
+ * Divergence between price and these indicators can signal reversals.
+ *
+ * @param highs High price array
+ * @param lows Low price array
+ * @param closes Closing price array
+ * @param period EMA period (default: 13)
+ * @returns ElderRayResult or null if insufficient data
+ */
+export function computeElderRay(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 13,
+): ElderRayResult | null {
+  if (!closes || closes.length < period) return null;
+
+  const emaVal = ema(closes, period);
+  if (emaVal === null) return null;
+
+  const currentHigh = highs[highs.length - 1]!;
+  const currentLow = lows[lows.length - 1]!;
+
+  return {
+    bullPower: currentHigh - emaVal,
+    bearPower: currentLow - emaVal,
+  };
+}
+
+/**
+ * Compute Fisher Transform.
+ *
+ * Normalizes price data to a Gaussian distribution, producing
+ * an oscillator that highlights extreme price moves with sharp
+ * turning points. Values above 2 suggest overbought, below -2
+ * suggest oversold.
+ *
+ * @param highs High price array
+ * @param lows Low price array
+ * @param closes Closing price array
+ * @param period Lookback period (default: 10)
+ * @returns Fisher Transform value or null if insufficient data
+ */
+export function computeFisher(
+  highs: number[],
+  lows: number[],
+  closes: number[],
+  period = 10,
+): number | null {
+  if (!closes || closes.length < period + 1) return null;
+
+  // Compute median prices
+  const medians: number[] = [];
+  for (let i = 0; i < closes.length; i++) {
+    medians.push((highs[i]! + lows[i]!) / 2);
+  }
+
+  // For each position, compute Fisher value
+  let prevNorm = 0;
+  let fisherValue: number | null = null;
+
+  for (let i = period - 1; i < medians.length; i++) {
+    const window = medians.slice(i - period + 1, i + 1);
+    const minLo = Math.min(...window);
+    const maxHi = Math.max(...window);
+    const range = maxHi - minLo;
+
+    // Normalize median to -1..1 range
+    let norm = range > 0
+      ? 0.33 * 2 * ((medians[i]! - minLo) / range - 0.5) + 0.67 * prevNorm
+      : prevNorm;
+
+    // Clamp to avoid ln(0) or ln(negative)
+    if (norm > 0.999) norm = 0.999;
+    if (norm < -0.999) norm = -0.999;
+
+    fisherValue = 0.5 * Math.log((1 + norm) / (1 - norm));
+    prevNorm = norm;
+  }
+
+  return fisherValue;
+}
+
+/**
+ * Compute Mass Index.
+ *
+ * Detects trend reversals by measuring the narrowing and widening
+ * of the high-low range. A reversal signal occurs when the Mass
+ * Index rises above 27 and then falls below 26.5.
+ *
+ * Formula:
+ *   Range = High - Low
+ *   EMA9 = EMA(Range, 9)
+ *   EMA9_EMA9 = EMA(EMA9, 9)
+ *   Ratio = EMA9 / EMA9_EMA9
+ *   Mass Index = Sum of Ratio over the last 25 periods
+ *
+ * @param highs High price array
+ * @param lows Low price array
+ * @param period Summation period (default: 25)
+ * @returns Mass Index value or null if insufficient data
+ */
+export function computeMassIndex(
+  highs: number[],
+  lows: number[],
+  period = 25,
+): number | null {
+  // Need enough data for double EMA9 + summation period
+  if (!highs || highs.length < 9 * 2 + period) return null;
+
+  const ranges: number[] = [];
+  for (let i = 0; i < highs.length; i++) {
+    ranges.push(highs[i]! - lows[i]!);
+  }
+
+  const ema9Series = emaSeries(ranges, 9);
+  const validEma9: number[] = ema9Series.filter((v): v is number => v != null);
+
+  if (validEma9.length < 9 * 2) return null;
+
+  const ema9ema9Series = emaSeries(validEma9, 9);
+  const validEma9ema9: number[] = ema9ema9Series.filter((v): v is number => v != null);
+
+  if (validEma9ema9.length < period) return null;
+
+  // Align the last `period` values of EMA9 and EMA9_EMA9
+  const alignedEma9 = validEma9.slice(validEma9.length - period);
+  const alignedEma9ema9 = validEma9ema9.slice(-period);
+
+  let massIndex = 0;
+  for (let i = 0; i < period; i++) {
+    const ema9Val = alignedEma9[i]!;
+    const ema9ema9Val = alignedEma9ema9[i]!;
+    massIndex += ema9ema9Val > 0 ? ema9Val / ema9ema9Val : 1;
+  }
+
+  return massIndex;
 }

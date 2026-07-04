@@ -85,6 +85,30 @@ const TOKENS: Record<string, TokenDef> = {
 
   // ── Solana Ecosystem (additional) ──
   'official-trump':    { id: 'official-trump',    sym: 'TRUMP', name: 'Official Trump',      chain: 'solana',                       coingeckoId: 'official-trump' },
+
+  // ── Monero ──
+  'monero':            { id: 'monero',            sym: 'XMR',   name: 'Monero',              chain: 'monero',                       coingeckoId: 'monero' },
+
+  // ── Algorand ──
+  'algorand':          { id: 'algorand',          sym: 'ALGO',  name: 'Algorand',            chain: 'algorand',                     coingeckoId: 'algorand' },
+
+  // ── DeFi / BNB Ecosystem ──
+  'pancakeswap-token': { id: 'pancakeswap-token', sym: 'CAKE',  name: 'PancakeSwap',         chain: 'bnb',                          coingeckoId: 'pancakeswap-token' },
+
+  // ── TRON Ecosystem ──
+  'just':              { id: 'just',              sym: 'JST',   name: 'JUST',                chain: 'tron',                         coingeckoId: 'just' },
+
+  // ── Tezos ──
+  'tezos':             { id: 'tezos',             sym: 'XTZ',   name: 'Tezos',               chain: 'tezos',                        coingeckoId: 'tezos' },
+
+  // ── Theta Network ──
+  'theta-token':       { id: 'theta-token',       sym: 'THETA', name: 'Theta Network',       chain: 'theta',                        coingeckoId: 'theta-token' },
+
+  // ── Ethereum Ecosystem (Gaming / DeFi / Infrastructure) ──
+  'axie-infinity':     { id: 'axie-infinity',     sym: 'AXS',   name: 'Axie Infinity',       chain: 'ethereum',                     coingeckoId: 'axie-infinity' },
+  'jasmycoin':         { id: 'jasmycoin',         sym: 'JASMY', name: 'JasmyCoin',           chain: 'ethereum',                     coingeckoId: 'jasmycoin' },
+  'convex-finance':    { id: 'convex-finance',    sym: 'CVX',   name: 'Convex Finance',      chain: 'ethereum',                     coingeckoId: 'convex-finance' },
+  '1inch':             { id: '1inch',             sym: '1INCH', name: '1inch',               chain: 'ethereum',                     coingeckoId: '1inch' },
 };
 
 /** All token IDs */

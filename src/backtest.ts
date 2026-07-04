@@ -49,6 +49,8 @@ export interface BacktestResult {
     strong_buy: { total: number; wins: number; avgReturn: number };
     strong_sell: { total: number; wins: number; avgReturn: number };
   };
+  /** Optional equity curve values (cumulative returns over time) */
+  equityCurve?: number[];
 }
 
 export interface BacktestOptions {

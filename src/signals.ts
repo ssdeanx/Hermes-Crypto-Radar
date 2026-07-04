@@ -3,11 +3,16 @@
 // ═══════════════════════════════════════════════════════════════════════
 //
 // Feature set:
-//   - Composite scoring (momentum, technical, news, on-chain)
+//   - Composite scoring (momentum 40%, technical 40%, news 20%)
+//   - ADX trend strength filter with dynamic confidence adjustment
+//   - Divergence detection (price vs RSI)
 //   - Confidence calibration (conflict penalties, agreement bonuses)
+//   - Volatility-adjusted position sizing (ATR-based)
+//   - Graduated volume confirmation (0.5x–3x range)
 //   - Context-aware on-chain boost with TVL trend direction
-//   - Volume confirmation (±5%)
-//   - Signal metadata (per-strategy breakdown, market regime)
+//   - Alert priority levels (critical/high/medium/low)
+//   - Signal metadata (ADX, divergence, volatility)
+//   - Market regime detection
 //   - Alert deduplication (1-hour sliding window)
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -59,6 +64,160 @@ function evictStaleAlerts(): void {
   for (const [key, ts] of recentlySentAlerts.entries()) {
     if (ts < cutoff) recentlySentAlerts.delete(key);
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// ADX Trend Strength Filter
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Categorize ADX value and return a confidence multiplier for trend
+ * strength adjustment of the composite score.
+ *
+ *   ADX  0–15  → Very weak/choppy market → 0.6× (reduce confidence 40%)
+ *   ADX 15–20  → Weak trend             → 0.75×
+ *   ADX 20–25  → Transition zone        → 0.9×
+ *   ADX 25–40  → Trending               → 1.0× (neutral)
+ *   ADX 40–60  → Strong trend           → 1.05× (+5%)
+ *   ADX 60+    → Extremely strong       → 1.1× (capped)
+ *
+ * Reference: Wilder (1978). ADX < 20 = non-trending, > 25 = trending.
+ */
+function computeAdxAdjustment(adx: number | null | undefined): {
+  category: string;
+  multiplier: number;
+} {
+  if (adx == null) return { category: 'unknown', multiplier: 1.0 };
+  if (adx < 15) return { category: 'very-weak', multiplier: 0.6 };
+  if (adx < 20) return { category: 'weak', multiplier: 0.75 };
+  if (adx < 25) return { category: 'transition', multiplier: 0.9 };
+  if (adx < 40) return { category: 'trending', multiplier: 1.0 };
+  if (adx < 60) return { category: 'strong', multiplier: 1.05 };
+  return { category: 'very-strong', multiplier: 1.1 }; // ADX >= 60
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Divergence Detection
+// ═══════════════════════════════════════════════════════════════════════
+
+interface DivergenceResult {
+  type: 'bullish-regular' | 'bearish-regular' | 'bullish-hidden' | 'bearish-hidden' | 'none';
+  strength: number; // 0–1
+  description: string;
+}
+
+/**
+ * Detect regular and hidden divergences between price action and RSI
+ * using the enriched ticker's 24h range position and RSI value.
+ *
+ * Regular divergence (trend reversal signal):
+ *   - Bullish: price at 24h low but RSI NOT confirming (moderate/neutral)
+ *   - Bearish: price at 24h high but RSI NOT confirming (moderate/neutral)
+ *
+ * Hidden divergence (trend continuation signal):
+ *   - Bullish: price holding mid-range while RSI oversold
+ *   - Bearish: price stalling while RSI elevated
+ *
+ * These relationships are proven predictors of reversals and continuations
+ * (Murphy, J. J. "Technical Analysis of the Financial Markets").
+ */
+function detectDivergence(
+  t: EnrichedTicker,
+  tech: TechnicalIndicators | undefined,
+): DivergenceResult {
+  if (!tech || tech.rsi == null) {
+    return { type: 'none', strength: 0, description: 'Insufficient data' };
+  }
+
+  const { rsi } = tech;
+  const rangePos = t.rangePosPct; // 0.0 = 24h low, 1.0 = 24h high
+  const priceChange = t.priceChangePercent;
+
+  // ── Regular divergence (trend exhaustion / reversal) ──
+  // Price near 24h low but RSI not confirming weakness (RSI > 40)
+  if (rangePos < 0.15 && rsi > 40 && priceChange < 0) {
+    return {
+      type: 'bullish-regular',
+      strength: clamp((0.15 - rangePos) / 0.15 * (rsi - 40) / 60, 0, 1),
+      description: `Price at 24h low (range ${(rangePos * 100).toFixed(0)}%) but RSI ${rsi.toFixed(0)} not confirming weakness — regular bullish divergence`,
+    };
+  }
+  // Price near 24h high but RSI not confirming strength (RSI < 60)
+  if (rangePos > 0.85 && rsi < 60 && priceChange > 0) {
+    return {
+      type: 'bearish-regular',
+      strength: clamp((rangePos - 0.85) / 0.15 * (60 - rsi) / 60, 0, 1),
+      description: `Price at 24h high (range ${(rangePos * 100).toFixed(0)}%) but RSI ${rsi.toFixed(0)} not confirming strength — regular bearish divergence`,
+    };
+  }
+
+  // ── Hidden divergence (trend continuation) ──
+  // Price holding mid-range while RSI oversold
+  if (rangePos > 0.35 && rangePos < 0.50 && rsi < 35 && priceChange > 0) {
+    return {
+      type: 'bullish-hidden',
+      strength: clamp((0.50 - rangePos) / 0.15 * (35 - rsi) / 35, 0, 1),
+      description: `Price holding mid-range (${(rangePos * 100).toFixed(0)}%) while RSI ${rsi.toFixed(0)} oversold — hidden bullish divergence`,
+    };
+  }
+  // Price stalling while RSI elevated
+  if (rangePos > 0.50 && rangePos < 0.65 && rsi > 65 && priceChange < 0) {
+    return {
+      type: 'bearish-hidden',
+      strength: clamp((rangePos - 0.50) / 0.15 * (rsi - 65) / 35, 0, 1),
+      description: `Price stalling at mid-range (${(rangePos * 100).toFixed(0)}%) while RSI ${rsi.toFixed(0)} elevated — hidden bearish divergence`,
+    };
+  }
+
+  // ── Subtle divergence (lower conviction) ──
+  if (rangePos < 0.25 && rsi < 50 && rsi > 35) {
+    return {
+      type: rsi > 45 ? 'bullish-regular' : 'bullish-hidden',
+      strength: 0.3,
+      description: `Subtle divergence — price low (${(rangePos * 100).toFixed(0)}%), RSI ${rsi.toFixed(0)}`,
+    };
+  }
+  if (rangePos > 0.75 && rsi > 50 && rsi < 65) {
+    return {
+      type: rsi < 55 ? 'bearish-regular' : 'bearish-hidden',
+      strength: 0.3,
+      description: `Subtle divergence — price high (${(rangePos * 100).toFixed(0)}%), RSI ${rsi.toFixed(0)}`,
+    };
+  }
+
+  return { type: 'none', strength: 0, description: 'No divergence detected' };
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Volatility Factor (ATR-based position sizing)
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Compute a volatility factor (0–1) for position sizing guidance based on
+ * Average True Range as a percentage of price.
+ *
+ *   ATR% < 1%   → low volatility   → factor 1.0  (full position)
+ *   ATR% 1–2%   → normal           → factor 0.9
+ *   ATR% 2–4%   → elevated         → factor 0.7
+ *   ATR% 4–6%   → high             → factor 0.5
+ *   ATR% 6–10%  → very high        → factor 0.3
+ *   ATR% > 10%  → extreme          → factor 0.15
+ *
+ * Principle: higher volatility → wider stop-losses needed →
+ * reduce position size proportionally to maintain constant
+ * dollar risk (Van Tharp, "Trade Your Way to Financial Freedom").
+ *
+ * @param atrPct ATR as percentage of price (e.g. 2.5)
+ * @returns Position size multiplier (0–1)
+ */
+function computeVolatilityFactor(atrPct: number | null | undefined): number {
+  if (atrPct == null || atrPct <= 0) return 1.0;
+  if (atrPct < 1) return 1.0;
+  if (atrPct < 2) return 0.9;
+  if (atrPct < 4) return 0.7;
+  if (atrPct < 6) return 0.5;
+  if (atrPct < 10) return 0.3;
+  return 0.15;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -233,6 +392,12 @@ interface CalibrationResult {
  *   - Momentum & trend-following agree but
  *     mean-reversion disagrees                →  -5% penalty
  *   - All 3 strategies agree                  → +10% bonus
+ *
+ * ADX awareness:
+ *   - ADX < 20 (weak/no trend) → conflict penalties ×1.3
+ *     (in choppy markets, conflicting signals are more dangerous)
+ *   - ADX > 25 (trending) → agreement bonus +5pp
+ *     (in trending markets, aligned signals are more reliable)
  */
 function calibrateConfidence(
   momentumDir: string,
@@ -241,6 +406,7 @@ function calibrateConfidence(
   momentumConf: number,
   meanRevConf: number,
   trendConf: number,
+  adx?: number | null,
 ): CalibrationResult {
   // Map directions to a buy/sell numeric scale for comparison
   const toSignal = (d: string): number => {
@@ -255,21 +421,30 @@ function calibrateConfidence(
 
   let penalty = 0;
 
+  // ADX-based adjustment factor
+  let adxFactor = 1.0;
+  if (adx != null) {
+    if (adx < 20) adxFactor = 1.3;  // weak trend → conflicts more penalizing
+    else if (adx > 25) adxFactor = 0.85; // trending → conflicts less concerning
+  }
+
   // Momentum vs Trend-Following conflict
   if (m !== 0 && t !== 0 && m * t < 0) {
-    penalty = -15;
+    penalty = -15 * adxFactor;
   }
   // Momentum and TF agree, but mean-reversion disagrees
   else if (m !== 0 && t !== 0 && m * t > 0 && r !== 0 && m * r < 0) {
-    penalty = -5;
+    penalty = -5 * adxFactor;
   }
   // All three agree (all non-zero with same sign)
   else if (m !== 0 && t !== 0 && r !== 0 && m === t && t === r) {
     penalty = 10;
+    // Boost agreement bonus in trending markets
+    if (adx != null && adx > 25) penalty += 5;
   }
 
   return {
-    penalty,
+    penalty: Math.round(penalty * 10) / 10,
     breakdown: {
       momentum: { direction: momentumDir, confidence: momentumConf },
       meanReversion: { direction: meanRevDir, confidence: meanRevConf },
@@ -279,22 +454,90 @@ function calibrateConfidence(
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Volume confirmation
+// Volume confirmation (graduated scale)
 // ═══════════════════════════════════════════════════════════════════════
 
 /**
- * Compute volume-based confidence adjustment.
- *   - Volume > 2× average → +5%
- *   - Volume < 0.5× average → -5%
- *   - Otherwise → 0
+ * Compute volume-based confidence adjustment using a graduated scale.
  *
- * Uses the volVsAvg field already computed on the ticker.
+ * Replaces the old binary ±5% with a finer grid:
+ *   volVsAvg > 3.0  → +8  (exceptional volume — strong confirmation)
+ *   volVsAvg > 2.0  → +5  (high volume — good confirmation)
+ *   volVsAvg > 1.5  → +3  (above average — mild confirmation)
+ *   volVsAvg > 0.8  →  0  (normal — neutral)
+ *   volVsAvg > 0.5  → -3  (below average — mild concern)
+ *   volVsAvg <= 0.5 → -6  (very low — weak signal, suspect)
+ *
+ * The graduated approach better captures the continuous nature of
+ * volume confirmation (Elder, "Come Into My Trading Room").
  */
 function computeVolumeAdjustment(t: EnrichedTicker): number {
   if (t.volVsAvg == null) return 0;
-  if (t.volVsAvg > 2) return 5;
-  if (t.volVsAvg < 0.5) return -5;
-  return 0;
+  if (t.volVsAvg > 3.0) return 8;
+  if (t.volVsAvg > 2.0) return 5;
+  if (t.volVsAvg > 1.5) return 3;
+  if (t.volVsAvg > 0.8) return 0;
+  if (t.volVsAvg > 0.5) return -3;
+  return -6;
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Alert priority tagging
+// ═══════════════════════════════════════════════════════════════════════
+
+/**
+ * Assign a priority label to an alert based on its type and confirming
+ * context. Returns the tagged alert string.
+ *
+ * Priority tiers:
+ *   🔴 [CRITICAL]  — extreme price moves (>5%), strong divergence
+ *   🟠 [HIGH]      — technical extremes confirmed by volume, ADX extremes
+ *   🟡 [MEDIUM]    — standard technical alerts, standalone RSI extremes
+ *   🔵 [LOW]       — informational (news count, minor changes)
+ */
+function tagAlertPriority(
+  alertText: string,
+  t: EnrichedTicker,
+  tech: TechnicalIndicators | undefined,
+): string {
+  // Critical alerts
+  if (alertText.includes('PUMP') || alertText.includes('DIP')) {
+    // Tag as critical — these are always the most actionable
+    return `🔴 [CRITICAL] ${alertText}`;
+  }
+  if (alertText.includes('Divergence') && !alertText.includes('Subtle')) {
+    return `🟠 [HIGH] ${alertText}`;
+  }
+
+  // High alerts
+  if ((alertText.includes('Overbought') || alertText.includes('Oversold')) &&
+      t.volVsAvg != null && t.volVsAvg > 1.5) {
+    return `🟠 [HIGH] ${alertText}`;
+  }
+  if (alertText.includes('Strong on-chain')) {
+    return `🟠 [HIGH] ${alertText}`;
+  }
+  if (alertText.includes('Strong trend') || alertText.includes('Very weak trend')) {
+    return `🟠 [HIGH] ${alertText}`;
+  }
+
+  // Medium alerts
+  if (alertText.includes('Overbought') || alertText.includes('Oversold') ||
+      alertText.includes('BB upper') || alertText.includes('BB lower') ||
+      alertText.includes('High volume') || alertText.includes('Wide spread') ||
+      alertText.includes('High volatility') || alertText.includes('Extreme volatility')) {
+    return `🟡 [MEDIUM] ${alertText}`;
+  }
+
+  // Low alerts — informational
+  if (alertText.includes('News:')) {
+    return `🔵 [LOW] ${alertText}`;
+  }
+  if (alertText.includes('Subtle divergence')) {
+    return `🔵 [LOW] ${alertText}`;
+  }
+
+  return `🟡 [MEDIUM] ${alertText}`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -337,16 +580,21 @@ function computeMarketRegime(signals: TokenSignal[]): string {
  * Compute composite signal scores for all tickers.
  *
  * Scoring model:
- *   - Momentum (40%): price change, spread, book imbalance
- *   - Technical (40%): RSI, MACD, BB position, volume trend
+ *   - Momentum (40%): price change, spread, book imbalance, range position
+ *   - Technical (40%): RSI, MACD, BB position, volume trend, EMA50 distance
  *   - News (20%): recent relevant news volume and relevance
  *   - On-chain boost (trend-aware, up to +15% added)
- *   - Confidence calibration (±10% / -5% / -15%)
- *   - Volume confirmation (±5%)
+ *   - Confidence calibration (±15% / -5% / -15%) with ADX awareness
+ *   - Volume confirmation (graduated ±3–8%)
+ *   - ADX trend strength filter (0.6×–1.1× final multiplier)
  *
  * Each token also receives:
  *   - `signalBreakdown`: per-strategy direction + confidence
  *   - `regime`: market-wide regime (risk-on/risk-off/neutral)
+ *   - `adx`: ADX value from technical indicators
+ *   - `adxStrength`: ADX category label
+ *   - `divergence`: detected divergence data (when non-none)
+ *   - `volatilityFactor`: ATR-based position sizing guidance (0–1)
  *
  * @param tickers Array of enriched tickers
  * @param technicals Map of symbol -> TechnicalIndicators
@@ -375,33 +623,44 @@ export function computeSignals(
     const tech = technicals.get(t.symbol);
     const newsItems = newsBySymbol.get(t.symbol) ?? [];
 
-    // ── Sub-scores (0-100) ─────────────────────────────────────────
+    // ── Sub-scores (0–100) ─────────────────────────────────────────
     const momentumScore = computeMomentumScore(t);
     const technicalScore = tech ? computeTechnicalScore(tech) : 0;
     const newsScore = computeNewsScore(newsItems);
 
-    // ── On-chain boost (0-15pp, trend-aware) ───────────────────────
+    // ── On-chain boost (0–15pp, trend-aware) ───────────────────────
     const onchainBoost = onchain
       ? computeOnchainBoost(t.symbol, t.tokenId, onchain)
       : 0;
+
+    // ── ADX trend strength ─────────────────────────────────────────
+    const adxValue = tech?.adx ?? null;
+    const adxAdj = computeAdxAdjustment(adxValue);
+
+    // ── Divergence detection ───────────────────────────────────────
+    const divergence = detectDivergence(t, tech);
+
+    // ── Volatility factor ──────────────────────────────────────────
+    const volatilityFactor = computeVolatilityFactor(tech?.atrPct);
 
     // ── Signal directions for confidence calibration ───────────────
     const momentumDir = getMomentumDirection(t);
     const meanRevDir = getMeanReversionDirection(tech);
     const trendDir = getTrendFollowingDirection(tech);
 
-    // ── Per-strategy confidence (0-100) ────────────────────────────
+    // ── Per-strategy confidence (0–100) ────────────────────────────
     const momConf = momentumConfidence(t);
     const mrConf = meanReversionConfidence(tech);
     const tfConf = trendFollowingConfidence(tech);
 
-    // ── Confidence calibration (penalty or bonus) ──────────────────
+    // ── Confidence calibration (penalty or bonus with ADX awareness) ──
     const { penalty, breakdown } = calibrateConfidence(
       momentumDir, meanRevDir, trendDir,
       momConf, mrConf, tfConf,
+      adxValue,
     );
 
-    // ── Volume confirmation ────────────────────────────────────────
+    // ── Volume confirmation (graduated scale) ──────────────────────
     const volumeAdj = computeVolumeAdjustment(t);
 
     // ── Composite score ────────────────────────────────────────────
@@ -413,11 +672,16 @@ export function computeSignals(
       penalty +
       volumeAdj;
 
+    // Apply ADX trend strength multiplier
+    compositeScore = compositeScore * adxAdj.multiplier;
+
     compositeScore = clamp(compositeScore, 0, 100);
 
-    // ── Alerts (deduplicated) ──────────────────────────────────────
-    const rawAlerts = buildAlerts(t, tech, newsItems, onchainBoost);
-    const alerts = rawAlerts.filter(a => isAlertUnique(`${t.symbol}:${a}`));
+    // ── Alerts (deduplicated, with priority tags) ──────────────────
+    const rawAlerts = buildAlerts(t, tech, newsItems, onchainBoost, adxAdj, divergence);
+    const alerts = rawAlerts
+      .map(a => tagAlertPriority(a, t, tech))
+      .filter(a => isAlertUnique(`${t.symbol}:${a}`));
 
     return {
       symbol: t.symbol,
@@ -433,6 +697,10 @@ export function computeSignals(
       alerts,
       timestamp: t.tsUtc,
       signalBreakdown: breakdown,
+      adx: adxValue,
+      adxStrength: adxAdj.category,
+      divergence: divergence.type !== 'none' ? divergence : undefined,
+      volatilityFactor: Math.round(volatilityFactor * 100) / 100,
       // regime filled in the second pass below
     };
   });
@@ -452,32 +720,67 @@ export function computeSignals(
 
 /**
  * Build alert strings for a token without dedup filtering.
+ * Includes ADX trend, divergence, and volatility-based alerts.
  */
 function buildAlerts(
   t: EnrichedTicker,
   tech: TechnicalIndicators | undefined,
   newsItems: NewsMatch[],
   onchainBoost: number,
+  adxAdj: { category: string; multiplier: number },
+  divergence: DivergenceResult,
 ): string[] {
   const alerts: string[] = [];
+
+  // Critical price alerts
   if (t.priceChangePercent <= -5) alerts.push('🔴 DIP (>5% drop)');
   if (t.priceChangePercent >= 5) alerts.push('🟢 PUMP (>5% gain)');
+
+  // ADX-based trend strength alerts
+  if (tech?.adx != null) {
+    if (tech.adx < 15) {
+      alerts.push(`Very weak trend (ADX ${tech.adx.toFixed(1)})`);
+    } else if (tech.adx > 40) {
+      alerts.push(`Strong trend (ADX ${tech.adx.toFixed(1)})`);
+    }
+  }
+
+  // Divergence alerts (only when conviction is meaningful)
+  if (divergence.type !== 'none' && divergence.strength > 0.3) {
+    alerts.push(`Divergence: ${divergence.description}`);
+  }
+
+  // Technical alerts
   if (tech?.rsi != null && tech.rsi > 70) alerts.push('Overbought (RSI > 70)');
   if (tech?.rsi != null && tech.rsi < 30) alerts.push('Oversold (RSI < 30)');
   if (tech?.bb != null && tech.bb.position >= 0.95) alerts.push('BB upper touch');
   if (tech?.bb != null && tech.bb.position <= 0.05) alerts.push('BB lower touch');
+
+  // Volume and spread alerts
   if (t.quoteVolume >= 10e6) alerts.push('High volume');
   if (t.spreadPct >= 1) alerts.push('Wide spread');
+
+  // Volatility alerts (ATR-based)
+  if (tech?.atrPct != null) {
+    if (tech.atrPct > 6) {
+      alerts.push(`Extreme volatility (ATR ${tech.atrPct.toFixed(1)}%)`);
+    } else if (tech.atrPct > 4) {
+      alerts.push(`High volatility (ATR ${tech.atrPct.toFixed(1)}%)`);
+    }
+  }
+
+  // News and on-chain alerts
   if (newsItems.length >= 2) alerts.push(`News: ${newsItems.length} articles`);
   if (onchainBoost >= 10) alerts.push('Strong on-chain TVL');
+
   return alerts;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// Score computation functions (unchanged from original)
+// Score computation functions
 // ═══════════════════════════════════════════════════════════════════════
 
-/** Momentum score from market data (0-100) */
+/** Momentum score from market data (0–100) */
 function computeMomentumScore(t: EnrichedTicker): number {
   let score = 50; // neutral baseline
 
@@ -503,7 +806,7 @@ function computeMomentumScore(t: EnrichedTicker): number {
   return clamp(score, 0, 100);
 }
 
-/** Technical score from indicators (0-100) */
+/** Technical score from indicators (0–100) */
 function computeTechnicalScore(t: TechnicalIndicators): number {
   let score = 50;
 
@@ -540,7 +843,7 @@ function computeTechnicalScore(t: TechnicalIndicators): number {
   return clamp(score, 0, 100);
 }
 
-/** News score (0-100) */
+/** News score (0–100) */
 function computeNewsScore(newsItems: NewsMatch[]): number {
   if (newsItems.length === 0) return 0;
   let score = 0;

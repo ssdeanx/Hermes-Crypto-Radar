@@ -1,7 +1,7 @@
 # 🛰️ Hermes Crypto Radar — SPEC
 
 > **Project:** Hermes Agent Plugin — Multi-chain crypto market radar  
-> **Status:** v1.3.0 · Stable  
+> **Status:** v1.4.0 · Stable  
 > **Versioning:** [SemVer](https://semver.org/) — all changes tracked in this spec
 
 ---
@@ -82,7 +82,7 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 
 ## 3. Token Coverage
 
-### 3.1 Current (v1.3.0) — 39+ tokens
+### 3.1 Current (v1.4.0) — 40+ tokens
 
 | Chain | Tokens |
 |-------|--------|
@@ -180,12 +180,12 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | Strategy config overrides | ✅ | Adjust weights/params via config file + env vars | v1.3 ✅ |
 | Hermes chart tool | ✅ | SVG charts delivered as agent visual responses | v1.1 ✅ |
 | Daemon tool | ✅ | Warm daemon for sub-50ms tool calls | v1.3 ✅ |
-| WebSocket live prices | 🔜 | Binance WS for real-time updates | v2.0 |
+| **WebSocket live prices** | 🔜 | Binance WS for real-time updates | v1.3 🟡 |
 | Portfolio tracking | 🔜 | User-defined holdings → P&L | v2.0 |
 | Price alerts | ✅ | Webhook-based notifications via Discord/Telegram | v1.3 ✅ |
 | DEX data (Jupiter) | ✅ | Solana DEX prices via Jupiter API | v1.3 ✅ |
 | Backtesting engine | ✅ | Signal accuracy backtesting with weight optimization | v1.3 ✅ |
-| Plugin marketplace publish | ✅ | npm published (`hermes-crypto-radar@1.3.0`), tarball ready | v1.3 ✅ |
+| **Plugin marketplace publish** | ✅ | npm published (`hermes-crypto-radar@1.4.0`), tarball ready, marketplace checklist complete | v1.4.0 ✅ |
 
 ---
 
@@ -562,6 +562,7 @@ To get the plugin listed on the Hermes map/registry:
 | 1.1.0 | 2026-07-02 | News domain extraction fix, SOURCE_TIERS bug fix, multi-line CSV quoting, XLSX export, CoinGecko API + pipeline wiring, kline caching, dead dep cleanup, SPEC/README docs overhaul, vitest test suite (58 tests), CI pipeline, deterministic integration tests, XLSX error handling, XRP CoinGecko ID fix |
 | 1.2.0 | 2026-07-02 | Circuit breaker, parallel kline/news fetching, atomic writes, log rotation, multi-timeframe analysis (15m/1h/4h/1d), cross-timeframe strategy aggregation, OBV indicator, 7 new tokens (SUI/APT/SEI/TIA/INJ/RUNE/ATOM), config auto-discovery, coverage gate, 155 tests, pre-commit hook, full JSDoc |
 | 1.3.0 | 2026-07-03 | 5 new indicators (Stochastic, Ichimoku, Williams %R, CMF, TSI), DeFiLlama on-chain metrics + signal boost, dynamic top-50 volume scan, auto-dynamic scan (default top-30), strategy weight config overrides, SVG chart overhaul (gradients, viewBox, tooltips, crosshairs, a11y), daemon mode, eslint/prettier, backtesting engine, candlestick pattern recognition (16 patterns), chart comparison overlay, correlation engine, data retention policy, Discord/Telegram webhooks, fuzz testing suite (130 tests), HTML/PDF report, market regime detection (ADX+BB+ATR), npm publication, support/resistance detection, token search CLI, Volume Profile analysis, webhook notifications, .env.example, .npmignore, package.json SEO, standardized data dir, 332 tests |
+| 1.4.0 | 2026-07-04 | Enterprise marketplace polish: plugin.yaml toolset+crypto, enhanced .env.example (daemon/WS/webhook/retention vars), TypeScript strict mode hardening (noUnusedLocals, noUnusedParameters, noImplicitOverride), enhanced typedoc.json (validation, categorize, sidebarLinks, searchInComments), enhanced package.json scripts (prebuild, postbuild, typecheck, coverage, postversion), npm metadata (funding, publishConfig, engines.npm, categories), CHANGELOG.md v1.4.0 entry, CITATION.cff bump, all documentation updated to v1.4.0, marketplace readiness checklist |
 
 ---
 

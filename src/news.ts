@@ -1,10 +1,26 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Hermes Crypto Radar — Crypto News Fetcher
+// Hermes Crypto Radar — Crypto News Fetcher (Enterprise)
 // ═══════════════════════════════════════════════════════════════════════
+//
+// Uses rss-parser (npm) for all RSS/Atom XML parsing. No regex-based XML
+// extraction — the library handles RSS 2.0, RSS 1.0, RSS 0.9, and Atom
+// feeds, including CDATA content, namespaces, and encoding. Each feed is
+// fetched independently (concurrency-4 batching) with dead-feed skipping.
 
+import RssParser from 'rss-parser';
 import type { NewsArticle, NewsMatch, TokenDef } from './types.js';
 import { getTokenList } from './tokens.js';
 import { recordFeedResult, getDeadFeeds } from './core/feed-monitor.js';
+
+// ── Custom RSS Item Fields ───────────────────────────────────────────
+// rss-parser's default Item type covers the common fields. These
+// interfaces extend it so custom-fields are strongly typed without `any`.
+interface CustomItemFields {
+  /** Mapped from <content:encoded> — carries full CDATA article body */
+  contentEncoded?: string;
+  /** Mapped from <dc:date> — Dublin Core date used by some feeds */
+  date?: string;
+}
 
 interface FeedDef {
   name: string;
@@ -58,44 +74,86 @@ const POISON_PATTERNS = [
 
 const FETCH_TIMEOUT_MS = 15_000;
 
-/** Parse RSS feed XML to articles */
-function parseRSS(xml: string, source: string): NewsArticle[] {
+// ── RSS Parser Instance ──
+// Typed with the custom item fields generic so all accessed properties
+// are fully typed — no `as any` casts needed at consumption sites.
+const _parser = new RssParser<Record<string, never>, CustomItemFields>({
+  timeout: FETCH_TIMEOUT_MS,
+  headers: { 'User-Agent': 'Hermes-Crypto-Radar/1.0' },
+  customFields: {
+    item: [
+      // Map <content:encoded> (CDATA article body) → contentEncoded
+      ['content:encoded', 'contentEncoded'],
+    ],
+  },
+});
+
+// Feed-level type after passing the custom-fields generic U.
+// rss-parser returns `T & Output<U>` where Output<U>.items = (U & Item)[].
+type ParsedFeed = Awaited<ReturnType<typeof _parser.parseString>>;
+
+/**
+ * Parse feed XML text into structured articles using rss-parser.
+ * Handles RSS 2.0, RSS 1.0, RSS 0.9, and Atom feed formats, properly
+ * extracting CDATA content, namespaced fields, and encoding.
+ *
+ * Fully async — always await the parser; no regex-based XML fallbacks.
+ */
+async function parseRSS(xml: string, source: string): Promise<NewsArticle[]> {
   const articles: NewsArticle[] = [];
 
-  // Extract <item>...</item> blocks
-  const itemRegex = /<item>([\s\S]*?)<\/item>/gi;
-  let match: RegExpExecArray | null;
+  try {
+    const feed: ParsedFeed = await _parser.parseString(xml);
 
-  while ((match = itemRegex.exec(xml)) !== null) {
-    const item = match[1]!;
-    const getField = (tag: string): string => {
-      const m = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i').exec(item);
-      return m ? stripHTML(m[1]!.trim()) : '';
-    };
-
-    const headline = getField('title');
-    const description = getField('description');
-    const pubDate = getField('pubDate');
-
-    // Extract domain from link
-    const link = getField('link');
-    let domain;
-    try {
-      domain = new URL(link).hostname.replace('www.', '');
-    } catch {
-      // Fallback: some RSS feeds return relative URLs or empty links
-      domain = source.toLowerCase().replace(/\s+/g, '') + '.com';
+    if (!feed.items || feed.items.length === 0) {
+      return articles;
     }
 
-    if (headline && description) {
+    for (const item of feed.items) {
+      const headline = item.title?.trim();
+      if (!headline) continue;
+
+      // Prefer content:encoded (CDATA) for description, then summary, then content.
+      // All three are typed through the generic — no `any` needed.
+      const rawDescription: string =
+        item.contentEncoded?.trim()
+        ?? item.summary?.trim()
+        ?? item.content?.trim()
+        ?? '';
+      if (!rawDescription) continue;
+
+      // Strip HTML from description for clean text matching
+      const description = stripHTML(rawDescription);
+
+      // Publication date: isoDate (preferred), then RSS pubDate, then dc:date
+      const pubDate: string = item.isoDate ?? item.pubDate ?? item.date ?? '';
+
+      // Link: primary link as string, fall back to guid
+      let link = '';
+      if (typeof item.link === 'string') {
+        link = item.link;
+      } else if (item.guid) {
+        link = item.guid;
+      }
+
+      // Extract domain from link
+      let domain: string;
+      try {
+        domain = new URL(link).hostname.replace('www.', '');
+      } catch {
+        domain = source.toLowerCase().replace(/\s+/g, '') + '.com';
+      }
+
       articles.push({ headline, description, source, domain, pubDate, url: link });
     }
+  } catch {
+    // parseString throws on malformed XML — return empty for that feed
   }
 
   return articles;
 }
 
-/** Strip HTML tags */
+/** Strip HTML tags and decode common HTML entities */
 function stripHTML(text: string): string {
   return text
     .replace(/<[^>]*>/g, '')
@@ -106,6 +164,12 @@ function stripHTML(text: string): string {
     .replace(/&#039;/g, "'")
     .replace(/&#x27;/g, "'")
     .replace(/&#x2F;/g, '/')
+    .replace(/&#x2018;/g, "'")
+    .replace(/&#x2019;/g, "'")
+    .replace(/&#x201C;/g, '"')
+    .replace(/&#x201D;/g, '"')
+    .replace(/&#xA0;/g, ' ')
+    .replace(/\s+/g, ' ')
     .trim();
 }
 
@@ -120,12 +184,14 @@ const BULLISH_KEYWORDS = [
   'surge', 'rally', 'breakthrough', 'bullish', 'adoption',
   'partnership', 'upgrade', 'ath', 'all-time high', 'soar',
   'moon', 'pump', 'explode', 'outperform', 'institutional',
+  'accumulation', 'breakout', 'flippening',
 ];
 
 const BEARISH_KEYWORDS = [
   'crash', 'dump', 'bearish', 'ban', 'scam', 'hack',
   'regulation', 'crackdown', 'plummet', 'plunge', 'collapse',
-  'sell-off', 'liquidation', 'fud', 'fear',
+  'sell-off', 'liquidation', 'fud', 'fear', 'delist',
+  'exploit', 'rug pull', 'warning',
 ];
 
 type Sentiment = 'bullish' | 'bearish' | 'neutral';
@@ -201,8 +267,8 @@ function matchToken(
     relevance = Math.max(relevance, 0.5);
   }
 
-  // Ticker symbol in description
-  if (desc.includes(` $${sym}`) || desc.includes(`$${sym}`)) {
+  // Ticker symbol in description (with or without $ prefix)
+  if (desc.includes(` $${sym}`) || desc.includes(`$${sym}`) || desc.includes(` ${sym.toUpperCase()} `)) {
     relevance = Math.max(relevance, 0.5);
   }
 
@@ -224,12 +290,13 @@ function normalizeHeadline(headline: string): string {
 /**
  * Fetch, parse, match, and score news from all RSS feeds.
  *
- * Feeds are fetched concurrently (concurrency-4 batching). Returns matched news
- * items with relevance scores >= 0.5.
+ * Relies entirely on the rss-parser library for RSS/Atom XML parsing.
+ * Feeds are fetched concurrently (concurrency-4 batching) with dead-feed
+ * skipping.
  *
  * @param runId Unique radar run identifier
  * @param tsUtc ISO UTC timestamp string
- * @returns Array of matched news items
+ * @returns Array of matched news items with relevance scores >= 0.5
  */
 export async function fetchAndMatchNews(
   runId: string,
@@ -267,7 +334,7 @@ export async function fetchAndMatchNews(
       }
 
       const xml = await res.text();
-      const parsed = parseRSS(xml, feed.name);
+      const parsed = await parseRSS(xml, feed.name);
 
       recordFeedResult(feed.name, feed.url, true);
       return parsed;
@@ -279,7 +346,6 @@ export async function fetchAndMatchNews(
   }
 
   // Process feeds in batches with limited concurrency
-  // Promise.allSettled ensures one failing feed doesn't block the batch
   for (let i = 0; i < NEWS_FEEDS.length; i += CONCURRENCY) {
     const batch = NEWS_FEEDS.slice(i, i + CONCURRENCY);
     const settled = await Promise.allSettled(
@@ -329,8 +395,6 @@ export async function fetchAndMatchNews(
           }
         }
       }
-      // Rejected branches are already handled inside processFeed — Promise.allSettled
-      // catches only unexpected errors (shouldn't happen), so we just skip them
     }
   }
 

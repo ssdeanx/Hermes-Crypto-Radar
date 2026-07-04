@@ -23,6 +23,9 @@ import {
   computeOBV, computeVolVsAvg,
   computeStochastic, computeIchimoku, computeWilliamsR, computeCMF, computeTSI,
   computeADX,
+  computePSAR, computeCCI, computeKeltner, computeROC, computeVWAP,
+  computeForceIndex, computeADL, computeChaikinOsc, computeStochRSI,
+  computeTRIX, computeKST, computeElderRay, computeFisher, computeMassIndex,
   computeAllIndicators,
 } from './indicators.js';
 
@@ -87,6 +90,29 @@ describe('Fuzz: Empty arrays', () => {
   it('CMF returns null', () => { expect(computeCMF([], [], [], [])).toBeNull(); });
   it('TSI returns null', () => { expect(computeTSI([])).toBeNull(); });
   it('ADX returns null', () => { expect(computeADX([], [], [])).toBeNull(); });
+  it('PSAR returns null', () => { expect(computePSAR([], [], [])).toBeNull(); });
+  it('CCI returns null', () => { expect(computeCCI([], [], [])).toBeNull(); });
+  it('Keltner returns null', () => { expect(computeKeltner([], [], [])).toBeNull(); });
+  it('ROC returns null', () => { expect(computeROC([])).toBeNull(); });
+  it('VWAP returns null', () => { expect(computeVWAP([], [], [], [])).toBeNull(); });
+  it('ForceIndex returns null', () => { expect(computeForceIndex([], [], 13)).toBeNull(); });
+  it('ADL returns null', () => { expect(computeADL([], [], [], [])).toBeNull(); });
+  it('ChaikinOsc returns null', () => { expect(computeChaikinOsc([], [], [], [])).toBeNull(); });
+  it('StochRSI returns nulls', () => {
+    const r = computeStochRSI([], 14, 14);
+    expect(r.stochRsi).toBeNull();
+    expect(r.k).toBeNull();
+    expect(r.d).toBeNull();
+  });
+  it('TRIX returns null', () => { expect(computeTRIX([])).toBeNull(); });
+  it('KST returns default', () => {
+    const r = computeKST([]);
+    expect(r.kst).toBe(0);
+    expect(r.signal).toBeNull();
+  });
+  it('ElderRay returns null', () => { expect(computeElderRay([], [], [])).toBeNull(); });
+  it('Fisher returns null', () => { expect(computeFisher([], [], [])).toBeNull(); });
+  it('MassIndex returns null', () => { expect(computeMassIndex([], [])).toBeNull(); });
   it('computeAllIndicators handles empty klines', () => {
     const r = computeAllIndicators([]);
     expect(r).toBeDefined();
@@ -137,6 +163,24 @@ describe('Fuzz: Single-element arrays', () => {
   it('CMF returns null', () => { expect(computeCMF([100], [95], [100], [1000])).toBeNull(); });
   it('TSI returns null', () => { expect(computeTSI([100])).toBeNull(); });
   it('ADX returns null', () => { expect(computeADX([100], [95], [100])).toBeNull(); });
+  it('PSAR returns null', () => { expect(computePSAR([100], [95], [100])).toBeNull(); });
+  it('CCI returns null', () => { expect(computeCCI([100], [95], [100])).toBeNull(); });
+  it('Keltner returns null', () => { expect(computeKeltner([100], [95], [100])).toBeNull(); });
+  it('ROC returns null', () => { expect(computeROC([100])).toBeNull(); });
+  it('VWAP returns value for single point', () => {
+    expect(computeVWAP([100], [95], [98], [1000])).not.toBeNull();
+  });
+  it('ForceIndex returns null', () => { expect(computeForceIndex([100], [1000])).toBeNull(); });
+  it('ADL returns null', () => { expect(computeADL([100], [95], [100], [1000])).toBeNull(); });
+  it('ChaikinOsc returns null', () => { expect(computeChaikinOsc([100], [95], [100], [1000])).toBeNull(); });
+  it('StochRSI returns nulls', () => {
+    const r = computeStochRSI([100], 14, 14);
+    expect(r.stochRsi).toBeNull();
+  });
+  it('TRIX returns null', () => { expect(computeTRIX([100])).toBeNull(); });
+  it('ElderRay returns null', () => { expect(computeElderRay([100], [95], [100])).toBeNull(); });
+  it('Fisher returns null', () => { expect(computeFisher([100], [95], [100])).toBeNull(); });
+  it('MassIndex returns null', () => { expect(computeMassIndex([100], [95])).toBeNull(); });
   it('computeAllIndicators handles single kline', () => {
     const klines = makeKlines(1);
     const r = computeAllIndicators(klines);

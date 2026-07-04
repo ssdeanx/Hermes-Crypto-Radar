@@ -229,7 +229,7 @@ export class HealthMonitor {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 10_000);
 
-      const res = await fetch('https://price.jup.ag/v6/price?ids=SOL', {
+      const res = await fetch('https://api.jup.ag/price/v3?ids=So11111111111111111111111111111111111111112', {
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -246,14 +246,15 @@ export class HealthMonitor {
         };
       }
 
-      const data = (await res.json()) as { data?: { SOL?: { price?: string } } };
+      const data = (await res.json()) as Record<string, { usdPrice: number | null }>;
 
-      if (data?.data?.SOL?.price) {
+      const solEntry = data['So11111111111111111111111111111111111111112'];
+      if (solEntry && typeof solEntry.usdPrice === 'number') {
         return {
           name: 'jupiter',
           status: 'pass',
           latencyMs: latency,
-          message: `SOL: $${parseFloat(data.data.SOL.price).toFixed(2)}`,
+          message: `SOL: $${solEntry.usdPrice.toFixed(2)}`,
           lastChecked: new Date().toISOString(),
         };
       }

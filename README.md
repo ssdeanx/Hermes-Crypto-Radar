@@ -39,9 +39,9 @@
 | **📈 Charts** | SVG candlestick, line, multi-panel dashboards with CSS gradients, tooltips, crosshairs, responsive viewBox, accessibility |
 | **💾 Export** | JSON, CSV, Markdown, terminal table, **XLSX** (Excel/Sheets with frozen headers + conditional formatting) |
 | **🥇 Daemon Mode** | Warm HTTP daemon for sub-50ms tool calls, configurable cache refresh |
-| **🛡️ Enterprise** | Circuit breaker (CLOSED/OPEN/HALF-OPEN), token-bucket rate limiter, TTL cache, atomic writes, log rotation (10MB → gzip), typed error classes |
+| **🛡️ Enterprise** | Circuit breaker (CLOSED/OPEN/HALF-OPEN), token-bucket rate limiter, TTL cache, atomic writes, log rotation (10MB → gzip, 30-day retention), typed error classes, SHA-256 file checksums |
 | **⚙️ Configurable** | `radar.config.json` + `RADAR__*` env vars — strategy weights, timeframe weights, token whitelist, log level, data dir |
-| **🔌 Hermes Plugin** | 8 agent tools returning structured JSON for agent reasoning |
+| **🔌 Hermes Plugin** | 8 agent tools returning structured JSON for agent reasoning — scan, signals, news, tokens, chart, daemon, onchain, ws |
 | **📁 Data Directory** | Standardized to `~/.hermes/data/crypto-radar/` — logs, rotation, cross-session persistence |
 
 > **Requirements:** Node.js >= 22, Hermes Agent (for plugin integration). No API keys required — uses public Binance REST API + RSS feeds + DeFiLlama (free).
@@ -334,7 +334,7 @@ All tools return structured JSON optimized for agent reasoning. Register via `pl
 npm run build        # TypeScript compile → dist/
 npm run watch        # Watch mode for development
 npm run start        # Run CLI (default: scan)
-npm test             # Run vitest suite (167 tests)
+npm test             # Run vitest suite (332 tests)
 npm run test:watch   # Watch mode for TDD
 npm run lint         # ESLint check
 npm run lint:fix     # ESLint auto-fix
@@ -375,8 +375,9 @@ node dist/cli.js daemon --port 9877 --refresh 300
 ## 📚 Documentation
 
 - **[SPEC.md](SPEC.md)** — Full project specification with architecture, token roster, tool reference, data flow, scoring models, development guide, and publishing plan
-- **[CHANGELOG.md](CHANGELOG.md)** — Full release history from v1.0.0 to v1.3.0
+- **[CHANGELOG.md](CHANGELOG.md)** — Full release history from v1.0.0 to v1.4.0
 - **[CRYPTO-ENTERPRISE-AUDIT.md](CRYPTO-ENTERPRISE-AUDIT.md)** — Enterprise-grade audit covering security, reliability, performance, and code quality
+- **[docs/api/](docs/api/)** — Auto-generated TypeDoc API reference
 
 ---
 

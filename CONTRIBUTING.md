@@ -13,11 +13,12 @@ npm run build
 
 1. **Branch from `main`** — name branches `feature/<description>` or `fix/<description>`
 2. **Make changes** — one logical change per commit
-3. **Run tests** — `npm test` must pass (all 58 tests)
+3. **Run tests** — `npm test` must pass (all 332 tests)
 4. **Build** — `npm run build` must compile clean
 5. **Smoke test** — `node dist/cli.js scan --filter SOL --no-news --format json` must return valid JSON
 6. **Open PR** — against `main` branch with description of changes
 7. **Address reviews** — CodeRabbit and Sourcery-ai auto-review; fix or explain any flagged issues
+8. **Generate docs** — `npm run docs` to update TypeDoc API reference if APIs changed
 
 ## Testing Guidelines
 

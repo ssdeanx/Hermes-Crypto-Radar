@@ -1,7 +1,7 @@
 {
   "name": "hermes-crypto-radar",
-  "version": "1.3.0",
-  "description": "Hermes Agent plugin for multi-chain crypto market intelligence — tracks 39+ tokens across Solana, Polygon, Cosmos, and more with RSI, MACD, Bollinger Bands, ATR, and EMA technical indicators. RSS news aggregation with 3-strategy signal engine (momentum, mean-reversion, trend-following). Binance data integration, DeFiLlama on-chain metrics, configurable token whitelists, XLSX report export, and a warm daemon mode for continuous monitoring.",
+  "version": "1.4.0",
+  "description": "Hermes Agent plugin for multi-chain crypto market intelligence — tracks 40+ tokens across Solana, Polygon, Cosmos, and more with RSI, MACD, Bollinger Bands, ATR, MFI, OBV, Stochastic, Ichimoku, Williams %R, CMF, and TSI technical indicators. RSS news aggregation (11 feeds) with 3-strategy signal engine (momentum, mean-reversion, trend-following). Binance data integration, DeFiLlama on-chain metrics, configurable token whitelists, XLSX/CSV/JSON/MD report export, SVG charts, candlestick pattern recognition, volume profile analysis, support/resistance detection, market regime classification, correlation engine, backtesting engine, Discord/Telegram webhook alerts, WebSocket real-time prices, and a warm daemon mode for continuous monitoring.",
   "type": "module",
   "main": "./dist/cli.js",
   "bin": {
@@ -15,14 +15,20 @@
   },
   "files": [
     "dist",
+    "scripts",
     "plugin.yaml",
     "plugin",
     "crypto-radar.json",
     "README.md",
-    "SPEC.md"
+    "SPEC.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    ".env.example"
   ],
   "scripts": {
+    "prebuild": "npm run clean",
     "build": "tsc",
+    "postbuild": "echo 'Build complete'",
     "watch": "tsc --watch",
     "start": "node dist/cli.js",
     "radar": "node dist/cli.js",
@@ -31,8 +37,12 @@
     "daemon:status": "node dist/cli.js daemon --status",
     "daemon:stop": "node dist/cli.js daemon --stop",
     "export-sqlite": "node dist/cli.js export-sqlite",
+    "collector": "bash scripts/crypto-radar-collector.sh",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "coverage": "vitest run --coverage",
     "lint": "eslint src/",
     "lint:fix": "eslint src/ --fix",
     "format": "prettier --check src/",
@@ -43,8 +53,10 @@
     "backtest": "node dist/cli.js backtest",
     "clean": "rm -rf dist",
     "prepare": "husky",
-    "prepublishOnly": "npm run build",
-    "publish": "bash scripts/publish.sh"
+    "prepublish": "npm run build && npm test && npm run lint",
+    "prepublishOnly": "npm run build && npm run test && npm run lint",
+    "publish": "bash scripts/publish.sh",
+    "postversion": "git push && git push --tags"
   },
   "keywords": [
     "hermes",
@@ -97,16 +109,32 @@
   "sideEffects": false,
   "author": "Sam",
   "license": "MIT",
-  "engines": {
-    "node": ">=22.0.0"
+  "funding": {
+    "type": "individual",
+    "url": "https://github.com/sponsors/ssdeanx"
   },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "engines": {
+    "node": ">=22.0.0",
+    "npm": ">=10.0.0"
+  },
+  "categories": [
+    "Cryptocurrency",
+    "Finance",
+    "Developer Tools",
+    "Data Processing"
+  ],
   "dependencies": {
     "asciichart": "^1.5.25",
     "commander": "^15.0.0",
     "csv-stringify": "^6.8.1",
     "exceljs": "^4.4.0",
     "node-fetch": "^3.3.2",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "rss-parser": "^3.13.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

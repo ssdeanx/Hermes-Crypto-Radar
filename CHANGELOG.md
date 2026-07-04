@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] — 2026-07-04
+
+### Added
+- **Enterprise marketplace polish** — `plugin.yaml` now includes `toolset: crypto`, extended description with all 8 tools and full feature enumeration, and v1.4.0 version bump.
+- **Full typedoc.json config** — Added `validation`, `categorizeByGroup`, `sort`, `cleanOutputDir`, `sidebarLinks`, `navigationModel`, and `searchInComments` for professional API docs generation.
+- **Enhanced .env.example** — Added `RADAR__DAEMON_PORT`, `RADAR__WS_PORT`, `RADAR__LOG_RETENTION_DAYS`, `RADAR__WEBHOOK_URL`, and `RADAR__WEBHOOK_TYPE` environment variables for webhook alerts, daemon configuration, and data retention tuning.
+- **TypeScript configuration audit** — `noUncheckedIndexedAccess` retained (already enabled), `noImplicitOverride` added as enterprise gate. `noUnusedLocals`/`noUnusedParameters` evaluated but kept at `false` due to pre-existing unused declarations across 12 source files (tracked as tech debt in audit).
+- **Enhanced package scripts** — Added `prebuild` (clean before build), `prepublish` (build + test + lint gates), `postversion` (git tag), `typecheck` (tsc --noEmit), and `coverage` scripts.
+- **Comprehensive npm package metadata** — Added `funding`, `engines.npm`, `publishConfig`, and `categories` fields to `package.json` for improved npm registry discoverability.
+- **Marketplace submission scripts** — Enhanced `scripts/submit-to-marketplace.sh` and documented marketplace preparation checklist.
+
+### Changed
+- **CITATION.cff** bumped to v1.4.0.
+- **CITATION.cff** — date updated to 2026-07-04, version 1.4.0.
+- **README.md** — Updated all version references from v1.3.0 to v1.4.0.
+- **SPEC.md** — Updated version references, expanded roadmap section, updated changelog table, and added marketplace readiness checklist.
+- **CONTRIBUTING.md** — Updated test counts (332 tests), added TypeDoc generation step.
+- **CRYPTO-ENTERPRISE-AUDIT.md** — Bumped to v1.4.0, updated audit scores and dates, TypeDoc and ADR items marked ✅.
+- **Plugin registration** — `plugin/__init__.py` confirmed with all 8 tools registered via `register(ctx)` with full JSON schemas, proper error wrapping, and daemon-aware routing.
+
+### Infrastructure
+- All tool schemas in `plugin/__init__.py` validated for proper JSON Schema compliance — all parameters have `type`, `description`, `enum` where applicable, and `default` values.
+- `package.json` `files` field includes `plugin/`, `plugin.yaml`, `README.md`, `SPEC.md`, `CHANGELOG.md`, `LICENSE`, `.env.example`, and `dist/`.
+- `tsconfig.json` `noUnusedLocals`/`noUnusedParameters` kept at `false` (pre-existing tech debt: 40+ unused declarations across source tree), all other strict-family options enabled.
+- Marketplace publication checklist completed — tarball verification, one-liner install script, npm registry publication, Hermes skill metadata.
+
+---
+
 ## [1.3.0] — 2026-07-03
 
 ### Added

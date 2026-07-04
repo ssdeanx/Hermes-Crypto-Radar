@@ -353,7 +353,7 @@ function countTouches(
     // Directional filter: for resistance we want price testing from below,
     // for support testing from above. But also count candles that are
     // fully within the band (price sitting at the level).
-    let counts = false;
+    let counts;
     if (type === 'resistance') {
       // Price approached from below (high is near level) OR
       // the whole candle is in the band zone
