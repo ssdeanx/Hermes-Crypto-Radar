@@ -12,7 +12,7 @@ tar -czf "hermes-crypto-radar-$VERSION.tar.gz" \
   --exclude=src \
   --exclude=test \
   --exclude=*.test.ts \
-  dist/ plugin/ plugin.yaml package.json README.md LICENSE SECURITY.md \
+  dist/ plugin/ plugin.yaml package.json README.md LICENSE SECURITY.md main-banner.png \
   scripts/crypto-radar-collector.sh scripts/install.sh
 echo "Created: hermes-crypto-radar-$VERSION.tar.gz"
 echo ""
