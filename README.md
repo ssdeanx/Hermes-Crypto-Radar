@@ -1,9 +1,13 @@
 <p align="center">
-  <br>
+  <img src="https://v3b.fal.media/files/b/0aa0e4f6/8fLk8uv3pbIRsBI7Vnrli_YkhYflzE.png" alt="Hermes Crypto Radar — Enterprise Crypto Market Intelligence" width="100%">
+</p>
+
+<p align="center">
   <a href="https://github.com/ssdeanx/Hermes-Crypto-Radar/actions/workflows/ci.yml"><img src="https://github.com/ssdeanx/Hermes-Crypto-Radar/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/ssdeanx/Hermes-Crypto-Radar/actions/workflows/nightly-e2e.yml"><img src="https://github.com/ssdeanx/Hermes-Crypto-Radar/actions/workflows/nightly-e2e.yml/badge.svg" alt="Nightly E2E"></a>
   <a href="https://www.npmjs.com/package/hermes-crypto-radar"><img src="https://img.shields.io/npm/v/hermes-crypto-radar?label=marketplace&color=blue" alt="Marketplace Version"></a>
   <a href="https://www.npmjs.com/package/hermes-crypto-radar"><img src="https://img.shields.io/npm/dm/hermes-crypto-radar?color=blue" alt="npm Downloads"></a>
+  <br>
   <a href="https://github.com/ssdeanx/Hermes-Crypto-Radar"><img src="https://img.shields.io/github/stars/ssdeanx/Hermes-Crypto-Radar?style=flat&color=yellow" alt="GitHub Stars"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-blue" alt="Node">
@@ -13,22 +17,41 @@
 
 <h1 align="center">🛰️ Hermes Crypto Radar</h1>
 <p align="center"><strong>Enterprise-grade multi-chain crypto market intelligence — Hermes Agent plugin</strong></p>
-<p align="center">Track <strong>49+ tokens</strong> across <strong>31 chains</strong> with <strong>26+ technical indicators</strong>, a <strong>3-strategy signal engine</strong>, DeFiLlama on-chain metrics, RSS news aggregation, and rich SVG charts. Built for <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a> with a warm daemon for sub-50ms tool calls.</p>
+<p align="center"><strong>49+ tokens across 31 chains with 26+ technical indicators</strong> — 3-strategy signal engine, DeFiLlama on-chain metrics, RSS news aggregation, SVG charts, and a warm daemon for sub-50ms tool calls. Built for <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a>.</p>
 
 <p align="center">
   <a href="#-features">Features</a> •
   <a href="#-quick-start">Quick Start</a> •
+  <a href="#-marketplace">Marketplace</a> •
   <a href="#-why-crypto-radar">Why Crypto Radar?</a> •
   <a href="#-use-cases">Use Cases</a> •
   <a href="#-architecture--data-flow">Architecture</a> •
   <a href="#-cli-reference">CLI Reference</a> •
   <a href="#-developer-api">Developer API</a> •
-  <a href="#-benchmarks">Benchmarks</a> •
   <a href="#-enterprise-features">Enterprise</a> •
   <a href="#-roadmap">Roadmap</a> •
   <a href="SPEC.md">SPEC</a> •
   <a href="CHANGELOG.md">Changelog</a>
 </p>
+
+---
+
+## 🛒 Marketplace
+
+Hermes Crypto Radar is available on the **Hermes Marketplace** — the official plugin registry for Hermes Agent.
+
+```bash
+# Install from the Hermes Marketplace (recommended)
+hermes plugins install crypto-radar
+
+# Publish updates to the marketplace
+hermes plugins publish crypto-radar
+
+# List all installed marketplace plugins
+hermes plugins list
+```
+
+> 💡 **Marketplace publishing** — Plugin authors can publish their Hermes plugins to the marketplace using `hermes plugins publish <name>`. The plugin must have a valid `plugin.yaml` with `type: plugin` and be registered via the Hermes Plugin API. See the [plugin development docs](https://hermes-agent.nousresearch.com/docs/plugins) for details.
 
 ---
 
@@ -87,9 +110,9 @@ crypto-radar health
 ```
 
 <p align="center">
-  <img src="https://via.placeholder.com/720x360/1a1a2e/00ff88?text=🚀+Crypto+Radar+Demo" alt="Crypto Radar demo GIF" width="720">
+  <img src="https://v3b.fal.media/files/b/0aa0e4f7/1-kHf45n_UBaDBrAebRy1_DV210mG1.png" alt="Crypto Radar Architecture Diagram" width="720">
   <br>
-  <sub><em>Scan output, signals dashboard, and SVG charts — all from your terminal.</em></sub>
+  <sub><em>Architecture overview — multi-source data pipeline from Binance, DeFiLlama, RSS feeds to the Hermes Agent plugin bridge.</em></sub>
 </p>
 
 ### Dynamic scan
@@ -642,6 +665,20 @@ Hermes Crypto Radar uses **only public APIs** — no API keys, tokens, or creden
 - npm overrides for transitive vulnerability fixes (see `package.json`)
 - Regular dependency updates tracked in [CHANGELOG.md](CHANGELOG.md)
 
+---
+
 <p align="center">
-  <sub>Built for <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a> — production-grade crypto market intelligence.</sub>
+  <strong>🛰️ Hermes Crypto Radar</strong> — Production-grade crypto market intelligence for <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a>.
+  <br><br>
+  <a href="https://github.com/ssdeanx/Hermes-Crypto-Radar"><img src="https://img.shields.io/github/stars/ssdeanx/Hermes-Crypto-Radar?style=social" alt="Star on GitHub"></a>
+  &nbsp;
+  <a href="https://www.npmjs.com/package/hermes-crypto-radar"><img src="https://img.shields.io/npm/v/hermes-crypto-radar?color=blue" alt="npm"></a>
+  &nbsp;
+  <a href="https://github.com/ssdeanx/Hermes-Crypto-Radar/issues"><img src="https://img.shields.io/badge/report-bug-red" alt="Report Bug"></a>
+  &nbsp;
+  <a href="https://github.com/ssdeanx/Hermes-Crypto-Radar/pulls"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome"></a>
+  <br><br>
+  <sub>Made with ❤️ by <a href="https://github.com/ssdeanx">Sam</a> — Built for traders, by traders. MIT licensed.</sub>
+  <br>
+  <sub>⭐ Star us on GitHub — every star helps us prioritize features and fix issues faster.</sub>
 </p>
