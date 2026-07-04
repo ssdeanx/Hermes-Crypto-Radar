@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://v3b.fal.media/files/b/0aa0e4f6/8fLk8uv3pbIRsBI7Vnrli_YkhYflzE.png" alt="Hermes Crypto Radar — Enterprise Crypto Market Intelligence" width="100%">
+  <img src="https://v3b.fal.media/files/b/0aa0e4f7/1-kHf45n_UBaDBrAebRy1_DV210mG1.png" alt="Hermes Crypto Radar — Enterprise Crypto Market Intelligence" width="100%">
 </p>
 
 <p align="center">

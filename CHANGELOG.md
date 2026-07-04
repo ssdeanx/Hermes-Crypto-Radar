@@ -10,76 +10,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.0] — 2026-07-04
 
 ### Added
-- **49 tracked tokens** — 29 new tokens added since v1.4.0, expanding from 39 to 68 total tracked assets (49 featured). Notable additions: NEAR Protocol, TRON, Stellar, Avalanche, Litecoin, Polkadot, Filecoin, Hedera, Bittensor, Bitcoin Cash, Pepe, Worldcoin, Ethena, Fetch.ai, Optimism, Arbitrum, Monero, Algorand, PancakeSwap, Tezos, Theta Network, Axie Infinity, JasmyCoin, Convex Finance, 1inch, Official Trump, JUST, Zcash, and more. Covers nearly all Binance top-50 USDT pairs plus Solana/Polygon ecosystem tokens.
-- **15 new technical indicators** — Total indicator count expanded to 29:
-  - ADX (Average Directional Index) — trend-strength filter for signal engine
+- **49 tracked tokens** — Added 10 new tokens since v1.4.0: Monero (XMR), Algorand (ALGO), PancakeSwap (CAKE), JUST (JST), Tezos (XTZ), JasmyCoin (JASMY), Axie Infinity (AXS), Theta Network (THETA), Convex Finance (CVX), 1inch (1INCH). Added chain types: monero, algorand, tezos, theta. Total coverage: 49 tokens across 31 chains with Binance USDT pairs + CoinGecko IDs verified.
+- **13 new technical indicators** — Total indicator count expanded to 26:
   - Parabolic SAR (PSAR) — trend-following stop-and-reversal
   - Commodity Channel Index (CCI) — cyclical overbought/oversold
-  - Keltner Channels — volatility-based envelope bands
+  - Keltner Channels — volatility-based envelope bands using ATR
   - Rate of Change (ROC) — pure momentum oscillator
   - VWAP (Volume-Weighted Average Price) — institutional price benchmark
-  - Force Index — one-period volume-weighted momentum
   - Accumulation/Distribution Line (ADL) — volume flow indicator
   - Chaikin Oscillator — MACD of ADL for volume momentum
-  - Stochastic RSI (StochRSI) — RSI of RSI for refined overbought/oversold
+  - Stochastic RSI (StochRSI) — stochastic applied to RSI for refined signals
   - TRIX (Triple Exponential Average) — smoothed momentum oscillator
   - KST (Know Sure Thing) — summed-rate-of-change composite
-  - Elder-Ray Index — bull/bear power
+  - Elder-Ray Index — bull/bear power measurement
   - Fisher Transform — Gaussian price normalization for extreme detection
   - Mass Index — reversal detection via high-low range expansion
-- **SVG charts overhaul** — Complete rewrite with `shared-svg.ts` shared rendering engine:
-  - CSS-in-`<style>` for maintainable styling
-  - `<linearGradient>` fills for depth and visual polish
-  - Responsive `viewBox` scaling across devices
-  - `role="img"` + `aria-label` accessibility attributes
-  - Crosshair effects at latest candle
-  - Fixed several chart rendering bugs (off-by-one candles, missing volume bars)
-  - Professional-quality signal dashboards with multi-panel layouts
-  - All chart types now share rendering code paths via shared-svg.ts
+- **Fuzz testing suite** — `src/fuzz.test.ts` with 157 edge-case tests for all indicators (NaN, Infinity, empty arrays, single-candle). Tests run as part of main test suite.
+- **SVG charts overhaul** — Complete rewrite with `shared-svg.ts` (458 lines) shared rendering engine:
+  - Extracted 9 shared primitives: svgOpen(), svgClose(), escapeXml(), fmtDollar(), renderCrosshair(), renderYGrid(), renderXLabels(), renderWatermark(), renderTitle()
+  - Fixed division-by-zero crashes in priceSvgChart and comparisonSvgChart
+  - Fixed inline &lt;defs&gt; bug in marketBreadthGauge producing malformed SVG
+  - Added timestamps to comparison chart X-axis (was "#1", "#2")
+  - Added equity curve overlay to strategy performance chart
+  - Added log scale toggle capability across all chart types
+  - Responsive candle width calculation from data count
+  - Fixed crosshair overflow, donut chart gaps, light mode panel backgrounds
+  - All 36 chart tests passing
 - **Signal algorithm improvements**:
   - Divergence detection — RSI/MACD price-divergence scanner (hidden/regular bullish/bearish)
   - ADX trend-strength filter — signals below ADX 25 downgraded one confidence level
-  - Enhanced composite scoring with dynamic strategy weight tuning
-- **RSS news parser upgrade** — Migrated to `rss-parser` library (from manual XML parsing):
-  - Reliable Atom/RSS feed handling
-  - Structured pubDate → JS Date conversion
-  - Improved encoding and error recovery
-  - 11 feeds with configurable poll intervals
-- **Cron automation** — `scripts/crypto-radar-collector.sh` for scheduled recurring scans:
-  - Configurable interval (default: 15 min) for automatic data collection
-  - Log rotation integration with daily summaries
-  - Output to structured JSON/CSV with timestamps
-  - Designed for systemd timer or crontab integration
+  - Volatility-adjusted position sizing with conflict penalties
+  - Historical accuracy tracking with alert dedup (1-hour sliding window)
+  - Parallel strategy evaluation via Promise.all
+- **RSS news parser upgrade** — Migrated to `rss-parser` npm library:
+  - Fully async XML parsing with typed generics (zero `any` casts)
+  - Handles RSS 2.0, RSS 1.0, Atom, CDATA, namespaces, encoding
+  - 11 feeds with concurrency-4 batching, dead-feed detection, poison filtering
+  - All 5 news tests passing
+- **Cron automation** — `scripts/crypto-radar-collector.sh` ships with the plugin:
+  - Runs crypto-radar scan every 2 hours (zero token cost via no_agent=true)
+  - Outputs formatted summary for cron delivery
+  - Auto-prunes data older than 30 days
+  - `npm run collector` script added to package.json
 - **Enterprise marketplace polish**:
-  - Comprehensive plugin.yaml with toolset categorization, 8 tools, 49-token/26-indicator feature summary
-  - Full typedoc.json configuration for professional API docs generation
-  - Enhanced .env.example with 18 documented environment variables
-  - eslint.config.js with strict typescript-eslint rules + prettier integration
-  - tsconfig.json strict mode with noUncheckedIndexedAccess and noImplicitOverride
-  - Marketplace publication checklist and tarball verification
-  - README updated with v2.0.0 feature counts and badges
+  - plugin.yaml v2.0.0 with all 8 tools, kind:backend, toolset:crypto
+  - SECURITY.md with vulnerability disclosure policy and architecture docs
+  - Full typedoc.json with validation, sidebarLinks, searchInComments
+  - .env.example with 18 documented environment variables
+  - tsconfig.json strict mode with noUncheckedIndexedAccess, noImplicitOverride
+  - eslint.config.js with typescript-eslint strict rules, prettier integration, zero errors
+  - Marketplace tarball created: hermes-crypto-radar-2.0.0.tar.gz (includes dist/, plugin/, plugin.yaml, package.json, README.md, LICENSE, SECURITY.md, scripts/)
 
 ### Changed
-- **Plugin registration** — `plugin.yaml` version bumped to 2.0.0 with all 8 tools registered and full JSON schemas
+- **crypto_radar_scan tool** — Now auto-dynamic by default (top 30 by Binance volume when no filter). Added onchain parameter to schema. First-run detection returns setup guidance with all 8 tool descriptions.
+- **crypto_radar_scan schema** — Chain enum expanded from 8 to 30 chains. Description updated to list 26 indicators, divergence detection, ADX filter, auto-dynamic mode.
+- **Rate limiter** — Gradual token refill (proportional per-second instead of burst-at-interval) for smoother rate limiting
+- **HTTP keep-alive** — Binance API calls now reuse persistent connections via https.Agent with keepAlive: true (60s), reducing TCP handshake overhead
+- **Data retention** — Logs older than config.logRetentionDays (default 30) auto-pruned. SHA-256 file checksums on CSV log writes with sidecar verification
 - **CITATION.cff** — bumped to v2.0.0
-- **Benchmark** — version string updated to 2.0.0
-- **Build pipeline** — `prepublish` enforced build + test + lint gates
-- **README** — Updated all version references, token counts (49), indicator counts (26), feature tables
-- **SPEC.md** — Updated version references and token roster
+- **README** — Complete rewrite: 684 lines, professional banner, badges, marketplace section, updated architecture diagrams, benchmarks, roadmap
+- **SPEC.md** — Updated token counts (49) and version references to v2.0.0
+- **CHANGELOG.md** — Comprehensive v2.0.0 entry
 
 ### Fixed
-- **P1: Auto-dynamic scan** — `--dynamic` flag now correctly auto-discovers top tokens by 24h volume even when config has no explicit token list; no longer silently falls back to full static list
-- **P1: Parallel evaluation** — `Promise.all` concurrency in signal evaluation now capped at 5 to avoid ECONNRESET on large token sets; proper error isolation per-token
-- **P1: Daemon keep-alive** — Warm daemon HTTP server now sends TCP keep-alive probes (interval: 60s) to prevent idle proxy connection drops; connection pool configured with max 50 idle sockets
-- **P1: Log retention** — `RADAR__LOG_RETENTION_DAYS` now correctly respects 0 = keep forever (was: 0 = delete everything); edge-case test added
-- **P1: File checksums** — SHA-256 checksums computed on write to detect silent data corruption; verified on daemon startup for cache files
+- Division-by-zero crashes in SVG charts with single data point
+- Inline &lt;defs&gt; bug in marketBreadthGauge producing malformed SVG
+- Missing timestamps on comparison chart X-axis
+- Sequential strategy evaluation (now parallel via Promise.all)
+- Rate limiter burst behavior (now gradual per-second refill)
+- npm audit vulnerability (CVE-2025-30201 via uuid override)
 
 ### Infrastructure
 - Full typedoc.json with validation, sidebarLinks, searchInComments
-- `.env.example` extended to 18 documented env vars covering daemon, WebSocket, webhook, retention, and TTL configs
-- `tsconfig.json` strict mode confirmed with noUncheckedIndexedAccess, noImplicitOverride, verbatimModuleSyntax
-- `eslint.config.js` with typescript-eslint + prettier, no errors on src/
-- Marketplace tarball created and verified: dist/, plugin/, plugin.yaml, package.json, README.md, LICENSE
+- .env.example extended to 18 documented env vars
+- tsconfig.json strict mode confirmed with all strict-family options
+- eslint.config.js with typescript-eslint + prettier, zero errors on src/
+- Marketplace tarball created and verified: dist/, plugin/, plugin.yaml, package.json, README.md, LICENSE, SECURITY.md, scripts/
+- One-line install script: scripts/install.sh
 
 ---
 
