@@ -17,7 +17,7 @@ import { computeAllIndicators } from './indicators.js';
 import { fetchAndMatchNews } from './news.js';
 import { computeSignals } from './signals.js';
 import { logger } from './core/logger.js';
-import { Cache } from './core/cache.js';
+import { getGlobalCache, resetGlobalCache } from './core/cache.js';
 import { loadConfig } from './core/config.js';
 import type { RadarConfig } from './core/config.js';
 import { StrategyEngine } from './analysis/engine.js';
@@ -33,11 +33,10 @@ const STATE_FILE = path.resolve('crypto-radar-state.json');
 const DEFAULT_INTERVALS: KlineInterval[] = ['15m', '1h', '4h', '1d'];
 
 let _runCounter = 0;
-const _cache = new Cache(300_000);
 
 /** @internal Reset the radar module-level cache (for testing) */
 export function _resetTestCache(): void {
-  _cache.clear();
+  resetGlobalCache();
 }
 
 function getRunId(): string {
@@ -139,11 +138,11 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   log.info('Starting radar scan', { filter: options.filter, chain: options.chain, intervals });
 
   const cacheKey = `tickers:${options.chain ?? 'all'}:${options.filter?.join(',') ?? ''}`;
-  let rawTickers = _cache.get<Map<string, BinanceTicker>>(cacheKey);
+  let rawTickers = getGlobalCache().get<Map<string, BinanceTicker>>(cacheKey);
   if (!rawTickers) {
     try {
       rawTickers = await fetchAllTickers();
-      _cache.set(cacheKey, rawTickers, 300_000);
+      getGlobalCache().set(cacheKey, rawTickers, 300_000);
     } catch (err) {
       log.warn('Failed to fetch tickers from Binance', { error: err instanceof Error ? err.message : String(err) });
       rawTickers = new Map();
@@ -184,7 +183,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
           const pair = getBinancePair(
             getTokensByChain(t.chain).find(tk => tk.sym === t.symbol) ?? {
               id: t.tokenId, sym: t.symbol, name: t.tokenName, chain: t.chain,
-            } as TokenDef,
+            },
           );
           const perTokenTechs = new Map<string, TechnicalIndicators>();
           await Promise.all(intervals.map(async (interval) => {
@@ -211,12 +210,12 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   let newsMatches: NewsMatch[] = [];
   if (options.includeNews !== false) {
     const newsCacheKey = `news:${runId}`;
-    const cached = _cache.get<NewsMatch[]>(newsCacheKey);
+    const cached = getGlobalCache().get<NewsMatch[]>(newsCacheKey);
     if (!cached) {
       log.info('Fetching news feeds...');
       try {
         newsMatches = await fetchAndMatchNews(runId, tsUtc);
-        _cache.set(newsCacheKey, newsMatches, 300_000);
+        getGlobalCache().set(newsCacheKey, newsMatches, 300_000);
       } catch (err) {
         log.warn('News fetch failed, continuing without news', { error: err instanceof Error ? err.message : String(err) });
       }
@@ -231,7 +230,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     log.info('Fetching on-chain metrics...');
     try {
       onchain = await fetchOnChainMetrics(filteredTokens);
-      _cache.set(`onchain:${runId}`, onchain, 300_000);
+      getGlobalCache().set(`onchain:${runId}`, onchain, 300_000);
     } catch (err) {
       log.warn('On-chain metrics fetch failed, continuing without', {
         error: err instanceof Error ? err.message : String(err),
@@ -254,7 +253,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
     const pair = getBinancePair(
       getTokensByChain(t.chain).find(tk => tk.sym === t.symbol) ?? {
         id: t.tokenId, sym: t.symbol, name: t.tokenName, chain: t.chain,
-      } as TokenDef,
+      },
     );
     let closes: number[] = [];
     let highs: number[] = [];
@@ -276,7 +275,9 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
         highs = klines.map(k => k.high);
         lows = klines.map(k => k.low);
         volumes = klines.map(k => k.volume);
-      } catch { /* proceed without */ }
+      } catch (err) {
+        logger.warn(`Failed to fetch klines for ${pair}`, { error: err instanceof Error ? err.message : String(err) });
+      }
     }
 
     const agg = await engine.evaluate({
