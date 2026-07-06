@@ -5,9 +5,53 @@
 import type { EnrichedTicker, OutputFormat, TokenSignal, NewsMatch, TechnicalIndicators } from './types.js';
 import type { AggregatedSignal } from './analysis/strategies.js';
 
-// ── CSV ──
+// ── Column Definitions ──
 
-export const CSV_HEADER = 'run_id,ts_utc,date_et,symbol,chain,last_price,bid_price,bid_qty,ask_price,ask_qty,spread_pct,open_price,high_price,low_price,prev_close_price,price_change_pct,weighted_avg_price,price_change,volume,quote_volume,count,last_qty,vwap_dist_pct,range_pos_pct,book_imbalance,vol_vs_avg,obv,momentum,alerts,source,rsi,macd_macd,macd_signal,macd_histogram,bb_upper,bb_middle,bb_lower,bb_width,atr_pct,mfi,stoch_k,stoch_d,williams_r,cmf,tsi,ema50_dist_pct,vol_trend,momentum_score,momentum_direction,mean_reversion_score,mean_reversion_direction,trend_following_score,trend_following_direction,composite_score,composite_direction,signal_count,position_size,onchain_tvl,onchain_fees_1d,onchain_chain_tvl,onchain_confidence,regime,regime_confidence';
+/** Convert camelCase to snake_case for CSV column headers */
+function camelToSnake(s: string): string {
+  return s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
+}
+
+/** Typed column list — defines both header order and validation schema */
+export const CSV_COLUMNS: (keyof EnrichedTicker)[] = [
+  // Run metadata & identity
+  'runId', 'tsUtc', 'dateEt', 'symbol', 'chain',
+  // Price data
+  'lastPrice', 'bidPrice', 'bidQty', 'askPrice', 'askQty',
+  'spreadPct', 'openPrice', 'highPrice', 'lowPrice', 'prevClosePrice',
+  'priceChangePercent', 'weightedAvgPrice', 'priceChange',
+  'volume', 'quoteVolume', 'count', 'lastQty',
+  'vwapDistPct', 'rangePosPct', 'bookImbalance', 'volVsAvg', 'obv', 'momentum',
+  'alerts', 'source',
+  // Technical indicators
+  'rsi', 'macdMacd', 'macdSignal', 'macdHistogram',
+  'bbUpper', 'bbMiddle', 'bbLower', 'bbWidth', 'atrPct',
+  'mfi', 'stochK', 'stochD', 'williamsR', 'cmf', 'tsi', 'ema50DistPct', 'volTrend',
+  // Strategy signals
+  'momentumScore', 'momentumDirection',
+  'meanReversionScore', 'meanReversionDirection',
+  'trendFollowingScore', 'trendFollowingDirection',
+  'compositeScore', 'compositeDirection',
+  'signalCount', 'positionSize',
+  // On-chain metrics
+  'onchainTvl', 'onchainFees1d', 'onchainChainTvl', 'onchainConfidence',
+  // Market regime
+  'regime', 'regimeConfidence',
+];
+
+/** Typed news column list */
+export const NEWS_CSV_COLUMNS: (keyof NewsMatch)[] = [
+  'runId', 'tsUtc', 'symbol', 'headline', 'description',
+  'source', 'domain', 'relevance',
+];
+
+/** Derived CSV header from typed column list — auto-syncs with EnrichedTicker */
+export const CSV_HEADER = CSV_COLUMNS.map(k => camelToSnake(k)).join(',');
+
+/** Derived news CSV header from typed column list */
+export const NEWS_CSV_HEADER = NEWS_CSV_COLUMNS.map(k => camelToSnake(k)).join(',');
+
+// ── CSV formatters ──
 
 /**
  * Smart price formatter: preserves precision for small prices.
@@ -132,9 +176,6 @@ export function toCSV(ticker: EnrichedTicker): string {
 export function csvHeader(): string {
   return CSV_HEADER;
 }
-
-/** News CSV header — shared constant to prevent schema drift */
-export const NEWS_CSV_HEADER = 'run_id,ts_utc,symbol,headline,description,source,domain,relevance';
 
 // ── JSON Lines ──
 
@@ -336,6 +377,14 @@ export function validateOutput(
   const errors: ValidationError[] = [];
   for (let i = 0; i < tickers.length; i++) {
     const t = tickers[i]!;
+
+    // Schema drift check: verify every CSV_COLUMNS field exists on row
+    for (const key of CSV_COLUMNS) {
+      if (t[key] === undefined) {
+        errors.push({ field: `tickers[${i}].${key}`, message: 'Field missing (undefined) — CSV_COLUMNS field not populated', value: undefined });
+      }
+    }
+
     if (typeof t.lastPrice !== 'number' || isNaN(t.lastPrice)) {
       errors.push({ field: `tickers[${i}].lastPrice`, message: 'Must be a valid number', value: t.lastPrice });
     }
