@@ -6,6 +6,7 @@ import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { ConfigError } from './errors.js';
+import type { PriceAlert } from './alerts.js';
 
 const DEFAULT_DATA_DIR = `${homedir()}/.hermes/data/crypto-radar`;
 
@@ -59,6 +60,16 @@ export interface RadarConfig {
   logRetentionDays: number;
   /** Enable SHA-256 checksum verification on log files */
   enableFileChecksums?: boolean;
+  /** Price alert thresholds — loaded from radar.config.json */
+  alerts?: PriceAlert[];
+  /** Webhook notification config (Discord URL / Telegram bot) */
+  webhooks?: {
+    discord?: string;
+    telegram?: {
+      botToken: string;
+      chatId: string;
+    };
+  };
 }
 
 const DEFAULTS: RadarConfig = {

@@ -52,7 +52,7 @@ const _alertState = new Map<string, boolean>();
  */
 export function checkAlerts(tickers: EnrichedTicker[]): AlertResult[] {
   const config = loadConfig();
-  const alerts = (config as unknown as { alerts?: PriceAlert[] }).alerts;
+  const alerts = config.alerts;
   if (!alerts || alerts.length === 0) return [];
 
   const results: AlertResult[] = [];
