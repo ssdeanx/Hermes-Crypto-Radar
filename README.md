@@ -125,6 +125,13 @@ crypto-radar scan --dynamic --format table
 crypto-radar scan --dynamic 20 --onchain --format json
 ```
 
+When `--dynamic` is used, the scan **auto-saves** all 5 output formats (`.txt`, `.json`, `.csv`, `.md`, `.xlsx`) to `~/.hermes/data/crypto-radar/` — no `--format` needed for archiving. The `.txt` file always contains the human-readable table, making it ideal for cron delivery.
+
+```bash
+# Cron collector — auto-saves all formats, just declare the token count
+crypto-radar scan --dynamic 39 --onchain
+```
+
 <details>
 <summary><strong>📦 All installation methods</strong></summary>
 
@@ -405,7 +412,7 @@ hermes-crypto-radar/
 | Flag | Type | Applies To | Description |
 |------|------|-----------|-------------|
 | `--filter <symbols...>` | `string[]` | scan, signals, news | Token symbols to include (e.g. `--filter SOL BTC`) |
-| `--dynamic [count]` | `number` | scan | Auto-detect top N tokens by 24h volume (default: 50) |
+| `--dynamic [count]` | `number` | scan | Auto-detect top N tokens by 24h volume (default: 50); triggers auto-save of all 5 output formats to data dir |
 | `--chain <chain>` | `string` | scan, tokens | Chain filter: `solana`, `polygon`, `bnb`, `ethereum`, etc. |
 | `--format <fmt>` | `string` | scan | Output: `table` (default), `json`, `csv`, `md`, `xlsx`, `html` |
 | `--sort <mode>` | `string` | scan | Sort: `momentum` (default), `alpha`, `change`, `volume`, `signal` |

@@ -7,6 +7,7 @@ import * as zlib from 'node:zlib';
 import * as path from 'node:path';
 import { createHash } from 'node:crypto';
 import { loadConfig } from './config.js';
+import { logWarn } from './errors.js';
 
 export interface LogRotationOptions {
   maxSizeBytes: number;
@@ -48,7 +49,7 @@ export function rotateLogFile(
     fs.writeFileSync(archive1, compressed);
     fs.writeFileSync(filePath, '');
   } catch (err) {
-    console.error(`[log-rotation] Failed to rotate ${filePath}: ${err instanceof Error ? err.message : String(err)}`);
+    logWarn('log-rotation', `Failed to rotate ${filePath}`, err);
   }
 }
 

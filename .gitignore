@@ -11,3 +11,12 @@ crypto-radar-state.json
 *.log
 *.tar.gz
 *.skill.md
+
+# Debug artifacts
+*.heapsnapshot
+
+# Git internals — never track worktrees
+.worktrees/
+
+# Stray lockfiles from other package managers
+pnpm-lock.yaml

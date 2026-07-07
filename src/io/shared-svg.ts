@@ -260,6 +260,20 @@ export function chartDefs(): string {
         <animate attributeName="stop-color" values="#0f172a;#1e293b;#0f172a" dur="8s" repeatCount="indefinite"/>
       </stop>
     </linearGradient>
+    <!-- MACD gradient -->
+    <linearGradient id="macdGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.9"/>
+    </linearGradient>
+    <!-- Equity curve gradient -->
+    <linearGradient id="eqGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.5"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.9"/>
+    </linearGradient>
+    <linearGradient id="eqFillGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#22d3ee" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#22d3ee" stop-opacity="0.02"/>
+    </linearGradient>
   </defs>`;
 }
 
