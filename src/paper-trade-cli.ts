@@ -26,7 +26,7 @@ import type { PaperTraderConfig, PaperTrade, PerformanceReport, PortfolioHolding
 // Constants
 // ═══════════════════════════════════════════════════════════════════════
 
-const DEFAULT_DATA_DIR = '~/.hermes/data/crypto-radar/';
+const DEFAULT_DATA_DIR = loadConfig().dataDir;
 
 /** Resolve the data directory, expanding ~ */
 function resolveDataDir(dataDir?: string): string {

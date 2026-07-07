@@ -24,6 +24,8 @@ import { computeADX, computeBB, computeATR, computeVolVsAvg } from './indicators
 import { runBenchmark, formatBenchmark } from './core/benchmark.js';
 import { exportCsvToSql } from './sqlite-export.js';
 import type { ExportResult } from './sqlite-export.js';
+import { runCollector } from './collector.js';
+import type { CollectorReport } from './types.js';
 import { generateHtmlReport, generateSignalSnapshot } from './pdf-export.js';
 import { validateOutput } from './output.js';
 import * as fs from 'node:fs';
@@ -735,6 +737,68 @@ program
       }
     } catch (err) {
       console.error(`[ERROR] Validation failed:`, err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+// ── collect command ──
+program
+  .command('collect')
+  .description('Run historical collector (klines + futures)')
+  .option('--klines', 'Collect klines', true)
+  .option('--futures', 'Collect futures data', true)
+  .option('--backfill <days>', 'Override backfill days')
+  .option('--symbol <syms...>', 'Filter to specific symbols')
+  .option('--orderbook', 'Include orderbook snapshots')
+  .option('--fear-greed', 'Include Fear & Greed index')
+  .option('--cross-asset', 'Include cross-asset data')
+  .action(async (opts) => {
+    try {
+      // Resolve user-supplied symbols to Binance pairs (SOL → SOLUSDT)
+      const symbols = opts.symbol
+        ? opts.symbol.map((s: string) => {
+            const token = getTokenList().find((t: TokenDef) => t.sym === s.toUpperCase() || t.id === s.toLowerCase());
+            return token ? getBinancePair(token) : s.toUpperCase();
+          })
+        : undefined;
+
+      const report = await runCollector({
+        klines: opts.klines,
+        futures: opts.futures,
+        backfillDays: opts.backfill ? parseInt(opts.backfill, 10) : undefined,
+        symbols,
+        orderbook: opts.orderbook ?? false,
+        fearGreed: opts.fearGreed ?? false,
+        crossAsset: opts.crossAsset ?? false,
+      });
+
+      const parts: string[] = [];
+      if (report.klinesInserted > 0) parts.push(`${report.klinesInserted} klines`);
+      if (report.fundingInserted > 0) parts.push(`${report.fundingInserted} funding`);
+      if (report.oiInserted > 0) parts.push(`${report.oiInserted} OI`);
+      if (report.lsInserted > 0) parts.push(`${report.lsInserted} L/S`);
+      if (report.liquidationsInserted > 0) parts.push(`${report.liquidationsInserted} liquidations`);
+      if (report.fearGreedInserted > 0) parts.push(`${report.fearGreedInserted} fear/greed`);
+      if (report.orderBookInserted > 0) parts.push(`${report.orderBookInserted} orderbook`);
+      if (report.crossAssetInserted > 0) parts.push(`${report.crossAssetInserted} cross-asset`);
+
+      if (parts.length > 0) {
+        console.log(`[collect] Inserted ${parts.join(', ')} in ${report.durationMs}ms`);
+      } else {
+        console.log(`[collect] No data inserted (${report.durationMs}ms)`);
+      }
+
+      if (report.errors.length > 0) {
+        for (const err of report.errors) {
+          console.error(`[collect] Error: ${err}`);
+        }
+      }
+
+      if (report.errors.length > 0 && parts.length === 0) {
+        process.exit(1);
+      }
+    } catch (err) {
+      console.error(`[ERROR] Collector failed:`, err instanceof Error ? err.message : err);
       process.exit(1);
     }
   });

@@ -5,7 +5,9 @@
 import type {
   BinanceTicker, EnrichedTicker, TechnicalIndicators,
   NewsMatch, TokenSignal, RadarOptions, RadarRun, KlineInterval,
+  KlineRow,
 } from './types.js';
+import type { Store } from './store/db.js';
 import { getTokensByChain, getBinancePair } from './tokens.js';
 import type { TokenDef } from './tokens.js';
 import { fetchAllTickers, fetchKlines } from './binance.js';
@@ -302,6 +304,16 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   const durationMs = Date.now() - startTime;
   const run: RadarRun = { runId, tsUtc, numTokens: tickers.length, numSignals: signals.length, durationMs };
   log.info(`Scan complete: ${tickers.length} tokens, ${durationMs}ms`);
+
+  if (options.store) {
+    try {
+      options.store.persistRun({ tickers, signals, newsMatches });
+      log.info(`Archived ${tickers.length} tickers, ${signals.length} signals, ${newsMatches.length} news items`);
+    } catch (err) {
+      log.warn('Failed to persist radar run', { error: String(err) });
+    }
+  }
+
   return { tickers, technicals, newsMatches, signals, aggregatedSignals, onchain, run };
 }
 

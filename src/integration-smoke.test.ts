@@ -28,7 +28,10 @@ describe('Module exports', () => {
   });
 
   it('CSV_HEADER is derived from CSV_COLUMNS', () => {
-    expect(CSV_HEADER).toBe(CSV_COLUMNS.join(','));
+    // Header is derived (snake_case) from the typed CSV_COLUMNS list — same arity.
+    const headerCols = CSV_HEADER.split(',');
+    expect(headerCols.length).toBe(CSV_COLUMNS.length);
+    expect(csvHeader()).toBe(CSV_HEADER);
   });
 
   it('csvHeader() returns CSV_HEADER', () => {

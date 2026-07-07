@@ -149,9 +149,13 @@ export async function fetchKlines(
   pair: string,
   interval = '1h',
   limit = 100,
+  startTime?: number,
+  endTime?: number,
 ): Promise<Kline[]> {
   return binanceBreaker.call(async () => {
-    const url = `${BASE_URL}/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`;
+    let url = `${BASE_URL}/api/v3/klines?symbol=${pair}&interval=${interval}&limit=${limit}`;
+    if (startTime !== undefined) url += `&startTime=${startTime}`;
+    if (endTime !== undefined) url += `&endTime=${endTime}`;
     const res = await fetchWithRetry(url);
     const data = (await res.json()) as unknown[][];
     return data.map(k => ({

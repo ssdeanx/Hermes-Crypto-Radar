@@ -42,6 +42,25 @@ export class RateLimiter {
     return Math.max(1, Math.round(this.refillIntervalMs / this.tokensPerInterval));
   }
 
+  /** Async: wait until a token is available, then consume it. Resolves immediately if token available. */
+  async waitForToken(timeoutMs?: number): Promise<void> {
+    const wait = this.consumeOrWait();
+    if (wait === 0) return;
+    if (timeoutMs !== undefined && timeoutMs <= 0) throw new Error('Rate limit timeout');
+    const start = Date.now();
+    return new Promise((resolve, reject) => {
+      const check = () => {
+        const w = this.consumeOrWait();
+        if (w === 0) return resolve();
+        if (timeoutMs !== undefined && (Date.now() - start) >= timeoutMs) {
+          return reject(new Error('Rate limit timeout'));
+        }
+        setTimeout(check, w);
+      };
+      setTimeout(check, wait);
+    });
+  }
+
   /** How many tokens available */
   available(): number {
     this.refill();

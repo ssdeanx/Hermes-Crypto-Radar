@@ -32,6 +32,12 @@ node dist/cli.js scan --dynamic 39 --onchain || {
   exit 1
 }
 
+# ── Run collector (klines + futures) ──
+node dist/cli.js collect --klines --futures || {
+  echo "  ❌ Crypto Radar collector failed (exit: $?)" >&2
+  exit 1
+}
+
 # ── Prune old logs and exports ──
 find "$DATA_DIR" -name "cron-*.json" -mtime +"$MAX_LOG_AGE_DAYS" -delete 2>/dev/null || true
 find "$DATA_DIR" -name "cron-*.txt" -mtime +"$MAX_LOG_AGE_DAYS" -delete 2>/dev/null || true

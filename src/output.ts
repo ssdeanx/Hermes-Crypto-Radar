@@ -12,6 +12,16 @@ function camelToSnake(s: string): string {
   return s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase();
 }
 
+/**
+ * Display-name overrides for CSV headers.
+ * Most headers are derived via camelToSnake(), but a few established
+ * abbreviations (e.g. priceChangePercent → price_change_pct) are overridden
+ * to stay consistent with the XLSX / SQLite export schema.
+ */
+const CSV_HEADER_OVERRIDES: Partial<Record<keyof EnrichedTicker, string>> = {
+  priceChangePercent: 'price_change_pct',
+};
+
 /** Typed column list — defines both header order and validation schema */
 export const CSV_COLUMNS: (keyof EnrichedTicker)[] = [
   // Run metadata & identity
@@ -46,7 +56,9 @@ export const NEWS_CSV_COLUMNS: (keyof NewsMatch)[] = [
 ];
 
 /** Derived CSV header from typed column list — auto-syncs with EnrichedTicker */
-export const CSV_HEADER = CSV_COLUMNS.map(k => camelToSnake(k)).join(',');
+export const CSV_HEADER = CSV_COLUMNS
+  .map(k => CSV_HEADER_OVERRIDES[k] ?? camelToSnake(k))
+  .join(',');
 
 /** Derived news CSV header from typed column list */
 export const NEWS_CSV_HEADER = NEWS_CSV_COLUMNS.map(k => camelToSnake(k)).join(',');

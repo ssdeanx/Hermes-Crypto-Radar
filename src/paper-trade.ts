@@ -23,6 +23,8 @@ import { fetchTicker } from './binance.js';
 import { fetchSimplePrices } from './coingecko.js';
 import { runRadar } from './radar.js';
 import { readFileSync, existsSync } from 'node:fs';
+import * as path from 'node:path';
+import { loadConfig } from './core/config.js';
 import { logWarn } from './core/errors.js';
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -200,7 +202,7 @@ export class PaperTrader {
     this.config = {
       startingBalance: config.startingBalance ?? DEFAULT_STARTING_BALANCE,
       allowedTokens: config.allowedTokens ?? [],
-      dataDir: config.dataDir ?? DEFAULT_DATA_DIR,
+      dataDir: config.dataDir ?? loadConfig().dataDir,
       profileName: this.profileName,
     };
     this.createdAt = new Date().toISOString();
