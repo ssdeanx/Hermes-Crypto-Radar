@@ -473,7 +473,7 @@ describe('Trade Execution', () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'paper-trade-exec-test-'));
     vi.clearAllMocks();
     (getTokenBySymbol as ReturnType<typeof vi.fn>).mockReturnValue(mockToken);
-    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '50000' });
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8000' });
   });
 
   afterEach(() => {
@@ -489,14 +489,14 @@ describe('Trade Execution', () => {
     expect(trade!.type).toBe('buy');
     expect(trade!.symbol).toBe('BTC');
     expect(trade!.amount).toBe(0.5);
-    expect(trade!.price).toBe(50000);
-    expect(trade!.total).toBe(25000);
-    expect(trader.cash).toBe(10_000 - 25000);
+    expect(trade!.price).toBe(8000);
+    expect(trade!.total).toBe(4000);
+    expect(trader.cash).toBe(10_000 - 4000);
   });
 
   it('returns null for insufficient funds', async () => {
     const trader = createTestTrader({ dataDir: tmpDir });
-    const trade = await trader.buy('BTC', 1);  // 1 BTC = $50,000 > $10,000 cash
+    const trade = await trader.buy('BTC', 2);  // 2 BTC = $16,000 > $10,000 cash
     expect(trade).toBeNull();
     expect(trader.cash).toBe(10_000);
   });
@@ -519,41 +519,42 @@ describe('Trade Execution', () => {
     expect(trader.holdings).toHaveLength(1);
     expect(trader.holdings[0]!.symbol).toBe('BTC');
     expect(trader.holdings[0]!.amount).toBe(0.5);
-    expect(trader.holdings[0]!.avgEntryPrice).toBe(50000);
+    expect(trader.holdings[0]!.avgEntryPrice).toBe(8000);
   });
 
   it('uses weighted average entry price for additional buys', async () => {
     const trader = createTestTrader({ dataDir: tmpDir });
-    // First buy: 0.5 BTC at $50,000
+    // First buy: 0.5 BTC at $8,000
     await trader.buy('BTC', 0.5);
-    expect(trader.holdings[0]!.avgEntryPrice).toBe(50000);
+    expect(trader.holdings[0]!.avgEntryPrice).toBe(8000);
 
-    // Second buy: 0.5 BTC at $60,000
-    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '60000' });
+    // Second buy: 0.5 BTC at $9,600 — clear cache so new price is fetched
+    trader.clearPriceCache();
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '9600' });
     await trader.buy('BTC', 0.5);
     expect(trader.holdings).toHaveLength(1);
     expect(trader.holdings[0]!.amount).toBe(1);
-    // Weighted avg: (0.5 * 50000 + 0.5 * 60000) / 1 = 55000
-    expect(trader.holdings[0]!.avgEntryPrice).toBe(55000);
+    // Weighted avg: (0.5 * 8000 + 0.5 * 9600) / 1 = 8800
+    expect(trader.holdings[0]!.avgEntryPrice).toBe(8800);
   });
 
   // ── sell ──
 
   it('sells successfully with P&L', async () => {
     const trader = createTestTrader({ dataDir: tmpDir });
-    // Use a price that lets us buy within budget
     (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '5000' });
     await trader.buy('BTC', 1); // $5,000 cost, $5,000 remaining
     expect(trader.cash).toBe(10_000 - 5000);
     expect(trader.holdings).toHaveLength(1);
 
-    // Sell at $5500
+    // Clear price cache so sell uses the new price
+    trader.clearPriceCache();
     (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '5500' });
     const trade = await trader.sell('BTC', 0.5);
     expect(trade).not.toBeNull();
     expect(trade!.type).toBe('sell');
-    expect(trade!.pnl).toBeCloseTo(250, 5); // P&L = (5500 - 5000) * 0.5
-    expect(trader.cash).toBe(5000 + 0.5 * 5500); // remaining + sell proceeds
+    expect(trade!.pnl).toBe(250); // P&L = (5500 - 5000) * 0.5
+    expect(trader.cash).toBe(5000 + 0.5 * 5500);
   });
 
   it('returns null when holding does not exist', async () => {

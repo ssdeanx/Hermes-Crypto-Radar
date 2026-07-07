@@ -24,7 +24,8 @@ import { loadConfig } from './core/config.js';
 import { logger } from './core/logger.js';
 import { fetchAllTickers, fetchKlines } from './binance.js';
 import { getTokenList, getBinancePair, getActiveTokenCount, reloadTokenConfig } from './tokens.js';
-import { Cache } from './core/cache.js';
+import { Cache, getGlobalCache } from './core/cache.js';
+import { logWarn } from './core/errors.js';
 
 // ── Config ──
 
@@ -46,15 +47,13 @@ let _refreshCount = 0;
 let _scanCount = 0;
 let _errorCount = 0;
 
-const _cache = new Cache(600_000); // 10 min, longer ttl for daemon
-
 // ── Warm-up functions ──
 
 async function prewarmTickers(): Promise<void> {
   const start = Date.now();
   try {
     const tickers = await fetchAllTickers();
-    _cache.set('tickers:all', tickers, 600_000);
+    getGlobalCache().set('radar:tickers', tickers, 600_000);
     log.info(`Ticker cache warmed: ${tickers.size} pairs in ${Date.now() - start}ms`);
   } catch (err) {
     _errorCount++;
@@ -71,11 +70,11 @@ async function prewarmKlines(): Promise<void> {
   // Pre-warm 1h klines for each token (the most commonly requested interval)
   for (const token of tokens) {
     const pair = getBinancePair(token);
-    const cacheKey = `${pair}:1h`;
-    if (!_cache.has(cacheKey)) {
+    const cacheKey = `radar:${pair}:1h`;
+    if (!getGlobalCache().has(cacheKey)) {
       try {
         const klines = await fetchKlines(pair, '1h', 200);
-        _cache.set(cacheKey, klines, 600_000);
+        getGlobalCache().set(cacheKey, klines, 600_000);
         okCount++;
       } catch {
         // non-fatal per token
@@ -134,7 +133,7 @@ function startHttp(): http.Server {
         scanCount: _scanCount,
         errorCount: _errorCount,
         activeTokens: getActiveTokenCount(),
-        cacheEntries: _cache.stats().size,
+        cacheEntries: getGlobalCache().stats().size,
         refreshIntervalMs: refreshMs,
         memoryUsage: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
       }));
@@ -260,7 +259,8 @@ export function isDaemonRunning(): boolean {
     // On Linux, signal 0 checks if process exists
     process.kill(pid, 0);
     return true;
-  } catch {
+  } catch (err) {
+    logWarn("daemon", "Process check failed", err);
     // Process not found — stale pid
     removePid();
     return false;

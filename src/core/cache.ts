@@ -124,3 +124,25 @@ export class Cache {
     };
   }
 }
+
+// ── Global cache singleton ──
+
+let _globalCache: Cache | undefined;
+
+/**
+ * Get the shared global cache instance.
+ * Lazily created on first call with the default 300s TTL.
+ */
+export function getGlobalCache(): Cache {
+  if (!_globalCache) {
+    _globalCache = new Cache();
+  }
+  return _globalCache;
+}
+
+/**
+ * Reset the global cache singleton (for testing).
+ */
+export function resetGlobalCache(): void {
+  _globalCache = undefined;
+}

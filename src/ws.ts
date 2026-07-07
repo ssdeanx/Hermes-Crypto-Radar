@@ -18,6 +18,7 @@
 //   - Graceful degradation (scan falls back to REST on connection failure)
 
 import { logger } from './core/logger.js';
+import { logWarn } from './core/errors.js';
 
 const BASE_WS = 'wss://stream.binance.com:9443/ws';
 const COMBINED_WS = 'wss://stream.binance.com:9443/stream';
@@ -210,7 +211,8 @@ export class BinanceWsClient {
               }
             }
           }
-        } catch {
+        } catch (err) {
+          logWarn("ws", "Failed to parse WS message", err);
           // Malformed JSON — skip silently
         }
       });

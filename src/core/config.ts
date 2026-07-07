@@ -5,7 +5,7 @@
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { ConfigError } from './errors.js';
+import { ConfigError, logWarn } from './errors.js';
 import type { PriceAlert } from './alerts.js';
 
 const DEFAULT_DATA_DIR = `${homedir()}/.hermes/data/crypto-radar`;
@@ -161,18 +161,18 @@ export function loadConfig(configPath?: string): RadarConfig {
     const raw = envMap.tokens.trim();
     if (raw.startsWith('[')) {
       try { base.tokens = JSON.parse(raw); }
-      catch { base.tokens = raw.replace(/[[\]"'\s]/g, '').split(',').filter(Boolean); }
+      catch (err) { logWarn("config", "Failed to parse RADAR__TOKENS", err); base.tokens = raw.replace(/[[\]"'\s]/g, '').split(',').filter(Boolean); }
     } else {
       base.tokens = raw.split(',').map(t => t.trim()).filter(Boolean);
     }
   }
   if (envMap.strategy_weights) {
     try { base.strategyWeights = JSON.parse(envMap.strategy_weights); }
-    catch { /* ignore invalid JSON */ }
+    catch (err) { logWarn("config", "Failed to parse strategy_weights", err); }
   }
   if (envMap.timeframe_weights) {
     try { base.timeframeWeights = JSON.parse(envMap.timeframe_weights); }
-    catch { /* ignore invalid JSON */ }
+    catch (err) { logWarn("config", "Failed to parse timeframe_weights", err); }
   }
   if (envMap.log_retention_days) base.logRetentionDays = parseInt(envMap.log_retention_days, 10);
   if (envMap.enable_file_checksums) base.enableFileChecksums = envMap.enable_file_checksums === 'true';

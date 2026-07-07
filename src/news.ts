@@ -45,6 +45,24 @@ const NEWS_FEEDS: FeedDef[] = [
   { name: 'Google News Bitcoin', url: 'https://news.google.com/rss/search?q=bitcoin&hl=en-US&gl=US&ceid=US:en', tier: 2, lang: 'en' },
   // X/Twitter via Nitter (no API key, free RSS proxy)
   { name: 'X Crypto (Nitter)',   url: 'https://nitter.net/search/rss?q=cryptocurrency',  tier: 2, lang: 'en' },
+  // ── Solana Ecosystem Feeds ──
+  { name: 'Solana Official',     url: 'https://solana.com/news/rss.xml',                               tier: 1 },
+  { name: 'Solana Foundation',   url: 'https://solana.com/news/rss',                                    tier: 1 },
+  { name: 'CryptoPotato Solana', url: 'https://cryptopotato.com/tag/solana/feed/',                     tier: 2 },
+  { name: 'CryptoSlate Solana',  url: 'https://cryptoslate.com/tag/solana/feed/',                       tier: 2 },
+  { name: 'Google News Solana',  url: 'https://news.google.com/rss/search?q=solana+blockchain+crypto&hl=en-US&gl=US&ceid=US:en', tier: 2, lang: 'en' },
+  // ── WS5: Solana Ecosystem Feeds (Phase 2) ──
+  { name: 'SolanaFloor',         url: 'https://solanafloor.com/feed/',                                   tier: 1 },
+  { name: 'Solana Compass',      url: 'https://solanacompass.com/rss',                                     tier: 2 },
+  { name: 'Google News Solana (alt)', url: 'https://news.google.com/rss/search?q=solana&hl=en-US&gl=US&ceid=US:en', tier: 2, lang: 'en' },
+  { name: 'U.Today Solana',      url: 'https://u.today/rss/solana',                                       tier: 3 },
+  { name: 'Solana Mobile',       url: 'https://solana.com/news/tag/mobile/rss',                            tier: 3 },
+  { name: 'Solana Status',       url: 'https://status.solana.com/history.rss',                             tier: 3 },
+  // ── WS5: Additional Solana Ecosystem Feeds (Phase 2 continued) ──
+  { name: 'SolanaFM',             url: 'https://rss.feedspot.com/widget/rss/2428243/solanafm.xml?rss=1',        tier: 2 },
+  { name: 'DL News',              url: 'https://www.dlnews.com/rss',                                              tier: 1 },
+  { name: 'Crypto Briefing DeFi', url: 'https://cryptobriefing.com/feeds/defi/',                                  tier: 2 },
+  { name: 'Google News DeFi',     url: 'https://news.google.com/rss/search?q=defi+blockchain&hl=en-US&gl=US&ceid=US:en', tier: 2, lang: 'en' },
 ];
 
 const SOURCE_TIERS: Record<string, number> = {
@@ -61,6 +79,22 @@ const SOURCE_TIERS: Record<string, number> = {
   'Google News Crypto': 0.7,
   'Google News Bitcoin': 0.7,
   'X Crypto (Nitter)':  0.6,
+  // Solana ecosystem feeds
+  'Solana Official': 1.0,
+  'Solana Foundation': 1.0,
+  'CryptoPotato Solana': 0.8,
+  'CryptoSlate Solana': 0.8,
+  'Google News Solana': 0.7,
+  'SolanaFloor': 1.0,
+  'Solana Compass': 0.8,
+  'Google News Solana (alt)': 0.7,
+  'U.Today Solana': 0.6,
+  'Solana Mobile': 0.6,
+  'Solana Status': 0.6,
+  'SolanaFM': 0.8,
+  'DL News': 1.0,
+  'Crypto Briefing DeFi': 0.8,
+  'Google News DeFi': 0.7,
 };
 
 // Poison headlines to filter out (SEO spam, roundups, etc.)

@@ -108,3 +108,14 @@ function formatCause(cause: unknown): string {
   if (typeof cause === 'string') return cause;
   return String(cause);
 }
+
+/**
+ * Log a non-fatal warning without importing the full logger.
+ * Safe for catch blocks that intentionally swallow but want visibility.
+ * Silenced in test environment to avoid noise.
+ */
+export function logWarn(component: string, message: string, err?: unknown): void {
+  if (process.env.VITEST || process.env.JEST_WORKER_ID) return;
+  const detail = err instanceof Error ? `: ${err.message}` : err ? `: ${err}` : '';
+  process.stderr.write(`[warn:${component}] ${message}${detail}\n`);
+}

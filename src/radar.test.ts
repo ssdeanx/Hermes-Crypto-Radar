@@ -9,6 +9,22 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import type { runRadar } from './radar.js';
+
+type RadarResult = Awaited<ReturnType<typeof runRadar>>;
+
+function mockRadarResult(overrides?: Partial<RadarResult>): RadarResult {
+  return {
+    tickers: [],
+    technicals: new Map(),
+    newsMatches: [],
+    signals: [],
+    aggregatedSignals: [],
+    onchain: null,
+    run: { runId: 'TEST', tsUtc: '', numTokens: 0, numSignals: 0, durationMs: 0 },
+    ...overrides,
+  };
+}
 
 const mockFetch = vi.fn();
 vi.stubGlobal('fetch', mockFetch);
@@ -166,74 +182,45 @@ describe('displayRadar', () => {
 
   it('returns table format by default', async () => {
     const { displayRadar } = await import('./radar.js');
-    const mockResult = {
-      tickers: [],
-      technicals: new Map(),
-      newsMatches: [],
-      signals: [],
-      aggregatedSignals: [],
+    const output = await displayRadar(mockRadarResult({
       run: { runId: 'TEST-1', tsUtc: '2026-01-01T00:00:00Z', numTokens: 0, numSignals: 0, durationMs: 0 },
-    };
-    const output = await displayRadar(mockResult as any, {});
+    }), {});
     expect(output).toContain('Crypto Radar');
   });
 
   it('returns JSON format', async () => {
     const { displayRadar } = await import('./radar.js');
-    const mockResult = {
-      tickers: [],
-      technicals: new Map(),
-      newsMatches: [],
-      signals: [],
-      aggregatedSignals: [],
+    const output = await displayRadar(mockRadarResult({
       run: { runId: 'TEST-1', tsUtc: '2026-01-01T00:00:00Z', numTokens: 0, numSignals: 0, durationMs: 0 },
-    };
-    const output = await displayRadar(mockResult as any, { format: 'json' });
+    }), { format: 'json' });
     expect(output).toContain('runId');
     expect(output).toContain('TEST-1');
   });
 
   it('returns CSV format', async () => {
     const { displayRadar } = await import('./radar.js');
-    const mockResult = {
-      tickers: [],
-      technicals: new Map(),
-      newsMatches: [],
-      signals: [],
-      aggregatedSignals: [],
+    const output = await displayRadar(mockRadarResult({
       run: { runId: 'TEST-1', tsUtc: '2026-01-01T00:00:00Z', numTokens: 0, numSignals: 0, durationMs: 0 },
-    };
-    const output = await displayRadar(mockResult as any, { format: 'csv' });
+    }), { format: 'csv' });
     expect(output).toContain('run_id');
   });
 
   it('returns empty string when quiet', async () => {
     const { displayRadar } = await import('./radar.js');
-    const mockResult = {
-      tickers: [],
-      technicals: new Map(),
-      newsMatches: [],
-      signals: [],
-      aggregatedSignals: [],
+    const output = await displayRadar(mockRadarResult({
       run: { runId: 'TEST-1', tsUtc: '2026-01-01T00:00:00Z', numTokens: 0, numSignals: 0, durationMs: 0 },
-    };
-    const output = await displayRadar(mockResult as any, { quiet: true });
+    }), { quiet: true });
     expect(output).toBe('');
   });
 
   it('includes top signals when signals present', async () => {
     const { displayRadar } = await import('./radar.js');
-    const mockResult = {
-      tickers: [],
-      technicals: new Map(),
-      newsMatches: [],
+    const output = await displayRadar(mockRadarResult({
       signals: [
         { symbol: 'SOL', tokenId: 'solana', tokenName: 'Solana', chain: 'solana', lastPrice: 150, priceChangePercent: 2.5, momentumScore: 60, technicalScore: 55, newsScore: 0, compositeScore: 58, alerts: ['PUMP'], timestamp: '' },
       ],
-      aggregatedSignals: [],
       run: { runId: 'TEST-1', tsUtc: '2026-01-01T00:00:00Z', numTokens: 0, numSignals: 1, durationMs: 0 },
-    };
-    const output = await displayRadar(mockResult as any, {});
+    }), {});
     expect(output).toContain('Top Signals');
     expect(output).toContain('SOL');
   });

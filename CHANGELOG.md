@@ -90,6 +90,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.1] — 2026-07-06
+
+### Fixed
+- **Auto-save .txt output** — `.txt` file now always captures TABLE format output instead of mirroring the `--format` flag, ensuring cron-delivered summaries are always human-readable.
+- **Auto-save .xlsx output** — `.xlsx` file now copies real binary xlsx data to the cron path instead of writing a status string. Spreadsheet exports are now usable when auto-saved.
+
+### Changed
+- **Collector script cleanup** — `scripts/crypto-radar-collector.sh` rewritten to be minimal: removed `--format json --quiet --no-news --sort` flags. The collector now runs `node dist/cli.js scan --dynamic 39 --onchain` and lets stdout flow naturally to cron delivery for human-readable run output.
+- **Log pruning extended** — Auto-pruning now covers `.txt`, `.csv`, and `.md` auto-save outputs in addition to existing log files.
+- **Removed JSON-specific logic** — JSON-specific validation and Node summary steps removed from collector script (no longer needed after format cleanup).
+
+---
+
 ## [1.4.0] — 2026-07-04
 
 ### Added

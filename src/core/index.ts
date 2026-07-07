@@ -4,7 +4,7 @@
 
 export { loadConfig, resetConfig, writeDefaultConfig } from './config.js';
 export type { RadarConfig } from './config.js';
-export { CryptoRadarError, NetworkError, RateLimitError, DataError, ConfigError, CacheError, SignalError } from './errors.js';
+export { CryptoRadarError, NetworkError, RateLimitError, DataError, ConfigError, CacheError, SignalError, logWarn } from './errors.js';
 export { logger } from './logger.js';
 export type { LogLevel, LogEntry } from './logger.js';
 export { Cache } from './cache.js';

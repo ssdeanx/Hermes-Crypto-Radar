@@ -97,6 +97,10 @@ export type { HealthStatus } from './monitor/health.js';
 // Daemon
 export { runDaemon, isDaemonRunning, stopDaemon } from './daemon.js';
 
+// Paper Trading
+export { PaperTrader, createPaperTrader, listProfiles, getActiveProfileName } from './paper-trade.js';
+export type { PaperTraderConfig, PaperTrade, PortfolioHolding, PortfolioState, PerformanceReport, TradeRecommendation, ProfileSummary } from './paper-trade.js';
+
 // Backtest & Benchmark
 export { runBacktest, formatBacktest, winRate, overallWinRate, formatSingleBacktest } from './backtest.js';
 export type { BacktestResult, BacktestOptions, AggregatedBacktestResult } from './backtest.js';

@@ -26,6 +26,7 @@ import asciichart from 'asciichart';
 import pc from 'picocolors';
 import type { Kline } from '../types.js';
 import { findSupportResistance } from '../analysis/support-resistance.js';
+import { logWarn } from '../core/errors.js';
 import type { PriceLevel } from '../analysis/support-resistance.js';
 import type {
   ChartLayout,
@@ -210,7 +211,8 @@ function renderSRSummary(
     if (parts.length > 0) {
       return `SR  ${parts.join('  │  ')}`;
     }
-  } catch {
+  } catch (err) {
+    logWarn("charts", "Chart rendering error", err);
     // S/R detection may fail on insufficient data
   }
   return '';
@@ -485,8 +487,8 @@ export function multiPaneAsciiChart(
       if (srParts.length > 0) {
         lines.push(`  SR  ${srParts.join('  │  ')}`);
       }
-    } catch {
-      // S/R requires minimum data
+    } catch (err) {
+      logWarn("charts", "Chart rendering error", err);
     }
 
     lines.push(pc.dim(`  ${sep}`));

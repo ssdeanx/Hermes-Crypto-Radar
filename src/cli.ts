@@ -26,6 +26,16 @@ import { exportCsvToSql } from './sqlite-export.js';
 import type { ExportResult } from './sqlite-export.js';
 import { generateHtmlReport, generateSignalSnapshot } from './pdf-export.js';
 import { validateOutput } from './output.js';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+// ── Constants ──
+
+/** Default top-N count for auto-dynamic mode (no --filter, no --dynamic) */
+const DEFAULT_TOP_N = 30;
+
+/** Count used when --dynamic flag is passed without a value */
+const DYNAMIC_FLAG_TOP_N = 50;
 
 // ── Global error handlers ──
 process.on('uncaughtException', (err) => {
@@ -69,9 +79,11 @@ program
       // Binance volume (default 30). --dynamic [N] overrides the count.
       let filter = opts.filter;
       if (!filter || filter.length === 0) {
-        const count = typeof opts.dynamic === 'string' ? parseInt(opts.dynamic, 10) 
-          : opts.dynamic !== undefined ? 50 
-          : 30;
+        const count = typeof opts.dynamic === 'string'
+          ? parseInt(opts.dynamic, 10)
+          : opts.dynamic !== undefined
+            ? DYNAMIC_FLAG_TOP_N
+            : DEFAULT_TOP_N;
         try {
           const dynamicTokens = await getTopTokensByVolume(count);
           filter = dynamicTokens.map(t => t.sym);
@@ -104,6 +116,37 @@ program
       console.error(`\n[done] ${result.run.runId} — ${result.run.numTokens} tokens in ${result.run.durationMs}ms`);
       console.error(`       ${result.aggregatedSignals.length} strategy signals`);
       if (!opts.noLog) console.error(`       Logged to data/ directory`);
+
+      // Auto-save all report formats
+      const dataDir = loadConfig().dataDir;
+      const date = new Date().toISOString().slice(0, 10);
+      fs.mkdirSync(dataDir, { recursive: true });
+
+      const formats: OutputFormat[] = ['table', 'json', 'csv', 'md', 'xlsx'];
+      for (const fmt of formats) {
+        if (fmt === 'table') {
+          // Bug 1 fix: always save TABLE format to .txt regardless of --format flag
+          const tableContent = await displayRadar(result, { format: 'table' });
+          if (tableContent) {
+            fs.writeFileSync(path.join(dataDir, `cron-${date}.txt`), tableContent + '\n', 'utf-8');
+          }
+        } else if (fmt === 'xlsx') {
+          // Bug 2 fix: displayRadar('xlsx') side-effects the real .xlsx file and returns
+          // a status string; copy the real file from its side-effect location instead
+          await displayRadar(result, { format: 'xlsx' });
+          const runIdLower = result.run.runId.toLowerCase();
+          const xlsxSource = path.join(dataDir, `crypto-radar-${runIdLower}.xlsx`);
+          const xlsxDest = path.join(dataDir, `cron-${date}.xlsx`);
+          if (fs.existsSync(xlsxSource)) {
+            fs.copyFileSync(xlsxSource, xlsxDest);
+          }
+        } else {
+          const content = await displayRadar(result, { format: fmt });
+          if (content) {
+            fs.writeFileSync(path.join(dataDir, `cron-${date}.${fmt}`), content + '\n', 'utf-8');
+          }
+        }
+      }
     } catch (err) {
       console.error(`[ERROR] Radar scan failed:`, err instanceof Error ? err.message : err);
       process.exit(1);
