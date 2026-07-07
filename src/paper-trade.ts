@@ -202,7 +202,7 @@ export class PaperTrader {
     this.config = {
       startingBalance: config.startingBalance ?? DEFAULT_STARTING_BALANCE,
       allowedTokens: config.allowedTokens ?? [],
-      dataDir: config.dataDir ?? DEFAULT_DATA_DIR,
+      dataDir: config.dataDir ?? loadConfig().dataDir,
       profileName: this.profileName,
     };
     this.createdAt = new Date().toISOString();
