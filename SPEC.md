@@ -584,6 +584,47 @@ To get the plugin listed on the Hermes map/registry:
 
 ---
 
+## 12b. Persistent Store, Collector & REST/WS API (v2.1.0)
+
+Crypto Radar v2.1.0 adds a **persistent SQLite store** (`node:sqlite`, zero native deps), a **historical collector**, four **new data sources**, a **REST API**, and a **WebSocket push hub**.
+
+### 12b.1 Store (`src/store/`)
+
+`Store` class wrapping `node:sqlite` (`DatabaseSync`) in WAL mode. Single-file store at `<dataDir>/crypto-radar.db`. All writes are upserts keyed on natural primary keys — idempotent and safe under cron re-runs.
+
+Tables: `klines`, `tickers`, `signals`, `news`, `paper_trades`, `futures_funding`, `futures_oi`, `futures_ls_ratio`, `liquidations`, `fear_greed`, `orderbook`, `cross_asset`.
+
+### 12b.2 Collector (`src/collector.ts`)
+
+`runCollector()` backfills klines for all 4 intervals (15m/1h/4h/1d) by walking `GET /klines` backward from `now`, then incrementally updates from the last stored candle. Also pulls Binance Futures funding/OI/long-short/liquidations, Fear & Greed (alternative.me), order-book snapshots, and CoinGecko global dominance.
+
+CLI: `crypto-radar collect [--klines] [--futures] [--backfill <days>] [--symbol SOL BTC] [--orderbook] [--fear-greed] [--cross-asset]`
+
+### 12b.3 New Sources (`src/sources/`)
+
+| Module | Source | Endpoints |
+|--------|--------|-----------|
+| `futures.ts` | Binance Futures (`fapi.binance.com`) | fundingRate, openInterest, globalLongShortAccountRatio, topLongShortPositionRatio, forceOrders |
+| `fear-greed.ts` | alternative.me | `/fng/?limit=N` |
+| `orderbook.ts` | Binance spot depth (reuses `fetchDepth`) | depth20 |
+| `cross-asset.ts` | CoinGecko | `/api/v3/global` |
+
+### 12b.4 REST API (`src/api/rest.ts`)
+
+Mounted into the daemon under `/api/*`. Reads are open; `POST /api/collect` is token-gated via `RADAR__API_TOKEN`.
+
+Routes: `/api/health`, `/api/tickers`, `/api/tickers/:symbol`, `/api/klines/:symbol`, `/api/signals`, `/api/signals/:symbol`, `/api/news`, `/api/portfolio`, `/api/portfolio/trades`, `/api/futures/:symbol`, `/api/fear-greed`, `/api/cross-asset`, `/api/orderbook/:symbol`, `/api/stats`, `POST /api/collect`.
+
+### 12b.5 WebSocket Hub (`src/api/ws.ts`)
+
+Uses the `ws` package. Attached to the daemon HTTP server via the `upgrade` event. Channels: `prices`, `signals`, `news`, `portfolio`. Clients subscribe with `{ type: 'subscribe', channel, symbol? }`. Heartbeat ping every 30s; dead sockets pruned.
+
+### 12b.6 Configuration (env overrides)
+
+`RADAR__STORE_PATH`, `RADAR__SOURCES_FUTURES`, `RADAR__SOURCES_FEAR_GREED`, `RADAR__SOURCES_CROSS_ASSET`, `RADAR__API_TOKEN`, `RADAR__WS_PORT` (default 9878).
+
+---
+
 ## 12. Changelog
 
 | Version | Date | Changes |
@@ -594,6 +635,7 @@ To get the plugin listed on the Hermes map/registry:
 | 1.3.0 | 2026-07-03 | 5 new indicators (Stochastic, Ichimoku, Williams %R, CMF, TSI), DeFiLlama on-chain metrics + signal boost, dynamic top-50 volume scan, auto-dynamic scan (default top-30), strategy weight config overrides, SVG chart overhaul (gradients, viewBox, tooltips, crosshairs, a11y), daemon mode, eslint/prettier, backtesting engine, candlestick pattern recognition (16 patterns), chart comparison overlay, correlation engine, data retention policy, Discord/Telegram webhooks, fuzz testing suite (130 tests), HTML/PDF report, market regime detection (ADX+BB+ATR), npm publication, support/resistance detection, token search CLI, Volume Profile analysis, webhook notifications, .env.example, .npmignore, package.json SEO, standardized data dir, 332 tests |
 | 1.4.0 | 2026-07-04 | Enterprise marketplace polish: plugin.yaml toolset+crypto, enhanced .env.example (daemon/WS/webhook/retention vars), TypeScript strict mode hardening (noUnusedLocals, noUnusedParameters, noImplicitOverride), enhanced typedoc.json (validation, categorize, sidebarLinks, searchInComments), enhanced package.json scripts (prebuild, postbuild, typecheck, coverage, postversion), npm metadata (funding, publishConfig, engines.npm, categories), CHANGELOG.md v1.4.0 entry, CITATION.cff bump, all documentation updated to v1.4.0, marketplace readiness checklist |
 | **2.0.0** | **2026-07-04** | **Marketplace release — major expansion**: 16 new indicators (ADX, Parabolic SAR, CCI, Keltner Channels, ROC, VWAP, Force Index, ADL, Chaikin Oscillator, StochRSI, TRIX, KST, Elder-Ray, Fisher Transform, Mass Index), 11 new tokens (NEAR, TRX, XLM, AVAX, LTC, BCH, HBAR, TAO, DOT, FIL, ZEC) + TRUMP + additional ecosystem tokens, 5 new chains (monero, algorand, tezos, theta + hedera), WebSocket live price streams, HTML self-contained report generator, professional README overhaul (comparison table, benchmarks, developer API section, roadmap, enterprise callout, use cases), SPEC.md updated for 49+ tokens × 31 chains × 26+ indicators, marketplace badges (npm downloads, GitHub stars), quick start guide with GIF placeholder |
+| **2.1.0** | **2026-07-07** | **Backend foundation + new data sources**: persistent `node:sqlite` store (`src/store/`) with 12 tables + resumable kline archive, `runCollector()` historical backfill CLI, four new sources (Binance Futures funding/OI/long-short/liquidations, alternative.me Fear & Greed, order-book snapshots, CoinGecko cross-asset dominance), REST API under `/api/*` (token-gated `POST /api/collect`), WebSocket push hub (`ws`) broadcasting prices/signals/news/portfolio, scan→store auto-archive in `runRadar()` + daemon, `ws` added as only new runtime dep. 129+ new tests across store/sources/api/collector. |
 
 ---
 

@@ -47,6 +47,9 @@ export interface RadarConfig {
     binance: boolean;
     coinGecko: boolean;
     defiLlama?: boolean;
+    futures?: boolean;
+    fearGreed?: boolean;
+    crossAsset?: boolean;
   };
   /** Enable DeFiLlama on-chain metrics during scan */
   defiLlamaEnabled?: boolean;
@@ -60,6 +63,12 @@ export interface RadarConfig {
   logRetentionDays: number;
   /** Enable SHA-256 checksum verification on log files */
   enableFileChecksums?: boolean;
+  /** Store (SQLite) config */
+  store?: { path?: string };
+  /** API bearer token for mutating routes (RADAR__API_TOKEN) */
+  apiToken?: string;
+  /** WebSocket server port (RADAR__WS_PORT, default 9878) */
+  wsPort?: number;
   /** Price alert thresholds — loaded from radar.config.json */
   alerts?: PriceAlert[];
   /** Webhook notification config (Discord URL / Telegram bot) */
@@ -96,6 +105,9 @@ const DEFAULTS: RadarConfig = {
   sources: {
     binance: true,
     coinGecko: false,
+    futures: true,
+    fearGreed: true,
+    crossAsset: true,
   },
   defiLlamaEnabled: false,
   logRetentionDays: 30,  // auto-prune logs older than 30 days
@@ -176,6 +188,12 @@ export function loadConfig(configPath?: string): RadarConfig {
   }
   if (envMap.log_retention_days) base.logRetentionDays = parseInt(envMap.log_retention_days, 10);
   if (envMap.enable_file_checksums) base.enableFileChecksums = envMap.enable_file_checksums === 'true';
+  if (envMap.store_path) { base.store ??= {}; base.store.path = envMap.store_path; }
+  if (envMap.sources_futures) base.sources.futures = envMap.sources_futures === 'true';
+  if (envMap.sources_fear_greed) base.sources.fearGreed = envMap.sources_fear_greed === 'true';
+  if (envMap.sources_cross_asset) base.sources.crossAsset = envMap.sources_cross_asset === 'true';
+  if (envMap.api_token) base.apiToken = envMap.api_token;
+  if (envMap.ws_port) base.wsPort = parseInt(envMap.ws_port, 10);
 
   _instance = base;
   return base;

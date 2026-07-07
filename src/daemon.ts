@@ -26,6 +26,9 @@ import { fetchAllTickers, fetchKlines } from './binance.js';
 import { getTokenList, getBinancePair, getActiveTokenCount, reloadTokenConfig } from './tokens.js';
 import { Cache, getGlobalCache } from './core/cache.js';
 import { logWarn } from './core/errors.js';
+import { Store } from './store/db.js';
+import { createRestHandler } from './api/rest.js';
+import { createWsHub } from './api/ws.js';
 
 // ── Config ──
 
@@ -46,6 +49,8 @@ let _lastRefresh = 0;
 let _refreshCount = 0;
 let _scanCount = 0;
 let _errorCount = 0;
+let _store: Store | null = null;
+let _wsHub: ReturnType<typeof createWsHub> | null = null;
 
 // ── Warm-up functions ──
 
@@ -98,9 +103,25 @@ async function refreshAll(): Promise<void> {
 // ── HTTP server ──
 
 function startHttp(): http.Server {
+  const restHandler = _store ? createRestHandler(_store) : null;
+
   const server = http.createServer((req, res) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     const pathname = url.pathname;
+
+    // ── REST API under /api/* ──
+    if (pathname.startsWith('/api')) {
+      if (!restHandler) {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'store unavailable', code: 'STORE_UNAVAILABLE' }));
+        return;
+      }
+      restHandler(req, url, res).catch(err => {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err), code: 'INTERNAL_ERROR' }));
+      });
+      return;
+    }
 
     // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -168,6 +189,7 @@ function startHttp(): http.Server {
     // ── Check if scanning ──
     if (pathname === '/scan-complete' && req.method === 'POST') {
       _scanCount++;
+      if (_wsHub) _wsHub.broadcast('news', { scanCount: _scanCount, ts: Date.now() });
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ ok: true, scanCount: _scanCount }));
       return;
@@ -209,10 +231,29 @@ function removePid(): void {
 export async function runDaemon(): Promise<void> {
   log.info(`Starting Crypto Radar daemon on port ${port}...`);
 
+  const config = loadConfig();
+  try {
+    _store = Store.open(config.dataDir);
+    _store.migrate();
+    log.info('SQLite store opened and migrated');
+  } catch (err) {
+    log.warn('Failed to open store, continuing without persistence', { error: String(err) });
+  }
+
   writePid();
   _startTime = Date.now();
 
   const server = startHttp();
+
+  // ── WebSocket push hub (client push) ──
+  if (_store) {
+    try {
+      _wsHub = createWsHub(server, _store);
+      log.info('WebSocket push hub started');
+    } catch (err) {
+      log.warn('Failed to start WebSocket hub', { error: String(err) });
+    }
+  }
 
   // Initial warm-up
   log.info('Pre-warming caches...');
@@ -237,7 +278,9 @@ export async function runDaemon(): Promise<void> {
   const shutdown = () => {
     log.info('Shutting down daemon...');
     clearInterval(refreshTimer);
+    if (_wsHub) _wsHub.close();
     server.close();
+    if (_store) _store.close();
     removePid();
     process.exit(0);
   };

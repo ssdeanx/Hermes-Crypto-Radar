@@ -337,6 +337,8 @@ export interface RadarOptions {
   period?: KlineInterval;
   /** Enable DeFiLlama on-chain metrics during scan */
   includeOnchain?: boolean;
+  /** Store to persist run results (optional) */
+  store?: { persistRun(result: { tickers: EnrichedTicker[]; signals: TokenSignal[]; newsMatches: NewsMatch[] }): void };
 }
 
 /** Run metadata for a radar sweep */
@@ -371,3 +373,89 @@ export interface DexPrice {
   tokenId: string;
   timestamp: number;
 }
+
+// ── Database row types ──
+
+export interface KlineRow {
+  symbol: string; interval: string; open_time: number;
+  open: number; high: number; low: number; close: number;
+  volume: number; quote_volume: number;
+  taker_buy_vol: number; taker_buy_quote_vol: number;
+}
+
+export interface TickerRow {
+  symbol: string; ts_utc: string;
+  price: number; price_change_pct: number;
+  volume: number; quote_volume: number;
+  rsi: number | null; macd_hist: number | null; bb_width: number | null; atr_pct: number | null;
+  adx: number | null; regime: string | null; composite_score: number | null;
+}
+
+export interface SignalRow {
+  symbol: string; ts_utc: string;
+  composite_score: number; direction: string | null;
+  momentum_score: number | null; mean_reversion_score: number | null; trend_following_score: number | null;
+  regime: string | null; adx: number | null;
+}
+
+export interface NewsRow {
+  id: string; symbol: string | null; headline: string | null;
+  description: string | null; source: string | null; domain: string | null;
+  relevance: number | null; pub_date: string | null;
+}
+
+export interface PaperTradeRow {
+  id: string; profile: string; symbol: string; side: string;
+  entry_price: number | null; entry_time: string | null;
+  quantity: number | null; exit_price: number | null; exit_time: string | null;
+  pnl: number | null; fees: number | null; status: string | null;
+}
+
+export interface FundingRow {
+  symbol: string; ts: number; rate: number | null;
+}
+
+export interface OIRow {
+  symbol: string; ts: number; open_interest: number | null;
+}
+
+export interface LsRatioRow {
+  symbol: string; ts: number;
+  long_account: number | null; short_account: number | null;
+  long_position: number | null; short_position: number | null;
+}
+
+export interface LiquidationRow {
+  id: string; symbol: string | null; ts: number | null;
+  side: string | null; price: number | null; qty: number | null; usd: number | null;
+}
+
+export interface FearGreedRow {
+  ts: number; value: number; classification: string | null;
+}
+
+export interface OrderBookRow {
+  symbol: string; ts: number;
+  spread_pct: number | null; imbalance: number | null;
+  bids: string | null; asks: string | null;
+}
+
+export interface CrossAssetRow {
+  ts: number;
+  btc_dominance: number | null; eth_dominance: number | null;
+  total_mcap: number | null; total_mcap_change_24h: number | null;
+  market_cap_percentage_json: string | null;
+}
+
+export type CollectorReport = {
+  klinesInserted: number;
+  fundingInserted: number;
+  oiInserted: number;
+  lsInserted: number;
+  liquidationsInserted: number;
+  fearGreedInserted: number;
+  orderBookInserted: number;
+  crossAssetInserted: number;
+  errors: string[];
+  durationMs: number;
+};

@@ -24,8 +24,10 @@ describe('HealthMonitor', () => {
 
     // Default: binance OK, jupiter OK, defillama OK
     mockFetch.mockImplementation((url: string) => {
-      if (url.includes('price.jup.ag')) {
-        return Promise.resolve(mockResponse({ data: { SOL: { price: '150.50' } } }));
+      if (url.includes('jup.ag')) {
+        return Promise.resolve(
+          mockResponse({ 'So11111111111111111111111111111111111111112': { usdPrice: 150.5 } }),
+        );
       }
       if (url.includes('llama.fi')) {
         return Promise.resolve(mockResponse([{ id: 'uniswap' }, { id: 'aave' }, { id: 'curve' }]));
@@ -57,8 +59,10 @@ describe('HealthMonitor', () => {
   it('returns degraded when binance fails once', async () => {
     // Only binance fails; jupiter and defillama still succeed
     mockFetch.mockImplementation((url: string) => {
-      if (url.includes('price.jup.ag')) {
-        return Promise.resolve(mockResponse({ data: { SOL: { price: '150.50' } } }));
+      if (url.includes('jup.ag')) {
+        return Promise.resolve(
+          mockResponse({ 'So11111111111111111111111111111111111111112': { usdPrice: 150.5 } }),
+        );
       }
       if (url.includes('llama.fi')) {
         return Promise.resolve(mockResponse([{ id: 'test' }]));
@@ -78,7 +82,7 @@ describe('HealthMonitor', () => {
 
   it('returns unhealthy when jupiter fails', async () => {
     mockFetch.mockImplementation((url: string) => {
-      if (url.includes('price.jup.ag')) {
+      if (url.includes('jup.ag')) {
         return Promise.reject(new Error('Jupiter timeout'));
       }
       if (url.includes('llama.fi')) {

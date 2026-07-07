@@ -107,6 +107,23 @@ export type { BacktestResult, BacktestOptions, AggregatedBacktestResult } from '
 export { runBenchmark, runBenchmarkMedian, formatBenchmark } from './core/benchmark.js';
 export type { BenchmarkResult } from './core/benchmark.js';
 
+// SQLite store
+export { Store } from './store/db.js';
+
+// Historical collector
+export { runCollector } from './collector.js';
+export type { CollectorOptions } from './collector.js';
+
+// New data sources
+export { fetchFundingRates, fetchOpenInterest, fetchLongShortRatio, fetchTopLongShortPositionRatio, fetchLiquidations } from './sources/futures.js';
+export { fetchFearGreed } from './sources/fear-greed.js';
+export { snapshotOrderBook } from './sources/orderbook.js';
+export { fetchGlobalData } from './sources/cross-asset.js';
+
+// REST API + WS hub
+export { createRestHandler } from './api/rest.js';
+export { createWsHub } from './api/ws.js';
+
 // SQLite export bridge
 export { exportCsvToSql } from './sqlite-export.js';
 export type { CsvToSqlOptions, CsvRow, ValidationResult, ExportResult } from './sqlite-export.js';

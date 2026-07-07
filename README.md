@@ -406,6 +406,32 @@ hermes-crypto-radar/
 | `backtest` | — | **Strategy backtesting** — accuracy metrics, weight optimization | `--strategy`, `--period`, `--symbol` |
 | `search` | — | **Token search** — find tokens by symbol/name/chain | `--query` |
 | `report` | `r` | **Generate HTML/PDF report** | `--filter`, `--output` |
+| `collect` | — | **Historical collector** — backfill klines + Binance Futures data into the SQLite store | `--klines`, `--futures`, `--backfill`, `--symbol`, `--orderbook`, `--fear-greed`, `--cross-asset` |
+
+### Data Store, REST API & Real-Time Push
+
+Crypto Radar now ships with a **persistent SQLite store** (`node:sqlite`, zero native deps) that archives every scan and supports historical backfill. A **REST API** and **WebSocket push hub** are mounted into the daemon so external consumers (and the future frontend) can read live and historical data.
+
+```bash
+# Backfill all tracked tokens (klines + futures) into the store
+crypto-radar collect --klines --futures
+
+# Targeted backfill with custom depth
+crypto-radar collect --symbol SOL BTC ETH --backfill 30
+
+# Include order-book snapshots, Fear & Greed, and cross-asset dominance
+crypto-radar collect --orderbook --fear-greed --cross-asset
+```
+
+**Architecture:**
+
+- `src/store/` — `Store` class over `node:sqlite` with WAL mode, upserts keyed on natural PKs (idempotent/resumable).
+- `src/collector.ts` — `runCollector()` walks Binance `klines` backward to backfill, then incrementally updates from the last stored candle. Also pulls Binance Futures funding/OI/long-short/liquidations.
+- `src/sources/` — `futures`, `fear-greed` (alternative.me), `orderbook`, `cross-asset` (CoinGecko global).
+- `src/api/rest.ts` — routes under `/api/*` (tickers, klines, signals, news, portfolio, futures, fear-greed, cross-asset, orderbook, stats). `POST /api/collect` is token-gated via `RADAR__API_TOKEN`.
+- `src/api/ws.ts` — WebSocket hub (`ws`) broadcasting `prices` / `signals` / `news` / `portfolio` channels on scan-complete.
+
+**Config (env overrides):** `RADAR__STORE_PATH`, `RADAR__SOURCES_FUTURES`, `RADAR__SOURCES_FEAR_GREED`, `RADAR__SOURCES_CROSS_ASSET`, `RADAR__API_TOKEN`, `RADAR__WS_PORT` (default 9878).
 
 ### Common Flags
 
@@ -480,6 +506,25 @@ const svg = await getChart({
 
 // List tracked tokens
 const tokens = await getTokens({ chain: 'solana' });
+```
+
+```typescript
+// Persistent store + collector + API (programmatic)
+import {
+  Store, runCollector,
+  fetchFundingRates, fetchFearGreed, fetchGlobalData, snapshotOrderBook,
+} from 'hermes-crypto-radar';
+
+// Open (or create) the SQLite store
+const store = Store.open(process.env.RADAR__DATA_DIR ?? './data');
+store.migrate();
+
+// Backfill historical klines + Binance Futures data
+await runCollector({ klines: true, futures: true, backfillDays: 30 });
+
+// Archive a scan into the store
+const result = await scan({ format: 'json', store });
+console.log(store.stats()); // row counts per table
 ```
 
 ```typescript
