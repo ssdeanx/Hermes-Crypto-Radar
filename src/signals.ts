@@ -130,24 +130,30 @@ function detectDivergence(
   }
 
   const { rsi } = tech;
-  const rangePos = t.rangePosPct; // 0.0 = 24h low, 1.0 = 24h high
+  // SAME-WINDOW range position, not the 24h ticker rangePosPct (finding #2).
+  // Divergence requires price extremes and the oscillator measured over one
+  // window; mixing the 24h ticker position with the 1h RSI produced phantom
+  // "regular/bullish" divergences on misaligned data.
+  const rangePos = tech.rangePosWindow == null || !Number.isFinite(tech.rangePosWindow)
+    ? 0.5
+    : tech.rangePosWindow;
   const priceChange = t.priceChangePercent;
 
   // ── Regular divergence (trend exhaustion / reversal) ──
-  // Price near 24h low but RSI not confirming weakness (RSI > 40)
+  // Price near window low but RSI not confirming weakness (RSI > 40)
   if (rangePos < 0.15 && rsi > 40 && priceChange < 0) {
     return {
       type: 'bullish-regular',
       strength: clamp((0.15 - rangePos) / 0.15 * (rsi - 40) / 60, 0, 1),
-      description: `Price at 24h low (range ${(rangePos * 100).toFixed(0)}%) but RSI ${rsi.toFixed(0)} not confirming weakness — regular bullish divergence`,
+      description: `Price at window low (range ${(rangePos * 100).toFixed(0)}%) but RSI ${rsi.toFixed(0)} not confirming weakness — regular bullish divergence`,
     };
   }
-  // Price near 24h high but RSI not confirming strength (RSI < 60)
+  // Price near window high but RSI not confirming strength (RSI < 60)
   if (rangePos > 0.85 && rsi < 60 && priceChange > 0) {
     return {
       type: 'bearish-regular',
       strength: clamp((rangePos - 0.85) / 0.15 * (60 - rsi) / 60, 0, 1),
-      description: `Price at 24h high (range ${(rangePos * 100).toFixed(0)}%) but RSI ${rsi.toFixed(0)} not confirming strength — regular bearish divergence`,
+      description: `Price at window high (range ${(rangePos * 100).toFixed(0)}%) but RSI ${rsi.toFixed(0)} not confirming strength — regular bearish divergence`,
     };
   }
 
@@ -627,6 +633,8 @@ export function computeSignals(
     const momentumScore = computeMomentumScore(t);
     const technicalScore = tech ? computeTechnicalScore(tech) : 0;
     const newsScore = computeNewsScore(newsItems);
+    // Composite share uses a neutral baseline for missing news (finding #1)
+    const newsComposite = computeNewsCompositeShare(newsItems);
 
     // ── On-chain boost (0–15pp, trend-aware) ───────────────────────
     const onchainBoost = onchain
@@ -664,18 +672,37 @@ export function computeSignals(
     const volumeAdj = computeVolumeAdjustment(t);
 
     // ── Composite score ────────────────────────────────────────────
+    // Weighted 0–100 sub-scores. News uses the neutral-baseline share so that
+    // missing news does not structurally penalize a token (finding #1).
     let compositeScore =
       momentumScore * 0.40 +
       technicalScore * 0.40 +
-      newsScore * 0.20 +
-      onchainBoost +
+      newsComposite * 0.20 +
       penalty +
       volumeAdj;
 
-    // Apply ADX trend strength multiplier
+    // Apply the ADX trend-strength multiplier to the SCORE only — NOT to the
+    // on-chain boost (finding #5). Previously the 0.6× chop multiplier also
+    // scaled the on-chain boost, double-counting "uncertain in chop".
     compositeScore = compositeScore * adxAdj.multiplier;
 
     compositeScore = clamp(compositeScore, 0, 100);
+
+    // ── Post-clamp multiplicative boost layer (finding #4) ──────────
+    // Additive percentage-point boosts were silently eaten by the clamp for
+    // any base >= 85 (a +15 on-chain boost could never lift a 100). Applying
+    // boosts multiplicatively AFTER the clamp keeps them effective at the top
+    // of the range while staying bounded to (0, 100]. Penalties still bite
+    // before the clamp, so the engine penalizes freely but now also rewards.
+    if (onchainBoost > 0) {
+      const onchainMult = 1 + onchainBoost / 100; // +15pp → ×1.15
+      compositeScore = clamp(compositeScore * onchainMult, 0, 100);
+    }
+    // Agreement bonus (penalty>=0 from calibrateConfidence) likewise rewarded
+    // post-clamp so it is never truncated for already-strong tokens.
+    if (penalty > 0) {
+      compositeScore = clamp(compositeScore * (1 + penalty / 100), 0, 100);
+    }
 
     // ── Alerts (deduplicated, with priority tags) ──────────────────
     const rawAlerts = buildAlerts(t, tech, newsItems, onchainBoost, adxAdj, divergence);
@@ -843,7 +870,13 @@ function computeTechnicalScore(t: TechnicalIndicators): number {
   return clamp(score, 0, 100);
 }
 
-/** News score (0–100) */
+/**
+ * News score (0–100).
+ *
+ * This is the *reported* news sub-score and MUST remain 0 when there are no
+ * articles (the contract in signals.test.ts pins `compositeScore`/newsScore
+ * semantics for callers and exporters).
+ */
 function computeNewsScore(newsItems: NewsMatch[]): number {
   if (newsItems.length === 0) return 0;
   let score = 0;
@@ -853,7 +886,37 @@ function computeNewsScore(newsItems: NewsMatch[]): number {
   return clamp(score, 0, 100);
 }
 
-/** Clamp a value between min and max */
+/**
+ * News contribution to the COMPOSITE score (0–100), using a neutral baseline.
+ *
+ * Fixes finding #1: the previous composite treated "no news" as a hard 0,
+ * structurally penalizing every low-news-coverage token by a full 20 points
+ * (0.20 weight × 0) before any price/technical factor. Absence of news is
+ * not negative evidence, so a token with no coverage contributes the neutral
+ * baseline (50) to the weighted average rather than 0.
+ *
+ * Reported `newsScore` stays 0 (see computeNewsScore) — only the composite
+ * blend is neutralized.
+ */
+function computeNewsCompositeShare(newsItems: NewsMatch[]): number {
+  if (newsItems.length === 0) return 50; // neutral baseline, not penalized
+  let score = 0;
+  for (const item of newsItems) {
+    score += item.relevance * 20;
+  }
+  return clamp(score, 0, 100);
+}
+
+/**
+ * Clamp a value between min and max.
+ *
+ * Defensive: a non-finite input (NaN / ±Infinity) — which can arise from a
+ * malformed upstream feed field that slipped past parsing — resolves to the
+ * neutral midpoint rather than propagating NaN into the composite score.
+ * This is the last line of defense against finding #3 (single bad field
+ * poisons the whole score + downstream sort).
+ */
 function clamp(v: number, min: number, max: number): number {
+  if (!Number.isFinite(v)) return (min + max) / 2;
   return Math.max(min, Math.min(max, v));
 }

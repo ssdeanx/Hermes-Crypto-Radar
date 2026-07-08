@@ -328,7 +328,9 @@ export function toTable(tickers: EnrichedTicker[], aggregatedSignals?: Aggregate
  * @returns Formatted signal report
  */
 export function toSignalReport(signals: TokenSignal[]): string {
-  const sorted = [...signals].sort((a, b) => b.compositeScore - a.compositeScore);
+  const sorted = [...signals]
+    .sort((a, b) => (Number.isFinite(b.compositeScore) ? b.compositeScore : -Infinity)
+      - (Number.isFinite(a.compositeScore) ? a.compositeScore : -Infinity));
   const lines: string[] = [];
 
   lines.push('# 🚀 Crypto Radar — Signals\n');

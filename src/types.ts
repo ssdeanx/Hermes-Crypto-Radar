@@ -249,6 +249,9 @@ export interface TechnicalIndicators {
   fisher?: number | null;
   /** Mass Index — volatility reversal detection */
   massIndex?: number | null;
+  /** Range position (0=window low, 1=window high) over the SAME kline window
+   *  as the other indicators. Used for same-window divergence detection. */
+  rangePosWindow?: number | null;
 }
 
 export interface BBandsResult {

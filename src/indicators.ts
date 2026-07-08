@@ -443,6 +443,16 @@ export function computeAllIndicators(klines: Kline[]): TechnicalIndicators {
   const priceVsEma50 = ema50 !== null && ema50 > 0
     ? ((currentClose - ema50) / ema50) * 100
     : null;
+  // Same-window range position (0=period low, 1=period high) for the kline
+  // window these indicators are computed over. Divergence detection must use
+  // THIS (not the 24h ticker rangePosPct) so price extremes and the
+  // oscillator share one window (finding #2).
+  const periodHigh = highs.length ? Math.max(...highs) : 0;
+  const periodLow = lows.length ? Math.min(...lows) : 0;
+  const range = periodHigh - periodLow;
+  const rangePosWindow = range > 0 && Number.isFinite(currentClose)
+    ? (currentClose - periodLow) / range
+    : 0.5;
   return {
     rsi: computeRSI(closes),
     mfi: computeMFI(highs, lows, closes, volumes),
@@ -473,6 +483,7 @@ export function computeAllIndicators(klines: Kline[]): TechnicalIndicators {
     elderRay: computeElderRay(highs, lows, closes),
     fisher: computeFisher(highs, lows, closes),
     massIndex: computeMassIndex(highs, lows),
+    rangePosWindow,
   };
 }
 

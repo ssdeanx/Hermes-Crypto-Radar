@@ -61,6 +61,21 @@ function toET(d: Date): string {
 }
 
 /**
+ * Parse a numeric string from an upstream feed into a finite number.
+ *
+ * Hardening against finding #3: Binance can serve a malformed/empty field on
+ * a transient error. A bare `parseFloat` would yield `NaN`, which later flows
+ * unchecked into `priceChangePercent * 3`, survives `Math.round`, and poisons
+ * the composite score + the `.sort()` that ranks "Top Signals". Returning 0
+ * (neutral) for non-finite input bounds the damage to the single affected
+ * ticker instead of corrupting the whole ranking.
+ */
+function safeParseFloat(raw: string | undefined | null, fallback = 0): number {
+  const n = parseFloat(raw ?? '');
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
  * Enrich a raw Binance ticker with computed fields.
  * @param raw Raw Binance ticker data
  * @param token Token definition
@@ -74,18 +89,18 @@ function enrichTicker(
   runId: string,
   tsUtc: string,
 ): EnrichedTicker {
-  const lastPrice = parseFloat(raw.lastPrice);
-  const bidPrice = parseFloat(raw.bidPrice);
-  const askPrice = parseFloat(raw.askPrice);
-  const highPrice = parseFloat(raw.highPrice);
-  const lowPrice = parseFloat(raw.lowPrice);
-  const openPrice = parseFloat(raw.openPrice);
-  const prevClosePrice = parseFloat(raw.prevClosePrice);
-  const weightedAvgPrice = parseFloat(raw.weightedAvgPrice);
-  const quoteVolume = parseFloat(raw.quoteVolume);
-  const volume = parseFloat(raw.volume);
-  const bidQty = parseFloat(raw.bidQty);
-  const askQty = parseFloat(raw.askQty);
+  const lastPrice = safeParseFloat(raw.lastPrice);
+  const bidPrice = safeParseFloat(raw.bidPrice);
+  const askPrice = safeParseFloat(raw.askPrice);
+  const highPrice = safeParseFloat(raw.highPrice);
+  const lowPrice = safeParseFloat(raw.lowPrice);
+  const openPrice = safeParseFloat(raw.openPrice);
+  const prevClosePrice = safeParseFloat(raw.prevClosePrice);
+  const weightedAvgPrice = safeParseFloat(raw.weightedAvgPrice);
+  const quoteVolume = safeParseFloat(raw.quoteVolume);
+  const volume = safeParseFloat(raw.volume);
+  const bidQty = safeParseFloat(raw.bidQty);
+  const askQty = safeParseFloat(raw.askQty);
   const spreadPct = bidPrice > 0 ? ((askPrice - bidPrice) / bidPrice) * 100 : 0;
   const vwapDistPct = weightedAvgPrice > 0
     ? ((lastPrice - weightedAvgPrice) / weightedAvgPrice) * 100 : 0;
@@ -93,7 +108,7 @@ function enrichTicker(
   const rangePosPct = range > 0 ? (lastPrice - lowPrice) / range : 0.5;
   const bookImbalance = (bidQty + askQty) > 0
     ? (bidQty - askQty) / (bidQty + askQty) : 0;
-  const priceChangePercent = parseFloat(raw.priceChangePercent);
+  const priceChangePercent = safeParseFloat(raw.priceChangePercent);
   const momentum = priceChangePercent * (quoteVolume > 10e6 ? 1.2 : 1.0);
   const alerts: string[] = [];
   if (priceChangePercent <= -5) alerts.push('DIP');
@@ -415,7 +430,10 @@ export async function displayRadar(
   let output = toTable(result.tickers, result.aggregatedSignals);
   if (result.signals.length > 0) {
     output += '\n\n═══ Top Signals ═══\n';
-    const topSignals = [...result.signals].sort((a, b) => b.compositeScore - a.compositeScore).slice(0, 5);
+    const topSignals = [...result.signals]
+      .sort((a, b) => (Number.isFinite(b.compositeScore) ? b.compositeScore : -Infinity)
+        - (Number.isFinite(a.compositeScore) ? a.compositeScore : -Infinity))
+      .slice(0, 5);
     for (const s of topSignals) {
       output += `\n${s.symbol} (${s.chain}) ${s.compositeScore}/100  [M:${s.momentumScore} T:${s.technicalScore} N:${s.newsScore}]`;
       if (s.alerts.length > 0) output += `  ${s.alerts.slice(0, 3).join(', ')}`;

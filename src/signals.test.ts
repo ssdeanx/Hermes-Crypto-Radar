@@ -254,3 +254,89 @@ describe('computeSignals with onchain', () => {
     expect(signals[0]!.alerts.find(a => a.includes('Strong on-chain'))).toBeTruthy();
   });
 });
+
+// ── Prism-scan remediation regression tests (findings #1–#5) ──
+
+describe('prism-scan remediation', () => {
+  beforeEach(() => {
+    clearAlertCache();
+  });
+
+  // Finding #1 — missing news is neutral, not a 0 that under-ranks a token.
+  it('treats missing news as neutral (no 20pt structural penalty)', () => {
+    const tickers = [makeTicker({ symbol: 'TEST', priceChangePercent: 0 })];
+    const tech = new Map([['TEST', makeTech({ rsi: 50, adx: undefined })]]);
+    const noNews = computeSignals(tickers, tech, []);
+    const weakNews = computeSignals(tickers, tech, [makeNews('TEST', 0.1)]);
+    // Neutral baseline (50) contributes 0.2*50=10; a 0.1-relevance article
+    // contributes 0.2*2=0.4. Missing news must NOT be penalized below weak news.
+    expect(noNews[0]!.compositeScore).toBeGreaterThan(weakNews[0]!.compositeScore);
+  });
+
+  // Finding #2 — divergence uses same-window range position, not 24h ticker.
+  it('detects regular divergence only from same-window range position', () => {
+    // Window-low + RSI not confirming + negative change → bullish-regular.
+    const tickersBull = [makeTicker({ symbol: 'TEST', priceChangePercent: -2 })];
+    const techBull = new Map([['TEST', makeTech({ rsi: 55, rangePosWindow: 0.05 })]]);
+    const bull = computeSignals(tickersBull, techBull, [])[0]!;
+    expect(bull.divergence?.type).toBe('bullish-regular');
+
+    // 24h ticker at the low BUT window range mid → must NOT fire (no longer
+    // mixes the 24h ticker position with the 1h RSI).
+    const tickersMis = [makeTicker({ symbol: 'TEST', priceChangePercent: -2, rangePosPct: 0.1 })];
+    const techMis = new Map([['TEST', makeTech({ rsi: 55, rangePosWindow: 0.5 })]]);
+    const mis = computeSignals(tickersMis, techMis, [])[0]!;
+    expect(mis.divergence?.type).toBeUndefined();
+  });
+
+  // Finding #3 — a malformed (NaN) feed field must not poison the composite.
+  it('keeps composite finite when a feed field is NaN', () => {
+    const tickers = [makeTicker({ symbol: 'TEST', priceChangePercent: NaN })];
+    const signals = computeSignals(tickers, new Map(), []);
+    const c = signals[0]!.compositeScore;
+    expect(Number.isFinite(c)).toBe(true);
+    expect(c).toBeGreaterThanOrEqual(0);
+    expect(c).toBeLessThanOrEqual(100);
+  });
+
+  // Finding #4 — on-chain boost is multiplicative & post-clamp (not eaten).
+  it('applies on-chain boost multiplicatively after the clamp', () => {
+    const tickers = [makeTicker({ symbol: 'UNIUSDT', tokenId: 'uniswap', priceChangePercent: 0 })];
+    const tech = new Map([['UNIUSDT', makeTech({ rsi: 50, adx: undefined })]]);
+    const onchain: OnChainMetrics = {
+      protocols: [{ name: 'uniswap-v3', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
+      chains: [], fetchedAt: '2026-07-03T00:00:00Z',
+    };
+    const without = computeSignals(tickers, tech, [], null)[0]!.compositeScore;
+    const withBoost = computeSignals(tickers, tech, [], onchain)[0]!.compositeScore;
+    // Boost must be applied as ×(1 + boost/100) = ×1.10 of the clamped base,
+    // NOT added as a flat +10pp (which a clamp would also eat for high bases).
+    expect(withBoost).toBeCloseTo(without * 1.10, 1);
+    expect(withBoost).not.toBeCloseTo(without + 10, 1); // reject old additive form
+    expect(withBoost).toBeGreaterThan(without);
+  });
+
+  // Finding #5 — ADX multiplier scales the score, NOT the on-chain boost.
+  it('applies ADX multiplier to score only, leaving on-chain boost unscaled', () => {
+    const mk = (adx: number) => {
+      const tickers = [makeTicker({ symbol: 'UNIUSDT', tokenId: 'uniswap', priceChangePercent: 0 })];
+      const tech = new Map([['UNIUSDT', makeTech({ rsi: 50, adx })]]);
+      const onchain: OnChainMetrics = {
+        protocols: [{ name: 'uniswap-v3', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
+        chains: [], fetchedAt: '2026-07-03T00:00:00Z',
+      };
+      return computeSignals(tickers, tech, [], onchain)[0]!.compositeScore;
+    };
+    const baseNoAdx = computeSignals(
+      [makeTicker({ symbol: 'UNIUSDT', tokenId: 'uniswap', priceChangePercent: 0 })],
+      new Map([['UNIUSDT', makeTech({ rsi: 50, adx: undefined })]]),
+      [], null,
+    )[0]!.compositeScore;
+    // ADX 10 → 0.6× score, then ×1.10 boost; ADX 60 → 1.1× score, then ×1.10 boost.
+    // The boost is independent of ADX (old code scaled the boost by ADX too,
+    // e.g. (base×0.6)+10, which double-penalized choppy markets).
+    expect(mk(10)).toBeCloseTo(baseNoAdx * 0.6 * 1.10, 1);
+    expect(mk(60)).toBeCloseTo(baseNoAdx * 1.1 * 1.10, 1);
+    expect(mk(60)).toBeGreaterThan(mk(10)); // higher trend strength → higher score
+  });
+});

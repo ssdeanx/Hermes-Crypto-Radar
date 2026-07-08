@@ -21,6 +21,7 @@
 import { Command } from 'commander';
 import { PaperTrader, createPaperTrader, listProfiles, getActiveProfileName, expandHome } from './paper-trade.js';
 import type { PaperTraderConfig, PaperTrade, PerformanceReport, PortfolioHolding } from './paper-trade.js';
+import { loadConfig } from './core/config.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Constants
