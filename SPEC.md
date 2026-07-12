@@ -196,12 +196,17 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | **npm publication** | ✅ | `hermes-crypto-radar@1.3.0` on npm registry | v1.3 |
 | **Support/Resistance detection** | ✅ | Pivot points, cluster detection, volume confirmation, psych levels | v1.3 |
 | **Token search CLI** | ✅ | `search` command finds tokens by symbol/name/chain | v1.3 |
-|| **Volume Profile analysis** | ✅ | Market Profile: POC, HVN/LVN, value area, SVG histogram | v1.3 |
-|| **Webhook notifications** | ✅ | Discord + Telegram alert delivery | v1.3 |
-|| **ML pipeline (F1–F10)** | ✅ | Feature engineering, label generation, dataset assembly, LightGBM training, batch inference via Python subprocess, auto-retrain daemon, predictions API | v2.1.0 |
-|| **Predictions API** | ✅ | `GET /api/predictions`, `GET /api/predictions/:symbol` | v2.1.0 |
-|| **Store schema v2** | ✅ | Snapshot+history split, predictions table, retention indexes, AsyncMutex write serialization | v2.1.0 |
-|| **Store caching** | ✅ | 60s TTL cache on `getKlines()`, `getCrossAsset()` for ML feature building | v2.1.0 |
+| **Volume Profile analysis** | ✅ | Market Profile: POC, HVN/LVN, value area, SVG histogram | v1.3 |
+| **Webhook notifications** | ✅ | Discord + Telegram alert delivery | v1.3 |
+| **ML pipeline (F1–F10)** | ✅ | Feature engineering, label generation, dataset assembly, LightGBM training, batch inference via Python subprocess, auto-retrain daemon, predictions API | v2.1.0 |
+| **Predictions API** | ✅ | `GET /api/predictions`, `GET /api/predictions/:symbol` | v2.1.0 |
+| **Store schema v2** | ✅ | Snapshot+history split, predictions table, retention indexes, AsyncMutex write serialization | v2.1.0 |
+| **Store caching** | ✅ | 60s TTL cache on `getKlines()`, `getCrossAsset()` for ML feature building | v2.1.0 |
+| **REST API chain/symbol filters** | ✅ | `?chain=` on GET /api/tickers, `?symbol=` on GET /api/signals | v2.1.0 |
+| **REST /api/tokens** | ✅ | Get full token list via REST (was CLI-only) | v2.1.0 |
+| **REST /api/regime** | ✅ | Live market regime detection from klines | v2.1.0 |
+| **Scale-boundary fixes (F1–F6)** | ✅ | `compositeConfidence/100` removed in paper-trade, `minConfidence*100` removed in backtest, assertion guards added | v2.1.0 |
+| **Test coverage improvement** | ✅ | 205 new tests across cli/collector/paper-trade-cli (0%→90%+). Total: 1154 tests, 53 test files. Lines 84%, statements 81%, functions 85% | v2.1.0 |
 
 ### 4.2 Planned (Roadmap)
 
@@ -244,6 +249,7 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 Full market scan. Fetches prices, indicators, news, on-chain metrics (if enabled), and generates signals.
 
 **Parameters:**
+
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `filter` | string[] | — | Token symbols to filter (e.g. `["SOL", "BTC"]`) |
@@ -260,6 +266,7 @@ Full market scan. Fetches prices, indicators, news, on-chain metrics (if enabled
 Quick signal snapshot. Lighter than a full scan.
 
 **Parameters:**
+
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `filter` | string[] | — | Token symbols to include |
@@ -271,6 +278,7 @@ Quick signal snapshot. Lighter than a full scan.
 Fetch and score crypto news against tracked tokens.
 
 **Parameters:**
+
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `filter` | string[] | — | Token symbols to filter news for |
@@ -282,6 +290,7 @@ Fetch and score crypto news against tracked tokens.
 List all tracked tokens.
 
 **Parameters:**
+
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `chain` | string | — | Filter by chain |
@@ -293,6 +302,7 @@ List all tracked tokens.
 Generate SVG charts for agent visual responses. Supports line, candlestick, dashboard, and sparkline chart types.
 
 **Parameters:**
+
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `symbol` | string | — | Token symbol (e.g. SOL, BTC) |
@@ -308,6 +318,7 @@ Generate SVG charts for agent visual responses. Supports line, candlestick, dash
 Manage the warm HTTP daemon for sub-50ms tool calls.
 
 **Parameters:**
+
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `action` | string | `status` | Action: `start`, `stop`, `status` |
@@ -321,6 +332,7 @@ Manage the warm HTTP daemon for sub-50ms tool calls.
 On-chain metrics from DeFiLlama: protocol TVL, chain TVL, fees.
 
 **Parameters:**
+
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `filter` | string[] | — | Token symbols to filter |
@@ -332,6 +344,7 @@ On-chain metrics from DeFiLlama: protocol TVL, chain TVL, fees.
 WebSocket stream management for real-time prices.
 
 **Parameters:**
+
 | Param | Type | Default | Description |
 |-------|------|---------|-------------|
 | `action` | string | `status` | Action: `start`, `stop`, `status` |
@@ -524,6 +537,7 @@ Crypto Radar exposes all data needed by an external dashboard UI via the daemon'
 | `portfolio` | `{profile, pnl, holdings}` | On paper-trade state change |
 
 Client subscribe message:
+
 ```json
 { "type": "subscribe", "channel": "prices", "symbol": "SOLUSDT" }
 ```
@@ -549,6 +563,7 @@ ws.send(JSON.stringify({ type: 'subscribe', channel: 'prices' }));
 ### ML Prediction Fields
 
 When building a dashboard, ML predictions have this shape:
+
 ```json
 {
   "id": "sha1-hash",

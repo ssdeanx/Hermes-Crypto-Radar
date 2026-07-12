@@ -12,8 +12,8 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-blue" alt="Node">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
-  <img src="https://img.shields.io/badge/coverage-95%25-brightgreen" alt="Coverage">
-  <img src="https://img.shields.io/badge/tests-949%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/coverage-84%25-brightgreen" alt="Coverage">
+  <img src="https://img.shields.io/badge/tests-1154%20passed-brightgreen" alt="Tests">
 </p>
 
 <h1 align="center">🛰️ Hermes Crypto Radar</h1>
@@ -63,7 +63,8 @@ hermes plugins list
 | **🪙 Token Coverage** | **49+ tokens** across **31 chains** — Solana, Polygon, Ethereum, BNB, Bitcoin, XRP, Cardano, Dogecoin, Cosmos, Sui, Aptos, Sei, Celestia, Injective, Thorchain, NEAR, TRON, Stellar, Avalanche, Litecoin, Bitcoin Cash, Hedera, Bittensor, Polkadot, Filecoin, Zcash, Monero, Algorand, Tezos, Theta + dynamic top-50 volume detection |
 | **📊 Technical Indicators** | **26+ indicators**: RSI (14), MACD (12/26/9), Bollinger Bands (20/2), ATR (14), MFI (14), OBV, Stochastic (%K/%D), Ichimoku Cloud, Williams %R, CMF, TSI, SMA, EMA, ADX, Parabolic SAR, CCI, Keltner Channels, ROC, VWAP, Force Index, ADL, Chaikin Oscillator, StochRSI, TRIX, KST, Elder-Ray, Fisher Transform, Mass Index |
 | **🧠 Signal Engine** | 3 strategies: Momentum (40%), Mean Reversion (20%), Trend Following (40%) — weighted voting with confidence scoring, candlestick pattern recognition (16 patterns), market regime detection (ADX+BB+ATR) |
-| **⏱️ Multi-Timeframe** | Parallel kline fetch across 15m, 1h, 4h, 1d intervals with weighted aggregation (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35) |
+|| **🧠 ML Pipeline** | LightGBM direction classifier — 80+ features, forward-return labels, auto-retrain daemon, batch inference via Python subprocess, predictions API | v2.1.0 ||
+|| **⏱️ Multi-Timeframe** | Parallel kline fetch across 15m, 1h, 4h, 1d intervals with weighted aggregation (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35) |
 | **⛓️ On-Chain Metrics** | DeFiLlama integration — protocol TVL, chain TVL, fees (1d/7d/30d) — boosts signal confidence 0–15% |
 | **📰 News Aggregation** | 11 RSS feeds with relevance scoring, dedup, poison-filtering via token headline/body matching, sentiment keyword analysis |
 | **🎯 Dynamic Scan** | `--dynamic` flag auto-detects top N tokens by 24h volume (configurable, default: 50) |
@@ -75,7 +76,9 @@ hermes plugins list
 | **🔌 Hermes Plugin** | 8 agent tools returning structured JSON for agent reasoning — scan, signals, news, tokens, chart, daemon, onchain, ws |
 | **📡 Real-Time** | WebSocket stream management for live price updates, Discord/Telegram webhook price alerts |
 | **📁 Data Directory** | Standardized to `~/.hermes/data/crypto-radar/` — logs, rotation, cross-session persistence |
-| **🔬 Advanced Analytics** | Correlation engine (N×N Pearson matrix), backtesting engine with weight optimization, Volume Profile (POC/HVN/LVN), support/resistance detection |
+|| **🔬 Advanced Analytics** | Correlation engine (N×N Pearson matrix), backtesting engine with weight optimization, Volume Profile (POC/HVN/LVN), support/resistance detection | v1.3 |
+|| **📡 REST API** | 16+ REST endpoints under /api/* — tickers, signals, klines, news, tokens, regime, futures, orderbook, portfolio, predictions | v2.1.0 |
+|| **🧪 Test Coverage** | 1154 tests across 53 test files — CLI layer, paper-trade CLI, and collector at 90%+ coverage. Overall lines 84%, statements 81%, functions 85% | v2.1.0 |
 
 > **Requirements:** Node.js >= 22, Hermes Agent (for plugin integration). No API keys required — uses public Binance REST API + RSS feeds + DeFiLlama (free).
 
@@ -137,28 +140,33 @@ crypto-radar scan --dynamic 39 --onchain
 <summary><strong>📦 All installation methods</strong></summary>
 
 ### From Hermes Marketplace (recommended)
+
 ```bash
 hermes plugins install crypto-radar
 ```
 
 ### From npm
+
 ```bash
 npm install -g hermes-crypto-radar
 crypto-radar scan --filter SOL BTC --no-news
 ```
 
 ### One-liner (no npm/node preinstalled)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/ssdeanx/Hermes-Crypto-Radar/main/scripts/install.sh | bash
 ```
 
 ### From source
+
 ```bash
 git clone https://github.com/ssdeanx/Hermes-Crypto-Radar.git
 cd Hermes-Crypto-Radar
 npm install && npm run build
 ln -sf "$PWD" ~/.hermes/plugins/crypto-radar
 ```
+
 </details>
 
 ---
@@ -185,6 +193,7 @@ ln -sf "$PWD" ~/.hermes/plugins/crypto-radar
 ## 💡 Use Cases
 
 ### 📈 Trading Signals
+
 Generate multi-timeframe composite signals with weighted strategy voting. Get buy/sell/neutral recommendations with confidence scores, on-chain TVL boosts, and news sentiment overlays.
 
 ```bash
@@ -193,6 +202,7 @@ crypto-radar scan --onchain --format json | jq '.signals[] | select(.compositeSc
 ```
 
 ### 👁️ Market Monitoring
+
 Run the warm daemon for continuous monitoring with sub-50ms tool calls. Set up Discord/Telegram webhooks for price alerts.
 
 ```bash
@@ -201,6 +211,7 @@ crypto-radar scan --dynamic 30 --no-news --no-log --quiet
 ```
 
 ### 📊 Portfolio Tracking
+
 Track your portfolio tokens with enriched data, multi-timeframe trend analysis, and export-ready reports (CSV, XLSX, HTML).
 
 ```bash
@@ -209,6 +220,7 @@ crypto-radar scan --filter SOL --format html > report.html
 ```
 
 ### 🔬 Advanced Analysis
+
 Leverage the correlation engine, backtesting framework, Volume Profile, and candlestick pattern recognition for deep market analysis.
 
 ```bash
@@ -614,6 +626,7 @@ configure({
 | **Parallel kline fetching** (4 timeframes, 49 tokens) | ~60% reduction vs sequential |
 | **News aggregation** (11 feeds, concurrency-4) | ~2s vs ~12s sequential |
 | **Test coverage** | 332+ tests |
+| **Unit tests** | 1154+ tests across 53 files |
 | **Indicator fuzz tests** | 130 edge-case tests (NaN, Infinity, empty) |
 | **Supported token pairs** | 49+ (Binance USDT) |
 | **Build time** | ~3s (TypeScript → dist) |
@@ -673,7 +686,7 @@ Crypto Radar ships with production-grade enterprise infrastructure:
 npm run build        # TypeScript compile → dist/
 npm run watch        # Watch mode for development
 npm run start        # Run CLI (default: scan)
-npm test             # Run vitest suite (332+ tests)
+npm test             # Run vitest suite (1154+ tests)
 npm run test:watch   # Watch mode for TDD
 npm run test:coverage # Test coverage report
 npm run lint         # ESLint check
@@ -758,6 +771,7 @@ The warm daemon HTTP endpoints include the following security headers to protect
 Hermes Crypto Radar uses **only public APIs** — no API keys, tokens, or credentials are required. All data sources (Binance public API, CoinGecko free tier, DeFiLlama, RSS feeds) are freely accessible.
 
 ### Supply Chain Security
+
 - `npm audit` runs as part of CI to detect dependency vulnerabilities
 - npm overrides for transitive vulnerability fixes (see `package.json`)
 - Regular dependency updates tracked in [CHANGELOG.md](CHANGELOG.md)

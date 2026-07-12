@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.1.0] — 2026-07-11
 
 ### Added
+
 - **ML Pipeline** — Full-featured machine learning pipeline for price direction prediction:
   - `src/ml/features.ts` — Feature engineering (80+ features from 26 indicators + returns + cross-asset + futures + temporal), with kline gap detection (F9), cross-asset timestamp alignment via nearest-neighbor forward-fill (F2), NaN/Infinity sanitization (F5)
   - `src/ml/labels.ts` — Forward-return label generation at 1/5/20/60 horizons with configurable noise threshold and asymmetric class weights (F7)
@@ -17,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `src/ml/predict.ts` — Batch inference via Python subprocess (F3: all symbols in single CSV block), direction validation, 60s timeout guard, prediction count mismatch detection
   - `ml/train.py` — LightGBM direction classifier with early stopping, custom class weights, model + metrics + feature importance output
   - `ml/predict.py` — Batch prediction from stdin CSV, NaN fill, class probability output
+- **REST API additions** (from prism-full findings F10–F15):
+  - `?chain=` filter on `GET /api/tickers` (F10)
+  - `?symbol=` filter on `GET /api/signals` (F11)
+  - `GET /api/tokens` — full token list (F14)
+  - `GET /api/regime/:symbol` — live market regime detection from klines (F15)
 - **Store schema v2** — Migration with snapshot+history split (F1):
   - `tickers` and `signals` tables now use single-column PK (`symbol`) for latest-state snapshot
   - New `ticker_history` and `signal_history` tables for append-only time series
@@ -32,20 +38,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **npm scripts** — `ml:train`, `ml:predict`, `ml:status`, `ml:setup`
 
 ### Changed
+
 - **Store schema** — Bumped to v2. Existing v1 databases migrated automatically
 - **All 10 prism findings (F1–F10) corrected** — Schema idempotency, timestamp alignment, batch inference, predictions storage, NaN handling, config defaults, class imbalance, auto-retrain, gap detection, write serialization
+- **Test coverage increased from 949 to 1154 tests** — 3 new test files (cli.test.ts, paper-trade-cli.test.ts, collector.test.ts) bringing the CLI layer, paper-trade CLI, and collector from 0% to 90%+ coverage. Overall: lines 84.01%, statements 81.47%, functions 84.92%, branches 69.56%
+- **Coverage exclusions** — `src/ml/**`, `src/io/charts.ts`, `src/io/advanced-charts.ts` excluded from coverage (ML requires Python infra, advanced charts need SVG rendering infra)
+- **REST API store** — `getSignals()` now accepts an optional `symbol` filter param
 
 ### Fixed
+
 - `label_class_5` field renamed to `label_class` — correctly reflects configured horizon
 - CSV injection vulnerability in dataset assembly
 - `Date.now()` collision for dataset file IDs — replaced with `randomUUID()`
 - Python subprocess path resolution — scripts resolved via `import.meta.url`
 - Subprocess direction output validated at runtime instead of blind cast
 - Empty features/labels arrays now throw `DataError`
+- **Scale-boundary bugs (prism-scan Entry 3, F1–F6):**
+  - `paper-trade.ts` — `compositeConfidence / 100` in `getSignalRecommendations()` crushed 0–1 values to 0–0.01, preventing agent auto-trader from executing any trade via the primary signal path (F1, critical)
+  - `paper-trade.ts` — `compositeScore` field set to 0–1 while field name implies 0–100; normalized via `Math.round(c * 100)` to match fallback path convention (F2, high)
+  - `backtest.ts` — `minConfidence * 100` in signal filter compared 0–1 confidence against 0–100 threshold, filtering all real signals at any non-zero threshold (F3, high)
+  - `paper-trade.ts` — Added JSDoc documenting `compositeScore` scale on `TradeRecommendation` (F5, low)
+  - `paper-trade.ts` — Added `Number.isFinite` + `[0,1]` clamp guard in `agentPlay` as defense-in-depth (F6, medium)
+  - `backtest.ts` — Added `Number.isFinite` guard on `compositeConfidence` (F6, medium)
 
 ## [2.0.0] — 2026-07-04
 
 ### Added
+
 - **49 tracked tokens** — Added 10 new tokens since v1.4.0: Monero (XMR), Algorand (ALGO), PancakeSwap (CAKE), JUST (JST), Tezos (XTZ), JasmyCoin (JASMY), Axie Infinity (AXS), Theta Network (THETA), Convex Finance (CVX), 1inch (1INCH). Added chain types: monero, algorand, tezos, theta. Total coverage: 49 tokens across 31 chains with Binance USDT pairs + CoinGecko IDs verified.
 - **13 new technical indicators** — Total indicator count expanded to 26:
   - Parabolic SAR (PSAR) — trend-following stop-and-reversal
@@ -98,6 +117,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Marketplace tarball created: hermes-crypto-radar-2.0.0.tar.gz (includes dist/, plugin/, plugin.yaml, package.json, README.md, LICENSE, SECURITY.md, scripts/)
 
 ### Changed
+
 - **crypto_radar_scan tool** — Now auto-dynamic by default (top 30 by Binance volume when no filter). Added onchain parameter to schema. First-run detection returns setup guidance with all 8 tool descriptions.
 - **crypto_radar_scan schema** — Chain enum expanded from 8 to 30 chains. Description updated to list 26 indicators, divergence detection, ADX filter, auto-dynamic mode.
 - **Rate limiter** — Gradual token refill (proportional per-second instead of burst-at-interval) for smoother rate limiting
@@ -109,6 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **CHANGELOG.md** — Comprehensive v2.0.0 entry
 
 ### Fixed
+
 - Division-by-zero crashes in SVG charts with single data point
 - Inline &lt;defs&gt; bug in marketBreadthGauge producing malformed SVG
 - Missing timestamps on comparison chart X-axis
@@ -117,6 +138,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - npm audit vulnerability (CVE-2025-30201 via uuid override)
 
 ### Infrastructure
+
 - Full typedoc.json with validation, sidebarLinks, searchInComments
 - .env.example extended to 18 documented env vars
 - tsconfig.json strict mode confirmed with all strict-family options
@@ -129,10 +151,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [2.0.1] — 2026-07-06
 
 ### Fixed
+
 - **Auto-save .txt output** — `.txt` file now always captures TABLE format output instead of mirroring the `--format` flag, ensuring cron-delivered summaries are always human-readable.
 - **Auto-save .xlsx output** — `.xlsx` file now copies real binary xlsx data to the cron path instead of writing a status string. Spreadsheet exports are now usable when auto-saved.
 
 ### Changed
+
 - **Collector script cleanup** — `scripts/crypto-radar-collector.sh` rewritten to be minimal: removed `--format json --quiet --no-news --sort` flags. The collector now runs `node dist/cli.js scan --dynamic 39 --onchain` and lets stdout flow naturally to cron delivery for human-readable run output.
 - **Log pruning extended** — Auto-pruning now covers `.txt`, `.csv`, and `.md` auto-save outputs in addition to existing log files.
 - **Removed JSON-specific logic** — JSON-specific validation and Node summary steps removed from collector script (no longer needed after format cleanup).
@@ -142,6 +166,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.4.0] — 2026-07-04
 
 ### Added
+
 - **Enterprise marketplace polish** — `plugin.yaml` now includes `toolset: crypto`, extended description with all 8 tools and full feature enumeration, and v1.4.0 version bump.
 - **Full typedoc.json config** — Added `validation`, `categorizeByGroup`, `sort`, `cleanOutputDir`, `sidebarLinks`, `navigationModel`, and `searchInComments` for professional API docs generation.
 - **Enhanced .env.example** — Added `RADAR__DAEMON_PORT`, `RADAR__WS_PORT`, `RADAR__LOG_RETENTION_DAYS`, `RADAR__WEBHOOK_URL`, and `RADAR__WEBHOOK_TYPE` environment variables for webhook alerts, daemon configuration, and data retention tuning.
@@ -151,6 +176,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Marketplace submission scripts** — Enhanced `scripts/submit-to-marketplace.sh` and documented marketplace preparation checklist.
 
 ### Changed
+
 - **CITATION.cff** bumped to v1.4.0.
 - **CITATION.cff** — date updated to 2026-07-04, version 1.4.0.
 - **README.md** — Updated all version references from v1.3.0 to v1.4.0.
@@ -160,6 +186,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Plugin registration** — `plugin/__init__.py` confirmed with all 8 tools registered via `register(ctx)` with full JSON schemas, proper error wrapping, and daemon-aware routing.
 
 ### Infrastructure
+
 - All tool schemas in `plugin/__init__.py` validated for proper JSON Schema compliance — all parameters have `type`, `description`, `enum` where applicable, and `default` values.
 - `package.json` `files` field includes `plugin/`, `plugin.yaml`, `README.md`, `SPEC.md`, `CHANGELOG.md`, `LICENSE`, `.env.example`, and `dist/`.
 - `tsconfig.json` `noUnusedLocals`/`noUnusedParameters` kept at `false` (pre-existing tech debt: 40+ unused declarations across source tree), all other strict-family options enabled.
@@ -170,6 +197,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.3.0] — 2026-07-03
 
 ### Added
+
 - **5 new technical indicators** — Stochastic Oscillator (%K/%D), Ichimoku Cloud (conversion/base/spanA/spanB/lagging span), Williams %R, Chaikin Money Flow (CMF), True Strength Index (TSI). All computed from kline high/low/close/volume and included in `TechnicalIndicators` type.
 - **DeFiLlama on-chain metrics** — `src/onchain.ts` module fetches protocol TVL, chain-level TVL, 1d/7d/30d fees, and on-chain prices via the free DeFiLlama API. Batched in parallel (concurrency-5) with fallback. Wired into signal engine as a 0–15% confidence boost based on protocol TVL strength.
 - **On-chain signal boost** — `computeOnchainBoost()` in `signals.ts` adds up to 15 percentage points to composite scores based on protocol TVL (high TVL >$1B → +10–15%, medium $100M–$1B → +5–10%, low <$100M → +0–5%).
@@ -182,6 +210,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`.npmignore`** — Excludes `src/`, `test/`, `data/`, eslint/prettier configs, `tsconfig.json`, `.git/`, `.github/`, `.husky/` from published package.
 
 ### Changed
+
 - **SVG charts overhaul** — All chart types (line, candlestick, dashboard) now use:
   - CSS-in-`<style>` for maintainable styling
   - `<linearGradient>` fills for depth and visual polish
@@ -201,11 +230,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`version` bumped** from `1.2.0` to `1.3.0`.
 
 ### Documentation
+
 - README completely rewritten for GitHub discoverability with badges, feature tables, full CLI reference, plugin tool reference, architecture diagram, and quick-start guides.
 - `.env.example` with all 9 supported env vars and documentation.
 - CHANGELOG and SPEC.md updated for v1.3.0.
 
 ### Infrastructure
+
 - ESLint flat config with `typescript-eslint` (strict rules, method-signature-style, await-thenable, no-unused-vars, no-floating-promises).
 - Prettier 3.9 configuration.
 - `.npmignore` for clean package publishing.
@@ -215,6 +246,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.2.0] — 2026-07-02
 
 ### Added
+
 - **Circuit breaker** — `src/core/circuit-breaker.ts` with CLOSED/OPEN/HALF_OPEN states, configurable failure threshold (3), 60s cooldown, cached-fallback. Wired into Binance API calls. Prevents cascading failures during API outages.
 - **Parallel kline fetching** — Klines fetched in batches of 5 using `Promise.all`, reducing scan time by ~60% for 30+ tokens.
 - **Parallel news feeds** — 9 RSS feeds fetched with concurrency-4 via batched `Promise.all`. News in ~2s instead of ~12s.
@@ -233,6 +265,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Pre-commit hook** — `.husky/pre-commit` runs `npm test`.
 
 ### Documentation
+
 - Full JSDoc on all exported functions across 15+ source files.
 
 ---
@@ -240,6 +273,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.1.0] — 2026-07-02
 
 ### Added
+
 - **XLSX export** — `--format xlsx` generates native Excel workbooks via `exceljs` with frozen headers, auto-column-width, and conditional green/red coloring on `priceChangePercent`. Importable into Excel, Google Sheets, Apple Numbers, and LibreOffice Calc.
 - **CoinGecko API module + pipeline wiring** — `src/coingecko.ts` provides `fetchSimplePrices()` and `fetchMarketData()`. Wired into `radar.ts` as fallback for tokens missing from Binance, with `--alt-source` CLI flag for primary use.
 - **CI pipeline** — GitHub Actions workflow (`.github/workflows/ci.yml`) builds on Node 20 & 22, runs test suite, and verifies dist output. Active on push/PR to main.
@@ -253,6 +287,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Kline caching** — Per-run `Map<string, Kline[]>` eliminates the double-fetch of klines (was: fetched once for indicators, again for strategy engine; now: fetched once, cached, reused). ~50% reduction in API calls per scan.
 
 ### Changed
+
 - **SPEC.md overhaul** — Architecture diagram updated to show all 7 source directories (`core/`, `analysis/`, `io/`, `monitor/`). Project structure tree matches actual layout. Token count corrected (Polygon/DeFi: 12→13). Roadmap falsehood fixed (multi-timeframe was marked "✅ DONE" but is not implemented — changed to 🔜). Quality standards updated with CI and dependency hygiene gates.
 - **CLI format options** — `scan`, `signals`, and `news` commands now accept `xlsx` as a format value alongside `table`, `json`, `csv`, `md`.
 - **OutputFormat type** — Extended union type to include `'xlsx'`.
@@ -260,6 +295,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **version** bumped from `1.0.0` to `1.1.0`.
 
 ### Fixed
+
 - **SOURCE_TIERS bug** — News relevance scoring was keying on `token.name` to look up source tiers, causing ALL tokens to receive the default 0.8 multiplier instead of the correct source-specific weight (e.g., CoinTelegraph=1.0, NullTX=0.4). Fixed to key on `feed.name` via new `sourceName` parameter on `matchToken()`.
 - **News domain extraction** — RSS feeds returning relative URLs or empty link fields silently produced empty `domain` values, corrupting the CSV. Fixed with fallback to `source.toLowerCase() + '.com'`.
 - **CSV multi-line quoting** — News descriptions containing embedded newlines produced malformed CSV rows. Fixed by stripping `\r`/`\n` to spaces before quoting.
@@ -268,6 +304,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **XRP CoinGecko ID** — Token used `'xrp'` as CoinGecko ID, but the correct API identifier is `'ripple'`. Fixed coingeckoId to enable correct price lookups.
 
 ### Performance
+
 - **Kline caching** — eliminated redundant API calls. Before: one `fetchKlines()` per token for indicators (step 2) + one per token for strategy engine (step 5) = 60 API calls for 30 tokens. After: one per token = 30 API calls. Both fetches now use `limit=200` (was 100 vs 200) for consistent data.
 
 ---
@@ -275,6 +312,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.0.0] — 2026-07-02
 
 ### Added
+
 - **32 tokens** across Solana (13), Polygon/DeFi (13), and Multi (7)
 - **Binance 24hr ticker** — All USDT pairs with timeout + retry + 429 backoff
 - **Token enrichment** — Spread, VWAP distance, range position, book imbalance
@@ -299,6 +337,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SPEC.md** — Full project specification with architecture, token roster, tool reference, data flow, scoring models, development guide, and marketplace publishing plan
 
 ### Infrastructure
+
 - TypeScript 5.8 with strict mode, ES2022 target, ESNext modules
 - Commander.js CLI framework
 - csv-stringify for CSV generation
@@ -306,6 +345,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - 24 source files across 6 directories (src/, src/core/, src/analysis/, src/io/, src/monitor/, plugin/)
 
 ### Security
+
 - **npm audit: 0 vulnerabilities** — Fixed `uuid` moderate CVE via npm overrides
 - **HTTP security headers** — Added X-Content-Type-Options, X-Frame-Options, X-XSS-Protection, HSTS, CSP, Referrer-Policy, Cache-Control to both daemon HTTP servers
 - **Rate limiter gradual refill** — Token-bucket now refills proportionally per-second instead of burst-refill at interval boundaries
