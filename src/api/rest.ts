@@ -1,5 +1,9 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Store } from '../store/db.js';
+import type { Kline } from '../types.js';
+import { getTokenList } from '../tokens.js';
+import { computeAllIndicators } from '../indicators.js';
+import { detectRegime } from '../analysis/regime.js';
 import { loadConfig } from '../core/config.js';
 
 const _startTime = Date.now();
@@ -144,17 +148,20 @@ export function createRestHandler(store: Store): (req: IncomingMessage, url: URL
       // ── GET /api/tickers ──
       if (pathname === '/api/tickers') {
         const symbol = url.searchParams.get('symbol') ?? undefined;
+        const chain = url.searchParams.get('chain') ?? undefined;
         const limit = intParam(url.searchParams.get('limit'), 200);
-        sendJson(res, 200, store.getLatestTickers({ symbol, limit }));
+        sendJson(res, 200, store.getLatestTickers({ symbol, chain, limit }));
         return;
       }
 
       // ── GET /api/signals ──
       if (pathname === '/api/signals') {
+        const symbol = url.searchParams.get('symbol') ?? undefined;
         const minScoreStr = url.searchParams.get('minScore');
         const direction = url.searchParams.get('direction') ?? undefined;
         const limit = intParam(url.searchParams.get('limit'), 200);
         sendJson(res, 200, store.getSignals({
+          symbol,
           minScore: minScoreStr !== null ? parseFloat(minScoreStr) : undefined,
           direction,
           limit,
@@ -168,6 +175,49 @@ export function createRestHandler(store: Store): (req: IncomingMessage, url: URL
         const limit = intParam(url.searchParams.get('limit'), 50);
         sendJson(res, 200, store.getNews({ symbol, limit }));
         return;
+      }
+
+      // ── GET /api/tokens ──
+      if (pathname === '/api/tokens') {
+        const tokens = getTokenList().map(t => ({
+          symbol: t.sym,
+          name: t.name,
+          chain: t.chain,
+          pair: t.pair,
+          id: t.id,
+        }));
+        sendJson(res, 200, tokens);
+        return;
+      }
+
+      // ── GET /api/regime/:symbol ──
+      {
+        const m = pathname.match(/^\/api\/regime\/([^/]+)$/);
+        if (m) {
+          const interval = url.searchParams.get('interval') ?? '1h';
+          const limit = intParam(url.searchParams.get('limit'), 200);
+          const rows = store.getKlines(m[1]!, interval, { limit });
+          if (rows.length < 30) {
+            sendError(res, 400, 'INSUFFICIENT_DATA', `Not enough kline data for ${m[1]!}. Need at least 30 candles.`);
+            return;
+          }
+          const klines: Kline[] = rows.map(r => ({
+            openTime: r.open_time, open: r.open, high: r.high, low: r.low,
+            close: r.close, volume: r.volume, closeTime: 0,
+            quoteVolume: r.quote_volume, count: 0,
+            takerBuyVol: r.taker_buy_vol, takerBuyQuoteVol: r.taker_buy_quote_vol,
+            ignore: 0,
+          }));
+          const tech = computeAllIndicators(klines);
+          const result = detectRegime({
+            adx: tech.adx,
+            bbWidth: tech.bb?.width ?? null,
+            atrPct: tech.atrPct,
+            volRatio: tech.volVsAvg,
+          });
+          sendJson(res, 200, result);
+          return;
+        }
       }
 
       // ── GET /api/portfolio/trades ──

@@ -115,10 +115,16 @@ export interface TradeRecommendation {
   tokenId: string;
   tokenName: string;
   action: 'buy' | 'sell' | 'hold';
-  confidence: number;      // 0–1
+  /**
+   * Composite score — Always 0–100 regardless of source engine.
+   * - From AggregatedSignal (strategy engine): mapped from 0–1 to 0–100
+   * - From TokenSignal (signals engine): passed through as-is
+   */
+  compositeScore: number;
+  /** Confidence 0–1 for trade sizing */
+  confidence: number;
   reason: string;
   currentPrice: number;
-  compositeScore: number;
   direction: string;
 }
 
@@ -660,10 +666,10 @@ export class PaperTrader {
 
         if (agg.direction === 'strong_buy' || agg.direction === 'buy') {
           action = 'buy';
-          confidence = agg.compositeConfidence / 100;
+          confidence = agg.compositeConfidence;
         } else if (agg.direction === 'strong_sell' || agg.direction === 'sell') {
           action = 'sell';
-          confidence = agg.compositeConfidence / 100;
+          confidence = agg.compositeConfidence;
         }
 
         recommendations.push({
@@ -674,7 +680,7 @@ export class PaperTrader {
           confidence,
           reason: agg.compositeReason ?? agg.alerts.join('; '),
           currentPrice: agg.lastPrice,
-          compositeScore: agg.compositeConfidence,
+          compositeScore: Math.round(agg.compositeConfidence * 100),
           direction: agg.direction,
         });
       }
@@ -755,11 +761,15 @@ export class PaperTrader {
     const sorted = [...recommendations].sort((a, b) => b.confidence - a.confidence);
 
     for (const rec of sorted) {
-      if (rec.confidence < minConfidence) continue;
+      // Defense against upstream scale confusion: clamp confidence to [0,1]
+      const conf = Number.isFinite(rec.confidence)
+        ? Math.min(1, Math.max(0, rec.confidence))
+        : 0;
+      if (conf < minConfidence) continue;
 
       if (rec.action === 'buy' && this.state.cash > 0) {
         // Determine position size proportional to confidence
-        const alloc = Math.min(maxPerTrade, this.state.cash * rec.confidence);
+        const alloc = Math.min(maxPerTrade, this.state.cash * conf);
         if (alloc <= 0) continue;
 
         const amount = alloc / rec.currentPrice;
@@ -769,7 +779,7 @@ export class PaperTrader {
         // Sell partial holding proportional to confidence
         const holding = this.state.holdings.find(h => h.symbol === rec.symbol);
         if (holding) {
-          const sellAmount = holding.amount * rec.confidence;
+          const sellAmount = holding.amount * conf;
           if (sellAmount > 0) {
             const trade = await this.sell(rec.symbol, sellAmount, rec.reason);
             if (trade) executed.push(trade);

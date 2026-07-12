@@ -104,7 +104,7 @@ export function runBacktest(
   for (const sig of signals) {
     // Skip neutral signals and low-confidence signals
     if (sig.direction === 'neutral') continue;
-    if (sig.compositeConfidence < opts.minConfidence * 100) continue;
+    if (!Number.isFinite(sig.compositeConfidence) || sig.compositeConfidence < opts.minConfidence) continue;
 
     const arr = signalsBySymbol.get(sig.symbol) ?? [];
     arr.push(sig);

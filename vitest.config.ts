@@ -18,6 +18,9 @@ export default defineConfig({
         'src/core/warm-daemon.ts',
         'src/index.ts',
         'src/shared-test-helpers.ts',
+        'src/ml/**',
+        'src/io/charts.ts',
+        'src/io/advanced-charts.ts',
       ],
       reporter: ['text', 'lcov', 'html'],
       thresholds: {

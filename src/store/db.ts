@@ -212,9 +212,10 @@ export class Store {
     return allRows<TickerRow>(this.prep(sql), ...params);
   }
 
-  getSignals(filter?: { minScore?: number; direction?: string; limit?: number }): SignalRow[] {
+  getSignals(filter?: { symbol?: string; minScore?: number; direction?: string; limit?: number }): SignalRow[] {
     let sql = 'SELECT * FROM signals WHERE 1=1';
     const params: SQLInputValue[] = [];
+    if (filter?.symbol) { sql += ' AND symbol = ?'; params.push(filter.symbol); }
     if (filter?.minScore !== undefined) { sql += ' AND composite_score >= ?'; params.push(filter.minScore); }
     if (filter?.direction) { sql += ' AND direction = ?'; params.push(filter.direction); }
     sql += ' ORDER BY composite_score DESC';

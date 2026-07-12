@@ -20,4 +20,4 @@ crypto-radar-state.json
 
 # Stray lockfiles from other package managers
 pnpm-lock.yaml
-prism-findings.jsonl
+
