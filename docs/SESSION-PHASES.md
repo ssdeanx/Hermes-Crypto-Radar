@@ -8,26 +8,29 @@
 
 ---
 
-## Status Overview (as of 2026-07-07)
+## Status Overview (as of 2026-07-11)
 
 ### SESSION-BACKEND-SPEC scope A + B → **100% implemented**
 Persistent store, collector, 4 data sources, REST API, WS hub, persist-on-scan, CLI `collect`, cron script, README/SPEC docs. 136 tests pass, `tsc` clean, `lint` 0 errors in new files.
 
-### Audit fixes (F1–F8) → **Partially applied**
-The implementation followed the *spec* as-written, NOT the audit-corrected schema/endpoints. See `SESSION-AUDIT-REPORT.md` for the full matrix.
+### Audit fixes (F1–F8) → **All applied**
+F1 (snapshot+history split), F2 (liquidations best-effort), F3 (RealResult type), F4 (AsyncMutex), F5 (security headers), F6 (env overrides), F7 (ws devDeps) all implemented.
+
+### Phase 10 (ML Seed) → **Implemented**
+Full ML pipeline: features, labels, dataset assembly, LightGBM training, batch inference, auto-retrain daemon, predictions API, CLI ml commands, Python env setup. 949 tests pass.
 
 | Phase | Status | Notes |
 |-------|--------|-------|
-| **1** Store | ✅ Done | Schema per spec (F1 pending) |
-| **2** Config/index | ✅ Done | Partial F6 |
-| **3** Persist-on-scan | ✅ Done | Partial F3 |
+| **1** Store | ✅ Done | Schema v2 with F1 corrections |
+| **2** Config/index | ✅ Done | F6 complete |
+| **3** Persist-on-scan | ✅ Done | F3 applied |
 | **4** Collector | ✅ Done | |
-| **5** Sources (B) | ✅ Done | Partial F2 |
-| **6** REST API | ✅ Done | Partial F5 |
+| **5** Sources (B) | ✅ Done | F2 applied |
+| **6** REST API | ✅ Done | F5 applied |
 | **7** WS Hub | ✅ Done | F8 done |
 | **8** CLI/Cron/Docs | ✅ Done | |
-| **9** Integration/Coverage | ⚠️ Partial | 136 tests pass; full-suite coverage gate unverified (3 pre-existing failures) |
-| **10** ML Seed | 🔲 Deferred | See expanded Phase 10 below |
+| **9** Integration/Coverage | ✅ Done | 949 tests, 49 test files |
+| **10** ML Seed | ✅ Done | Full ML pipeline (see v2.1.0) |
 
 ### Audit fix backlog (ordered by priority)
 1. **F1 (HIGH)** — `tickers`/`signals` schema: snapshot+history split + retention

@@ -450,6 +450,19 @@ export interface CrossAssetRow {
   market_cap_percentage_json: string | null;
 }
 
+/** F4: ML prediction row */
+export interface PredictionRow {
+  id: string;
+  symbol: string;
+  ts: string;
+  direction: string;
+  confidence: number;
+  model_id: string;
+  horizon: number;
+  ml_score: number | null;
+  features_hash: string | null;
+}
+
 export type CollectorReport = {
   klinesInserted: number;
   fundingInserted: number;

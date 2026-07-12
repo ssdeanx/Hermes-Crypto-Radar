@@ -1,7 +1,7 @@
 # 🛰️ Hermes Crypto Radar — SPEC
 
 > **Project:** Hermes Agent Plugin — Multi-chain crypto market radar  
-> **Status:** v2.0.0 · Marketplace Release  
+> **Status:** v2.1.0 · Marketplace Release  
 > **Versioning:** [SemVer](https://semver.org/) — all changes tracked in this spec
 
 ---
@@ -61,12 +61,26 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
               │  ├── html-report.ts(HTML/PDF rpt)  │
               │  ├── ws.ts         (WebSocket)     │
               │  ├── webhook.ts    (Alert deliv)   │
+              │  ├── collector.ts  (Hist. backfill)│
+              │  ├── daemon.ts     (Warm HTTPd)    │
               │  ├── core/         (Config, cache, │
               │  │                  errors, logger,│
               │  │                  rate-limiter)  │
               │  ├── analysis/     (Strategy eng.  │
               │  │                  momentum, mr,  │
               │  │                  trend-follow)  │
+              │  ├── store/        (SQLite store)  │
+              │  │                  schema, db     │
+              │  ├── sources/      (Futures, F&G,  │
+              │  │                  orderbook,     │
+              │  │                  cross-asset)   │
+              │  ├── api/          (REST + WS hub) │
+              │  │                  rest, ws       │
+              │  ├── ml/           (ML pipeline)   │
+              │  │                  features,      │
+              │  │                  labels,        │
+              │  │                  dataset,       │
+              │  │                  predict        │
               │  ├── io/           (Charts: ASCII  │
               │  │                  + SVG, patterns)│
               │  └── monitor/      (Health,corr.)  │
@@ -182,8 +196,12 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | **npm publication** | ✅ | `hermes-crypto-radar@1.3.0` on npm registry | v1.3 |
 | **Support/Resistance detection** | ✅ | Pivot points, cluster detection, volume confirmation, psych levels | v1.3 |
 | **Token search CLI** | ✅ | `search` command finds tokens by symbol/name/chain | v1.3 |
-| **Volume Profile analysis** | ✅ | Market Profile: POC, HVN/LVN, value area, SVG histogram | v1.3 |
-| **Webhook notifications** | ✅ | Discord + Telegram alert delivery | v1.3 |
+|| **Volume Profile analysis** | ✅ | Market Profile: POC, HVN/LVN, value area, SVG histogram | v1.3 |
+|| **Webhook notifications** | ✅ | Discord + Telegram alert delivery | v1.3 |
+|| **ML pipeline (F1–F10)** | ✅ | Feature engineering, label generation, dataset assembly, LightGBM training, batch inference via Python subprocess, auto-retrain daemon, predictions API | v2.1.0 |
+|| **Predictions API** | ✅ | `GET /api/predictions`, `GET /api/predictions/:symbol` | v2.1.0 |
+|| **Store schema v2** | ✅ | Snapshot+history split, predictions table, retention indexes, AsyncMutex write serialization | v2.1.0 |
+|| **Store caching** | ✅ | 60s TTL cache on `getKlines()`, `getCrossAsset()` for ML feature building | v2.1.0 |
 
 ### 4.2 Planned (Roadmap)
 
@@ -199,8 +217,14 @@ A professional-grade Hermes Agent plugin for crypto market intelligence. Runs as
 | WebSocket live prices | ✅ | Binance WS for real-time updates | v2.0.0 ✅ |
 | Expanded indicator suite | ✅ | 16 new indicators (ADX, PSAR, CCI, Keltner, ROC, VWAP, FI, ADL, Chaikin Osc, StochRSI, TRIX, KST, Elder-Ray, Fisher, Mass Index) | v2.0.0 ✅ |
 | Expanded token roster | ✅ | 11 new L1 + ecosystem tokens across 31 chains | v2.0.0 ✅ |
-| Marketplace-ready docs | ✅ | Professional README, comparison table, benchmarks, roadmap | v2.0.0 ✅ |
-| **Portfolio tracking** | 🔜 | User-defined holdings → P&L, position sizing | v2.0.1 |
+|| Market cap percentage cross-asset | ✅ | CoinGecko global: BTC dominance, total market cap | v2.0.0 ✅ |
+|| Fear & Greed Index | ✅ | alternative.me sentiment index | v2.0.0 ✅ |
+|| **ML direction classifier** | ✅ | LightGBM training + batch inference via Python subprocess | v2.1.0 ✅ |
+|| **Auto-retrain daemon** | ✅ | Automatic retrain + predict in daemon refresh cycle | v2.1.0 ✅ |
+|| **Predictions API** | ✅ | REST + WebSocket for ML predictions | v2.1.0 ✅ |
+|| **Store schema v2** | ✅ | Snapshot+history split, predictions table | v2.1.0 ✅ |
+|| **Store caching** | ✅ | 60s TTL cache for ML feature queries | v2.1.0 ✅ |
+|| **Portfolio tracking** | 🔜 | User-defined holdings → P&L, position sizing | v2.2.0 |
 | **Multi-user watchlists** | 🔜 | Shared token lists via config | v2.0.1 |
 | **AI-driven signal suggestions** | 🔜 | LLM-powered trade ideas from market context | v2.0.2 |
 | **Custom indicator scripting** | 🔜 | User-defined indicators in TS | v2.0.3 |
@@ -387,6 +411,156 @@ The strategy engine runs **3 signal strategies** per token and aggregates them i
 | Conflicting strategies | `neutral` |
 | Mean reversion + oversold | `buy` (counter-trend) |
 | All bearish | `sell` / `strong_sell` |
+
+---
+
+## 6c. ML Pipeline Data Flow
+
+The ML pipeline runs as part of the daemon refresh cycle when `RADAR__ML_ENABLED=true`. It has two phases: auto-retrain and batch prediction.
+
+### Auto-Retrain Flow
+
+```
+Daemon refresh cycle
+  → check retrainIntervalHours (default: 24)
+  → for each (symbol, interval) pair:
+      → store.getKlines(symbol, interval, limit: 1000)
+      → buildFeatures() → 80+ feature columns (26 indicators + returns + cross-asset + temporal)
+      → computeLabels() → forward-return labels at 1/5/20/60 horizons
+  → assembleDataset() → inner-join, NaN drop, chronological 70/15/15 split
+  → z-score normalize using training-set stats
+  → write CSV → spawn python3 ml/train.py --data <csv> --output ml/models/ --class-weight custom
+  → save model.joblib + metrics.json + normalizationStats
+  → _mlModelId updated
+```
+
+### Batch Prediction Flow
+
+```
+Daily scan / daemon refresh
+  → batchPredict(store, symbols, '1h')
+  → for each symbol:
+      → store.getKlines(symbol, interval, limit: 200)
+      → buildFeatures() → latest feature row
+      → normalizeRow() using training-set medians for NaN fill (F5)
+  → F3: all feature rows serialized as single CSV block
+  → spawn python3 ml/predict.py --model <path>, pipe CSV to stdin
+  → parse JSON array [{direction, confidence, probs}]
+  → validateDirection() runtime guard on each prediction
+  → persistPredictions() → store.upsertPrediction()
+  → predictions queryable via GET /api/predictions
+```
+
+### Prediction Output
+
+Predicted direction is one of: `buy` (1), `sell` (-1), `neutral` (0). Confidence is 0–1.0. Probs are [p_down, p_neutral, p_up] from softmax. Stored in the `predictions` table and accessible via REST API.
+
+---
+
+## 6d. Dashboard & Frontend Connection
+
+Crypto Radar exposes all data needed by an external dashboard UI via the daemon's REST API and WebSocket hub. The daemon is a single long-lived process (`crypto-radar daemon`) that handles both the radar engine and data serving.
+
+### Architecture for Dashboard
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                   Dashboard (e.g. Next.js)              │
+│  ┌──────────┐  ┌──────────┐  ┌────────────┐            │
+│  │ REST     │  │ WebSocket│  │ Live Charts│            │
+│  │ Client   │  │ Client   │  │ (TradingView│           │
+│  └────┬─────┘  └────┬─────┘  │ Lightweight)│           │
+│       │             │        └────────────┘            │
+└───────┼─────────────┼──────────────────────────────────┘
+        │             │
+┌───────▼─────────────▼──────────────────────────────────┐
+│               Daemon (port 9877)                        │
+│  ┌──────────────────┐  ┌──────────────────┐            │
+│  │ REST API (/api/*)│  │ WS Hub (/ws)     │            │
+│  │ GET /api/tickers │  │ channels:        │            │
+│  │ GET /api/klines  │  │ prices, signals, │            │
+│  │ GET /api/signals │  │ news, portfolio  │            │
+│  │ GET /api/news    │  │ subscribe:       │            │
+│  │ GET /api/stats   │  │ {type,channel,   │            │
+│  │ GET /api/predict │  │  symbol?}        │            │
+│  │ ...              │  │ broadcast:       │            │
+│  └────────┬─────────┘  │ on scan-complete │            │
+│           │            └──────────────────┘            │
+│  ┌────────▼──────────────────────────────────────────┐ │
+│  │ Radar Engine + Store + ML Pipeline                │ │
+│  └───────────────────────────────────────────────────┘ │
+└────────────────────────────────────────────────────────┘
+```
+
+### REST API Endpoints (all mounted under `/api/*`)
+
+| Method | Path | Description | Params |
+|--------|------|-------------|--------|
+| GET | `/api/health` | Daemon + store status | — |
+| GET | `/api/tickers` | Latest snapshot per symbol | `?symbol=&limit=200` |
+| GET | `/api/tickers/:symbol` | Single ticker | — |
+| GET | `/api/klines/:symbol` | OHLCV data | `?interval=1h&from=&to=&limit=500` |
+| GET | `/api/signals` | Latest signals | `?minScore=70&direction=buy&limit=200` |
+| GET | `/api/signals/:symbol` | Signal for symbol | — |
+| GET | `/api/news` | News articles | `?symbol=&limit=50` |
+| GET | `/api/portfolio` | Paper trading portfolio | `?profile=trader1` |
+| GET | `/api/portfolio/trades` | Trade history | `?profile=&status=` |
+| GET | `/api/futures/:symbol` | Binance Futures data | `?type=funding\|oi\|lsratio\|liquidations` |
+| GET | `/api/fear-greed` | Fear & Greed index | `?limit=30` |
+| GET | `/api/cross-asset` | BTC dominance, total mcap | `?limit=50` |
+| GET | `/api/orderbook/:symbol` | Order book snapshots | `?limit=50` |
+| GET | `/api/predictions` | ML predictions | `?symbol=&model_id=&minConfidence=&limit=200` |
+| GET | `/api/predictions/:symbol` | Predictions per symbol | `?limit=50` |
+| GET | `/api/stats` | Row counts per table | — |
+| POST | `/api/collect` | Trigger backfill (token-gated) | Requires `Authorization: Bearer <token>` |
+
+### WebSocket Channels
+
+| Channel | Payload | Frequency |
+|---------|---------|-----------|
+| `prices` | `{symbol, price, change, volume, ts}` | On each scan-complete |
+| `signals` | `{symbol, direction, confidence, ts}` | On each scan-complete |
+| `news` | `{symbol, headline, source, relevance, ts}` | On each scan-complete |
+| `portfolio` | `{profile, pnl, holdings}` | On paper-trade state change |
+
+Client subscribe message:
+```json
+{ "type": "subscribe", "channel": "prices", "symbol": "SOLUSDT" }
+```
+
+### Quick Start for Dashboard Developers
+
+```bash
+# 1. Start the daemon (REST API + WS hub on port 9877)
+npm run daemon
+
+# 2. Backfill historical data
+npm run collector
+
+# 3. Query from any HTTP client
+curl http://localhost:9877/api/tickers?limit=5
+curl http://localhost:9877/api/predictions?minConfidence=0.6
+
+# 4. Connect WebSocket from browser (see api/ws.ts for protocol)
+const ws = new WebSocket('ws://localhost:9877');
+ws.send(JSON.stringify({ type: 'subscribe', channel: 'prices' }));
+```
+
+### ML Prediction Fields
+
+When building a dashboard, ML predictions have this shape:
+```json
+{
+  "id": "sha1-hash",
+  "symbol": "SOL",
+  "ts": "1720790400000",
+  "direction": "buy",
+  "confidence": 0.72,
+  "model_id": "ml/models/model_20260711_1200.joblib",
+  "horizon": 5,
+  "ml_score": 72.0
+}
+```
 
 ---
 
@@ -629,7 +803,8 @@ Uses the `ws` package. Attached to the daemon HTTP server via the `upgrade` even
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 1.0.0 | 2026-07-02 | Initial release — 32 tokens, Binance prices, tech indicators, news, signals, 4 Hermes tools, CSV/JSON/MD output |
+| **2.1.0** | **2026-07-11** | **ML Pipeline**: Feature engineering, labels, LightGBM training, batch inference, auto-retrain daemon, predictions API. **Store v2**: Snapshot+history schema, predictions table, AsyncMutex, 60s TTL caching. **Data files**: Consolidated to single current + archive/ rotation. All 10 prism findings (F1–F10) corrected. 949 tests. |
+| 2.0.0 | 2026-07-04 | Marketplace release — major expansion
 | 1.1.0 | 2026-07-02 | News domain extraction fix, SOURCE_TIERS bug fix, multi-line CSV quoting, XLSX export, CoinGecko API + pipeline wiring, kline caching, dead dep cleanup, SPEC/README docs overhaul, vitest test suite (58 tests), CI pipeline, deterministic integration tests, XLSX error handling, XRP CoinGecko ID fix |
 | 1.2.0 | 2026-07-02 | Circuit breaker, parallel kline/news fetching, atomic writes, log rotation, multi-timeframe analysis (15m/1h/4h/1d), cross-timeframe strategy aggregation, OBV indicator, 7 new tokens (SUI/APT/SEI/TIA/INJ/RUNE/ATOM), config auto-discovery, coverage gate, 155 tests, pre-commit hook, full JSDoc |
 | 1.3.0 | 2026-07-03 | 5 new indicators (Stochastic, Ichimoku, Williams %R, CMF, TSI), DeFiLlama on-chain metrics + signal boost, dynamic top-50 volume scan, auto-dynamic scan (default top-30), strategy weight config overrides, SVG chart overhaul (gradients, viewBox, tooltips, crosshairs, a11y), daemon mode, eslint/prettier, backtesting engine, candlestick pattern recognition (16 patterns), chart comparison overlay, correlation engine, data retention policy, Discord/Telegram webhooks, fuzz testing suite (130 tests), HTML/PDF report, market regime detection (ADX+BB+ATR), npm publication, support/resistance detection, token search CLI, Volume Profile analysis, webhook notifications, .env.example, .npmignore, package.json SEO, standardized data dir, 332 tests |

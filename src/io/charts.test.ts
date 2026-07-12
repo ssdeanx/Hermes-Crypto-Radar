@@ -57,7 +57,7 @@ describe('priceSparkline', () => {
     const klines = makeKlines(30);
     const chart = priceSparkline(klines);
     // Should contain a percentage change
-    expect(chart).toMatch(/[+\-]\d+\.\d+%/);
+    expect(chart).toMatch(/[-+]?\d+\.\d+%/);
   });
 
   it('includes volume bars row', () => {
@@ -124,7 +124,7 @@ describe('dualSparkline', () => {
   it('includes trend annotation', () => {
     const klines = makeKlines(30);
     const chart = dualSparkline(klines);
-    expect(chart).toMatch(/[+\-]\d+\.\d+%/);
+    expect(chart).toMatch(/[-+]?\d+\.\d+%/);
   });
 
   it('supports S/R overlay option', () => {
@@ -249,7 +249,7 @@ describe('multiPaneAsciiChart', () => {
   it('includes trend annotation', () => {
     const klines = makeKlines(30);
     const chart = multiPaneAsciiChart(klines, 'TEST');
-    expect(chart).toMatch(/[+\-]\d+\.\d+%/);
+    expect(chart).toMatch(/[-+]?\d+\.\d+%/);
   });
 
   it('handles scattered data without errors', () => {

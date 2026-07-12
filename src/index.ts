@@ -124,6 +124,13 @@ export { fetchGlobalData } from './sources/cross-asset.js';
 export { createRestHandler } from './api/rest.js';
 export { createWsHub } from './api/ws.js';
 
+// ML Pipeline
+export { buildFeatures } from './ml/features.js';
+export { computeLabels, getDefaultClassWeights, computeClassDistribution } from './ml/labels.js';
+export { assembleDataset, normalizeRow } from './ml/dataset.js';
+export { batchPredict, persistPredictions } from './ml/predict.js';
+export type { FeatureRow, LabelRow, MLConfig, PredictionResult, NormalizationStats, DatasetResult, DatasetOpts, FeatureOpts } from './ml/types.js';
+
 // SQLite export bridge
 export { exportCsvToSql } from './sqlite-export.js';
 export type { CsvToSqlOptions, CsvRow, ValidationResult, ExportResult } from './sqlite-export.js';

@@ -345,24 +345,31 @@ async function appendToLog<T>(
 
     // Prune old logs per retention policy
     pruneOldLogs(dataDir);
-
     checkLogRotation(filePath);
 
-    // ── SHA-256 integrity check: verify existing file before overwriting ──
+    // ── SHA-256 integrity check before reading existing data ──
     if (fs.existsSync(filePath)) {
       const existingChecksumPath = filePath + '.sha256';
       if (fs.existsSync(existingChecksumPath)) {
         const valid = verifyLogChecksum(filePath);
         if (!valid) {
-          logger.warn(`Checksum mismatch on ${fileName} — file may have been tampered or corrupted. Overwriting with new data.`);
+          logger.warn(`Checksum mismatch on ${fileName} — file may have been tampered or corrupted. Starting fresh.`);
+          fs.unlinkSync(filePath);
+          try { fs.unlinkSync(existingChecksumPath); } catch { /* best-effort */ }
         }
       }
     }
 
+    // ── Truly append: read existing content, append new rows, write all ──
+    // This makes crypto-radar-log.csv a real rolling dataset that accumulates
+    // all runs, not just the last one. The atomic write via writeLogWithChecksum
+    // prevents partial-write corruption.
     const exists = fs.existsSync(filePath);
-    const content = (exists ? '' : header + '\n') + items.map(item => formatter(item)).join('\n') + '\n';
+    const existingContent = exists ? fs.readFileSync(filePath, 'utf-8').replace(/\n$/, '') + '\n' : '';
+    const newRows = items.map(item => formatter(item)).join('\n') + '\n';
+    const content = exists ? existingContent + newRows : header + '\n' + newRows;
 
-    // Always write with SHA-256 checksum sidecar (enabled by default in config)
+    // Always write with SHA-256 checksum sidecar
     writeLogWithChecksum(filePath, content);
   } catch (err) {
     logger.error('Failed to write log', { file: fileName, error: String(err) });
@@ -416,9 +423,16 @@ export async function displayRadar(
   if (format === 'xlsx') {
     try {
       const config = loadConfig();
-      const fn = `crypto-radar-${result.run.runId.toLowerCase()}.xlsx`;
-      const fp = path.resolve(config.dataDir, fn);
-      if (!fs.existsSync(config.dataDir)) fs.mkdirSync(config.dataDir, { recursive: true });
+      const dataDir = config.dataDir;
+      if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+      const archiveDir = path.join(dataDir, 'archive');
+      fs.mkdirSync(archiveDir, { recursive: true });
+      // Rotate existing xlsx to archive before writing new one
+      const fp = path.resolve(dataDir, 'radar-output.xlsx');
+      if (fs.existsSync(fp)) {
+        const now = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+        fs.renameSync(fp, path.join(archiveDir, `radar-output.xlsx.${now}`));
+      }
       await exportToXlsx(result.tickers, fp);
       return `[XLSX export: ${fp} — ${result.tickers.length} tokens]`;
     } catch (err) {

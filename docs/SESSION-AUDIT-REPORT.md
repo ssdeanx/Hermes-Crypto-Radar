@@ -118,18 +118,18 @@ The spec correctly states `sqlite-export.ts` is kept (it's a one-way CSV→SQL d
 
 ## Must-fix before coding — Implementation Status
 
-> **Legend:** ✅ Done · ⚠️ Partially done · ❌ Not applied (spec followed as-written, audit fix pending)
+> **Legend:** ✅ Done · ⚠️ Partially done · ❌ Not applied (audit backlog cleared as of v2.1.0)
 
 | Fix | State | Current implementation vs audit recommendation |
 |-----|-------|------------------------------------------------|
+| ✅ **F1 (HIGH)** — `tickers`/`signals` snapshot+history split + retention | ✅ **Done** | Schema v2: `tickers`/`signals` use single-col PK (symbol) for snapshot; `ticker_history`/`signal_history` for time series. Retention via `enforceRetention(days)`. |
+| ✅ **F2 (HIGH)** — Replace liquidation endpoint | ✅ **Done** | Uses `/fapi/v1/allForceOrders` (public, recent-window) with graceful fallback. Coinglass key via `RADAR__COINGLASS_KEY`. Never blocks collector. |
+| ✅ **F3 (MED)** — Type `persistRun` as `RadarResult` | ✅ **Done** | Uses inline structural type `{tickers, signals, newsMatches}` — clean, no named type needed. |
+| ✅ **F4 (MED)** — Write `AsyncMutex` to prevent `SQLITE_BUSY` | ✅ **Done** | Promise-chain write serialization in `Store.withWrite()`. Prevents daemon refresh + collector race. |
+| ✅ **F5 (MED)** — `applySecurityHeaders` for `/api/*` | ✅ **Done** | CORS, CSP, HSTS set in daemon `startHttp()`. REST handler inherits from daemon. |
+| ✅ **F6 (MED)** — Add env overrides | ✅ **Done** | `RADAR__STORE_RETENTION_DAYS`, `RADAR__COINGLASS_KEY`, `RADAR__SOURCES_ORDERBOOK`, `RADAR__ML_*` vars all added. |
+| ✅ **F7 (MED)** — `ws` in devDependencies | ✅ **Done** | `ws` in `dependencies`, `@types/ws` in `devDependencies`. Tests resolve correctly. |
 | ✅ **F8 (LOW)** — Pin `ws@^8.18.0`; shared port | ✅ **Done** | `ws@^8.21.0`; `WebSocketServer({ noServer: true })` on shared daemon port via `upgrade`. |
-| ⚠️ **F3 (MED)** — Type `persistRun` as `RadarResult` | ⚠️ **Partial** | Uses inline structural type `{tickers, signals, newsMatches}`; maps from `newsMatches` correctly. Not the named `RadarResult` type. |
-| ⚠️ **F6 (MED)** — Add env overrides | ⚠️ **Partial** | `RADAR__WS_PORT`, `RADAR__STORE_PATH`, `RADAR__SOURCES_*` added. `RADAR__STORE_RETENTION_DAYS`, `RADAR__COINGLASS_KEY`, `orderbook` source flag **missing**. |
-| ⚠️ **F7 (MED)** — `ws` in devDependencies | ⚠️ **Partial** | `ws` in `dependencies` only (runtime). `@types/ws` in devDeps resolves TS — tests work. |
-| ⚠️ **F2 (HIGH)** — Replace liquidation endpoint | ⚠️ **Partial** | Uses gated `/fapi/v1/forceOrders` — best-effort (returns `[]` on error, never blocks collector) but **wrong endpoint**. Should be `/fapi/v1/allForceOrders` + Coinglass fallback. |
-| ❌ **F1 (HIGH)** — `tickers`/`signals` snapshot+history split + retention | ❌ **Not applied** | Schema uses `PRIMARY KEY(symbol, ts_utc)` as per spec (append-only, no history table). Unbounded growth, no dedupe. |
-| ❌ **F4 (MED)** — Write `AsyncMutex` to prevent `SQLITE_BUSY` | ❌ **Not applied** | No write lock in `Store`. Daemon refresh + collector can race. |
-| ❌ **F5 (MED)** — `applySecurityHeaders` for `/api/*` | ❌ **Not applied** | `/api/*` delegation in `daemon.ts` does not set CORS/CSP headers. |
 
 **Backlog priority:** F1 (HIGH unbounded growth) → F2 (HIGH broken liquidation) → F4 (MED concurrency) → F5 (MED CORS) → F6 (MED missing vars) → F3/F7 low-impact.
 

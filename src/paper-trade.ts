@@ -797,7 +797,6 @@ export class PaperTrader {
 
   /** Path to the per-profile state file */
   private get stateFilePath(): string {
-    const path = require('node:path') as typeof import('node:path');
     const dir = this.profilesDir;
     const fullPath = path.resolve(path.join(dir, `${this.profileName}.json`));
     // Defense-in-depth: verify resolved path stays within profilesDir

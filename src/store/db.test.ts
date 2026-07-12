@@ -40,6 +40,9 @@ describe('Store', () => {
       expect(stats).toHaveProperty('fear_greed');
       expect(stats).toHaveProperty('orderbook');
       expect(stats).toHaveProperty('cross_asset');
+      expect(stats).toHaveProperty('ticker_history');
+      expect(stats).toHaveProperty('signal_history');
+      expect(stats).toHaveProperty('predictions');
     });
 
     it('is idempotent', () => {
@@ -146,11 +149,11 @@ describe('Store', () => {
     });
 
     it('getSignals filters by minScore', () => {
-      const s2 = { ...signal, compositeScore: 80, timestamp: '2026-07-07T12:01:00Z' };
-      const s3 = { ...signal, compositeScore: 40, timestamp: '2026-07-07T12:02:00Z' };
+      const s2 = { ...signal, symbol: 'BTC', compositeScore: 80, timestamp: '2026-07-07T12:01:00Z' };
+      const s3 = { ...signal, symbol: 'ETH', compositeScore: 40, timestamp: '2026-07-07T12:02:00Z' };
       store.persistRun({ tickers: [], signals: [signal, s2, s3], newsMatches: [] });
       const rows = store.getSignals({ minScore: 60, limit: 10 });
-      expect(rows).toHaveLength(2);
+      expect(rows).toHaveLength(2); // SOL (65) + BTC (80), but not ETH (40)
     });
   });
 

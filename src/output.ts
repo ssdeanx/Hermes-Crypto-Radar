@@ -192,12 +192,61 @@ export function csvHeader(): string {
 // ── JSON Lines ──
 
 /**
- * Format an enriched ticker as a JSON line.
- * @param ticker The enriched ticker to format
- * @returns JSON string
+ * Canonical schema key list for EnrichedTicker.
+ * Every optional field is included so the JSONL dataset always has a
+ * consistent schema — missing/unset fields serialize as `null` instead of
+ * being omitted. This is critical for ML fine-tuning where variable schemas
+ * break training pipelines.
+ *
+ * Includes ALL fields from the EnrichedTicker interface including the newer
+ * technical indicators that are in the type but not yet in CSV_COLUMNS.
  */
+export const TICKER_KEYS: (keyof EnrichedTicker)[] = [
+  // Run metadata & identity
+  'runId', 'tsUtc', 'dateEt', 'symbol', 'chain', 'tokenId', 'tokenName',
+   // Price data
+   'lastPrice', 'bidPrice', 'bidQty', 'askPrice', 'askQty',
+   'spreadPct', 'openPrice', 'highPrice', 'lowPrice', 'prevClosePrice',
+   'priceChangePercent', 'weightedAvgPrice', 'priceChange',
+   'volume', 'quoteVolume', 'count', 'lastQty',
+   'vwapDistPct', 'rangePosPct', 'bookImbalance', 'volVsAvg', 'obv', 'momentum',
+   'alerts', 'source',
+   // Technical indicators
+   'rsi', 'macdMacd', 'macdSignal', 'macdHistogram',
+   'bbUpper', 'bbMiddle', 'bbLower', 'bbWidth', 'atrPct',
+   'mfi', 'stochK', 'stochD', 'williamsR', 'cmf', 'tsi', 'ema50DistPct', 'volTrend',
+   // New technical indicators
+   'adx', 'psar', 'cci', 'keltnerWidth', 'keltnerPos', 'roc', 'forceIndex',
+   'adl', 'chaikinOsc', 'stochRsi', 'stochRsiK', 'stochRsiD', 'trix', 'kst',
+   'elderBullPower', 'elderBearPower', 'fisher', 'massIndex',
+   // Strategy signals
+   'momentumScore', 'momentumDirection',
+   'meanReversionScore', 'meanReversionDirection',
+   'trendFollowingScore', 'trendFollowingDirection',
+   'compositeScore', 'compositeDirection',
+   'signalCount', 'positionSize',
+   // On-chain metrics
+   'onchainTvl', 'onchainFees1d', 'onchainChainTvl', 'onchainConfidence',
+   // Market regime
+   'regime', 'regimeConfidence',
+ ];
+
+ /**
+  * Format an enriched ticker as a JSON line for ML-ready JSONL datasets.
+  *
+  * Uses the canonical TICKER_KEYS schema to ensure every line has the same
+  * keys — all unset optional fields become `null` instead of being omitted.
+  * This gives model training a consistent input shape across every record.
+  *
+  * @param ticker The enriched ticker to format
+  * @returns Minified JSON string with consistent schema (nulls, not missing keys)
+  */
 export function toJSONLine(ticker: EnrichedTicker): string {
-  return JSON.stringify(ticker);
+  const obj: Record<string, unknown> = {};
+  for (const key of TICKER_KEYS) {
+    obj[key as string] = ticker[key] ?? null;
+  }
+  return JSON.stringify(obj);
 }
 
 // ── Markdown report ──

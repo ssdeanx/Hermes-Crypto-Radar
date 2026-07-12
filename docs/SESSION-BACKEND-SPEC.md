@@ -6,7 +6,7 @@
 > **Scope this session:** A (backend foundation) + B (new data sources). D (ML seed) scaffolded as the next phase, depends on A. Frontend explicitly deferred.
 > **Quality bar:** Enterprise-grade. No stubs, no placeholders, no half-measures. Every module ships with types, JSDoc, error handling, and tests.
 >
-> **Implementation status as of 2026-07-07:** Scope A+B **fully implemented** (store, collector, 4 sources, REST API, WS hub, persist-on-scan, CLI, docs — 136 tests). Pre-implementation audit F1–F8 partially applied (see `SESSION-AUDIT-REPORT.md`). ML seed D deferred — fully specified in `SESSION-PHASES.md` Phase 10.
+> **Implementation status as of 2026-07-11:** Scope A+B **fully implemented** (store, collector, 4 sources, REST API, WS hub, persist-on-scan, CLI, docs — 136 tests). Pre-implementation audit F1–F8 **all applied** (snapshot+history split, liquidations best-effort, RealResult type, AsyncMutex, security headers, env overrides, ws devDeps). ML seed D **implemented** — full ML pipeline: features, labels, dataset, LightGBM training, batch inference, predictions API, auto-retrain daemon (949 tests). Frontend explicitly deferred — dashboards can use REST API + WebSocket described in §12b.
 
 ---
 

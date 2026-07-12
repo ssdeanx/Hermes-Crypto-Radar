@@ -50,6 +50,7 @@ export interface RadarConfig {
     futures?: boolean;
     fearGreed?: boolean;
     crossAsset?: boolean;
+    orderbook?: boolean;
   };
   /** Enable DeFiLlama on-chain metrics during scan */
   defiLlamaEnabled?: boolean;
@@ -64,11 +65,29 @@ export interface RadarConfig {
   /** Enable SHA-256 checksum verification on log files */
   enableFileChecksums?: boolean;
   /** Store (SQLite) config */
-  store?: { path?: string };
+  store?: { path?: string; retentionDays?: number };
   /** API bearer token for mutating routes (RADAR__API_TOKEN) */
   apiToken?: string;
   /** WebSocket server port (RADAR__WS_PORT, default 9878) */
   wsPort?: number;
+  /** Coinglass API key for liquidation fallback (RADAR__COINGLASS_KEY) */
+  coinglassKey?: string;
+  /** ML pipeline config */
+  ml?: {
+    enabled?: boolean;           // default false
+    training?: {
+      symbols?: string[];
+      intervals?: string[];
+      lookbackDays?: number;     // default 90
+      labelHorizon?: 1 | 5 | 20 | 60;
+      retrainIntervalHours?: number;
+    };
+    prediction?: {
+      inferenceMode?: 'subprocess' | 'onnx';  // default 'subprocess'
+      minConfidence?: number;                  // default 0.6
+      modelPath?: string;
+    };
+  };
   /** Price alert thresholds — loaded from radar.config.json */
   alerts?: PriceAlert[];
   /** Webhook notification config (Discord URL / Telegram bot) */
@@ -189,11 +208,19 @@ export function loadConfig(configPath?: string): RadarConfig {
   if (envMap.log_retention_days) base.logRetentionDays = parseInt(envMap.log_retention_days, 10);
   if (envMap.enable_file_checksums) base.enableFileChecksums = envMap.enable_file_checksums === 'true';
   if (envMap.store_path) { base.store ??= {}; base.store.path = envMap.store_path; }
+  if (envMap.store_retention_days) { base.store ??= {}; base.store.retentionDays = parseInt(envMap.store_retention_days, 10); }
   if (envMap.sources_futures) base.sources.futures = envMap.sources_futures === 'true';
   if (envMap.sources_fear_greed) base.sources.fearGreed = envMap.sources_fear_greed === 'true';
   if (envMap.sources_cross_asset) base.sources.crossAsset = envMap.sources_cross_asset === 'true';
+  if (envMap.sources_orderbook) base.sources.orderbook = envMap.sources_orderbook === 'true';
   if (envMap.api_token) base.apiToken = envMap.api_token;
   if (envMap.ws_port) base.wsPort = parseInt(envMap.ws_port, 10);
+  if (envMap.coinglass_key) base.coinglassKey = envMap.coinglass_key;
+  // ML config env overrides
+  if (envMap.ml_enabled) { base.ml ??= {}; base.ml.enabled = envMap.ml_enabled === 'true'; }
+  if (envMap.ml_lookback_days) { base.ml ??= {}; base.ml.training ??= {}; base.ml.training.lookbackDays = parseInt(envMap.ml_lookback_days, 10); }
+  if (envMap.ml_retrain_hours) { base.ml ??= {}; base.ml.training ??= {}; base.ml.training.retrainIntervalHours = parseInt(envMap.ml_retrain_hours, 10); }
+  if (envMap.ml_min_confidence) { base.ml ??= {}; base.ml.prediction ??= {}; base.ml.prediction.minConfidence = parseFloat(envMap.ml_min_confidence); }
 
   _instance = base;
   return base;

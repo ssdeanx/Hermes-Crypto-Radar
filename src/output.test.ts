@@ -102,6 +102,23 @@ describe('JSON line output', () => {
     expect(parsed.lastPrice).toBe(80.50);
     expect(parsed.priceChangePercent).toBe(2.55);
   });
+
+  it('converts undefined optional fields to null (ML schema consistency)', () => {
+    const ticker = makeTicker();
+    // Remove some optional fields to simulate runtime undefined
+    delete (ticker as any).rsi;
+    delete (ticker as any).onchainTvl;
+    delete (ticker as any).regime;
+    const json = toJSONLine(ticker);
+    const parsed = JSON.parse(json);
+    // Schema keys must still be present — as null, not missing
+    expect(parsed).toHaveProperty('rsi');
+    expect(parsed).toHaveProperty('onchainTvl');
+    expect(parsed).toHaveProperty('regime');
+    expect(parsed.rsi).toBeNull();
+    expect(parsed.onchainTvl).toBeNull();
+    expect(parsed.regime).toBeNull();
+  });
 });
 
 describe('Markdown report', () => {

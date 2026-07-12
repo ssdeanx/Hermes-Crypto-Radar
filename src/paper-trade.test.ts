@@ -236,7 +236,7 @@ describe('Paper Trading Profiles', () => {
     // Modify state by setting cash directly (we can access state via config recreation)
     // We need to use a different approach - load, modify, save
     const t2 = createTestTrader({ dataDir: tmpDir, profileName: 'testprofile' });
-    let loaded = await t2.load();
+    const loaded = await t2.load();
     expect(loaded).toBe(true);
     expect(t2.cash).toBe(10_000);
 

@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/node-%3E%3D22-blue" alt="Node">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
   <img src="https://img.shields.io/badge/coverage-95%25-brightgreen" alt="Coverage">
+  <img src="https://img.shields.io/badge/tests-949%20passed-brightgreen" alt="Tests">
 </p>
 
 <h1 align="center">🛰️ Hermes Crypto Radar</h1>
@@ -407,6 +408,7 @@ hermes-crypto-radar/
 | `search` | — | **Token search** — find tokens by symbol/name/chain | `--query` |
 | `report` | `r` | **Generate HTML/PDF report** | `--filter`, `--output` |
 | `collect` | — | **Historical collector** — backfill klines + Binance Futures data into the SQLite store | `--klines`, `--futures`, `--backfill`, `--symbol`, `--orderbook`, `--fear-greed`, `--cross-asset` |
+| `ml` | — | **ML pipeline** — train, predict, or check status | `train`, `predict`, `status`, `--symbols`, `--horizon`, `--lookback`, `--interval` |
 
 ### Data Store, REST API & Real-Time Push
 
@@ -428,10 +430,53 @@ crypto-radar collect --orderbook --fear-greed --cross-asset
 - `src/store/` — `Store` class over `node:sqlite` with WAL mode, upserts keyed on natural PKs (idempotent/resumable).
 - `src/collector.ts` — `runCollector()` walks Binance `klines` backward to backfill, then incrementally updates from the last stored candle. Also pulls Binance Futures funding/OI/long-short/liquidations.
 - `src/sources/` — `futures`, `fear-greed` (alternative.me), `orderbook`, `cross-asset` (CoinGecko global).
-- `src/api/rest.ts` — routes under `/api/*` (tickers, klines, signals, news, portfolio, futures, fear-greed, cross-asset, orderbook, stats). `POST /api/collect` is token-gated via `RADAR__API_TOKEN`.
+- `src/api/rest.ts` — routes under `/api/*` (tickers, klines, signals, news, portfolio, futures, fear-greed, cross-asset, orderbook, stats, predictions). `POST /api/collect` is token-gated via `RADAR__API_TOKEN`.
 - `src/api/ws.ts` — WebSocket hub (`ws`) broadcasting `prices` / `signals` / `news` / `portfolio` channels on scan-complete.
 
 **Config (env overrides):** `RADAR__STORE_PATH`, `RADAR__SOURCES_FUTURES`, `RADAR__SOURCES_FEAR_GREED`, `RADAR__SOURCES_CROSS_ASSET`, `RADAR__API_TOKEN`, `RADAR__WS_PORT` (default 9878).
+
+### ML Pipeline (v2.1.0)
+
+Crypto Radar now includes a **machine learning pipeline** for price direction prediction using LightGBM. It collects features from the persistent store, trains a tri-class direction classifier, and runs predictions on every daemon refresh cycle.
+
+**Prerequisites:**
+
+```bash
+# Set up Python ML environment (creates .venv-ml/)
+npm run ml:setup
+
+# Or manually: pip install -r ml/requirements.txt
+```
+
+**Commands:**
+
+```bash
+# Check pipeline status (store rows, model presence, latest prediction)
+npm run ml:status
+# or: node dist/cli.js ml status
+
+# Train a model from historical store data
+npm run ml:train
+# or: node dist/cli.js ml train --symbols SOL BTC --horizon 5 --lookback 90
+
+# Run prediction on latest data
+npm run ml:predict
+# or: node dist/cli.js ml predict --symbols SOL BTC --interval 1h
+```
+
+**Architecture:**
+
+- `src/ml/features.ts` — 80+ features: 26 technical indicators, rolling returns, cross-asset dominance, funding rates, temporal features. Includes kline gap detection and NaN sanitization.
+- `src/ml/labels.ts` — Forward-return labels at 1/5/20/60 horizons with asymmetric class weights (down trades weighted 1.5×).
+- `src/ml/dataset.ts` — Chronological train/val/test split (70/15/15), z-score normalization, CSV output with formula-injection protection.
+- `ml/train.py` — LightGBM classifier with early stopping, custom class weights, feature importance output.
+- `ml/predict.py` — Batch inference from stdin CSV.
+- `src/ml/predict.ts` — TypeScript orchestration: builds features for all symbols, sends as single CSV block to Python subprocess, validates and persists predictions.
+- `src/daemon.ts` — Auto-retrain (default: every 24h) and prediction on every daemon refresh cycle when `RADAR__ML_ENABLED=true`.
+
+**Config (env overrides):** `RADAR__ML_ENABLED`, `RADAR__ML_LOOKBACK_DAYS` (default 90), `RADAR__ML_RETRAIN_HOURS` (default 24), `RADAR__ML_MIN_CONFIDENCE` (default 0.6).
+
+**Prediction persistence:** ML predictions are stored in the `predictions` table and queryable via the REST API: `GET /api/predictions`, `GET /api/predictions/:symbol`.
 
 ### Common Flags
 

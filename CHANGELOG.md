@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] — 2026-07-11
+
+### Added
+- **ML Pipeline** — Full-featured machine learning pipeline for price direction prediction:
+  - `src/ml/features.ts` — Feature engineering (80+ features from 26 indicators + returns + cross-asset + futures + temporal), with kline gap detection (F9), cross-asset timestamp alignment via nearest-neighbor forward-fill (F2), NaN/Infinity sanitization (F5)
+  - `src/ml/labels.ts` — Forward-return label generation at 1/5/20/60 horizons with configurable noise threshold and asymmetric class weights (F7)
+  - `src/ml/dataset.ts` — Dataset assembly with inner-join, NaN row dropping, chronological train/val/test split, z-score normalization, CSV output with formula-injection protection, training-set median storage for inference fill
+  - `src/ml/predict.ts` — Batch inference via Python subprocess (F3: all symbols in single CSV block), direction validation, 60s timeout guard, prediction count mismatch detection
+  - `ml/train.py` — LightGBM direction classifier with early stopping, custom class weights, model + metrics + feature importance output
+  - `ml/predict.py` — Batch prediction from stdin CSV, NaN fill, class probability output
+- **Store schema v2** — Migration with snapshot+history split (F1):
+  - `tickers` and `signals` tables now use single-column PK (`symbol`) for latest-state snapshot
+  - New `ticker_history` and `signal_history` tables for append-only time series
+  - New `predictions` table for ML model output (F4)
+  - Retention indexes for pruning old data
+- **Auto-retrain daemon** (F8) — Daemon refresh cycle checks `RADAR__ML_RETRAIN_HOURS`, auto-collects features, spawns Python training, loads latest model, runs batch predictions
+- **Config extensions** — `ml` config block, `store.retentionDays`, `coinglassKey`, `sources.orderbook`. Env vars: `RADAR__ML_ENABLED`, `RADAR__ML_LOOKBACK_DAYS`, `RADAR__ML_RETRAIN_HOURS`, `RADAR__ML_MIN_CONFIDENCE`, `RADAR__STORE_RETENTION_DAYS`
+- **AsyncMutex** (F10) — Promise-chain write serialization in Store prevents `SQLITE_BUSY` on concurrent writes
+- **Store caching** — `getKlines()`, `getCrossAsset()` use 60s TTL global cache
+- **ML CLI** — `crypto-radar ml train|predict|status` commands
+- **REST API** — `GET /api/predictions` and `GET /api/predictions/:symbol`
+- **Environment setup** — `scripts/setup-ml-env.sh` creates isolated `.venv-ml` using `uv` or `pip`
+- **npm scripts** — `ml:train`, `ml:predict`, `ml:status`, `ml:setup`
+
+### Changed
+- **Store schema** — Bumped to v2. Existing v1 databases migrated automatically
+- **All 10 prism findings (F1–F10) corrected** — Schema idempotency, timestamp alignment, batch inference, predictions storage, NaN handling, config defaults, class imbalance, auto-retrain, gap detection, write serialization
+
+### Fixed
+- `label_class_5` field renamed to `label_class` — correctly reflects configured horizon
+- CSV injection vulnerability in dataset assembly
+- `Date.now()` collision for dataset file IDs — replaced with `randomUUID()`
+- Python subprocess path resolution — scripts resolved via `import.meta.url`
+- Subprocess direction output validated at runtime instead of blind cast
+- Empty features/labels arrays now throw `DataError`
+
 ## [2.0.0] — 2026-07-04
 
 ### Added

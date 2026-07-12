@@ -60,7 +60,7 @@ function makeSignal(
   };
 }
 
-let startTime = 1000000;
+const startTime = 1000000;
 
 // ── Tests ──
 

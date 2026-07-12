@@ -60,17 +60,17 @@ async function saveAllFormats(
   dataDir: string,
   result: { run: { runId: string } },
 ): Promise<void> {
-  const date = new Date().toISOString().slice(0, 10);
+  const month = new Date().toISOString().slice(0, 7);
   mockFs.mkdirSync(dataDir, { recursive: true });
 
-  const formats = ['table', 'json', 'csv', 'md', 'xlsx'];
+  const formats = ['table', 'csv', 'md', 'xlsx'];
   for (const fmt of formats) {
     if (fmt === 'table') {
       // Bug 1 fix: always save TABLE format to .txt regardless of --format flag
       const tableContent = await mockRadar.displayRadar(result, { format: 'table' });
       if (tableContent) {
         mockFs.writeFileSync(
-          path.join(dataDir, `cron-${date}.txt`),
+          path.join(dataDir, `cron-${month}.txt`),
           tableContent + '\n',
           'utf-8',
         );
@@ -81,7 +81,7 @@ async function saveAllFormats(
       await mockRadar.displayRadar(result, { format: 'xlsx' });
       const runIdLower = result.run.runId.toLowerCase();
       const xlsxSource = path.join(dataDir, `crypto-radar-${runIdLower}.xlsx`);
-      const xlsxDest = path.join(dataDir, `cron-${date}.xlsx`);
+      const xlsxDest = path.join(dataDir, `cron-${month}.xlsx`);
       if (mockFs.existsSync(xlsxSource)) {
         mockFs.copyFileSync(xlsxSource, xlsxDest);
       }
@@ -89,7 +89,7 @@ async function saveAllFormats(
       const content = await mockRadar.displayRadar(result, { format: fmt });
       if (content) {
         mockFs.writeFileSync(
-          path.join(dataDir, `cron-${date}.${fmt}`),
+          path.join(dataDir, `cron-${month}.${fmt}`),
           content + '\n',
           'utf-8',
         );
@@ -102,7 +102,7 @@ async function saveAllFormats(
 
 const DATA_DIR = '/tmp/test-auto-save';
 const RUN_ID = 'RADAR-TEST-001';
-const FIXED_DATE = '2026-07-06';
+const FIXED_MONTH = '2026-07';
 
 const mockResult = {
   tickers: [],
@@ -124,14 +124,13 @@ describe('Auto-save', () => {
 
     // Fix the clock so generated filenames are deterministic
     vi.useFakeTimers();
-    vi.setSystemTime(new Date(`${FIXED_DATE}T12:00:00Z`));
+    vi.setSystemTime(new Date(`${FIXED_MONTH}T12:00:00Z`));
 
     // Default displayRadar returns appropriate content per format
     mockRadar.displayRadar.mockImplementation(
       async (_result: unknown, opts: { format?: string }) => {
         switch (opts.format) {
           case 'table': return 'TABLE OUTPUT';
-          case 'json':  return '{"runId":"RADAR-TEST-001"}';
           case 'csv':   return 'run_id,symbol\nRADAR-TEST-001,SOL';
           case 'md':    return '# Crypto Radar Report';
           case 'xlsx':  return '[XLSX] SIDE-EFFECT';
@@ -160,7 +159,7 @@ describe('Auto-save', () => {
 
     // The .txt file must contain TABLE format content, not whatever --format
     // the user happened to pass to the scan command
-    const txtPath = path.join(DATA_DIR, `cron-${FIXED_DATE}.txt`);
+    const txtPath = path.join(DATA_DIR, `cron-${FIXED_MONTH}.txt`);
     expect(mockFs.writeFileSync).toHaveBeenCalledWith(
       txtPath,
       expect.stringContaining('TABLE OUTPUT'),
@@ -186,7 +185,7 @@ describe('Auto-save', () => {
       DATA_DIR,
       `crypto-radar-${RUN_ID.toLowerCase()}.xlsx`,
     );
-    const xlsxDest = path.join(DATA_DIR, `cron-${FIXED_DATE}.xlsx`);
+    const xlsxDest = path.join(DATA_DIR, `cron-${FIXED_MONTH}.xlsx`);
 
     // Must check the source exists before copying
     expect(mockFs.existsSync).toHaveBeenCalledWith(xlsxSource);
@@ -194,34 +193,27 @@ describe('Auto-save', () => {
     expect(mockFs.copyFileSync).toHaveBeenCalledWith(xlsxSource, xlsxDest);
   });
 
-  // ── 3: all 5 formats saved ──
+  // ── 3: all 4 auto-save formats ──
 
-  it('saves all 5 format files', async () => {
+  it('saves all 4 auto-save format files', async () => {
     await saveAllFormats(DATA_DIR, mockResult);
 
     // writeFileSync assertions for text-based formats
-    const txtPath = path.join(DATA_DIR, `cron-${FIXED_DATE}.txt`);
+    const txtPath = path.join(DATA_DIR, `cron-${FIXED_MONTH}.txt`);
     expect(mockFs.writeFileSync).toHaveBeenCalledWith(
       txtPath,
       expect.stringContaining('TABLE OUTPUT'),
       'utf-8',
     );
 
-    const jsonPath = path.join(DATA_DIR, `cron-${FIXED_DATE}.json`);
-    expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-      jsonPath,
-      expect.stringContaining('runId'),
-      'utf-8',
-    );
-
-    const csvPath = path.join(DATA_DIR, `cron-${FIXED_DATE}.csv`);
+    const csvPath = path.join(DATA_DIR, `cron-${FIXED_MONTH}.csv`);
     expect(mockFs.writeFileSync).toHaveBeenCalledWith(
       csvPath,
       expect.stringContaining('run_id'),
       'utf-8',
     );
 
-    const mdPath = path.join(DATA_DIR, `cron-${FIXED_DATE}.md`);
+    const mdPath = path.join(DATA_DIR, `cron-${FIXED_MONTH}.md`);
     expect(mockFs.writeFileSync).toHaveBeenCalledWith(
       mdPath,
       expect.stringContaining('Crypto Radar Report'),
@@ -229,16 +221,16 @@ describe('Auto-save', () => {
     );
 
     // copyFileSync assertion (xlsx is copied, not written via writeFileSync)
-    const xlsxDest = path.join(DATA_DIR, `cron-${FIXED_DATE}.xlsx`);
+    const xlsxDest = path.join(DATA_DIR, `cron-${FIXED_MONTH}.xlsx`);
     expect(mockFs.copyFileSync).toHaveBeenCalledWith(
       path.join(DATA_DIR, `crypto-radar-${RUN_ID.toLowerCase()}.xlsx`),
       xlsxDest,
     );
 
-    // displayRadar was invoked once per format
-    expect(mockRadar.displayRadar).toHaveBeenCalledTimes(5);
+    // displayRadar was invoked once per format (4 formats)
+    expect(mockRadar.displayRadar).toHaveBeenCalledTimes(4);
 
-    for (const fmt of ['table', 'json', 'csv', 'md', 'xlsx']) {
+    for (const fmt of ['table', 'csv', 'md', 'xlsx']) {
       expect(mockRadar.displayRadar).toHaveBeenCalledWith(
         mockResult,
         expect.objectContaining({ format: fmt }),
@@ -278,17 +270,12 @@ describe('Auto-save', () => {
 
     // Other formats should still be saved
     expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-      path.join(DATA_DIR, `cron-${FIXED_DATE}.json`),
-      'content-json\n',
-      'utf-8',
-    );
-    expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-      path.join(DATA_DIR, `cron-${FIXED_DATE}.csv`),
+      path.join(DATA_DIR, `cron-${FIXED_MONTH}.csv`),
       'content-csv\n',
       'utf-8',
     );
     expect(mockFs.writeFileSync).toHaveBeenCalledWith(
-      path.join(DATA_DIR, `cron-${FIXED_DATE}.md`),
+      path.join(DATA_DIR, `cron-${FIXED_MONTH}.md`),
       'content-md\n',
       'utf-8',
     );

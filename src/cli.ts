@@ -27,7 +27,9 @@ import type { ExportResult } from './sqlite-export.js';
 import { runCollector } from './collector.js';
 import type { CollectorReport } from './types.js';
 import { generateHtmlReport, generateSignalSnapshot } from './pdf-export.js';
-import { validateOutput } from './output.js';
+import { validateOutput, toJSONLine } from './output.js';
+import { Store } from './store/db.js';
+import { batchPredict, persistPredictions } from './ml/predict.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -119,36 +121,74 @@ program
       console.error(`       ${result.aggregatedSignals.length} strategy signals`);
       if (!opts.noLog) console.error(`       Logged to data/ directory`);
 
-      // Auto-save all report formats
+      // Auto-save all report formats — single current file + archive
       const dataDir = loadConfig().dataDir;
-      const date = new Date().toISOString().slice(0, 10);
       fs.mkdirSync(dataDir, { recursive: true });
+      const archiveDir = path.join(dataDir, 'archive');
+      fs.mkdirSync(archiveDir, { recursive: true });
 
-      const formats: OutputFormat[] = ['table', 'json', 'csv', 'md', 'xlsx'];
+      /** Move existing file to archive/ with timestamp before overwriting */
+      const rotateFile = (filePath: string): void => {
+        if (fs.existsSync(filePath)) {
+          const now = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+          const base = path.basename(filePath);
+          fs.renameSync(filePath, path.join(archiveDir, `${base}.${now}`));
+        }
+      };
+
+      const formats: OutputFormat[] = ['table', 'csv', 'md', 'xlsx'];
       for (const fmt of formats) {
         if (fmt === 'table') {
-          // Bug 1 fix: always save TABLE format to .txt regardless of --format flag
+          // Always save TABLE format to .txt regardless of --format flag
           const tableContent = await displayRadar(result, { format: 'table' });
           if (tableContent) {
-            fs.writeFileSync(path.join(dataDir, `cron-${date}.txt`), tableContent + '\n', 'utf-8');
+            const fp = path.join(dataDir, 'radar-output.txt');
+            rotateFile(fp);
+            fs.writeFileSync(fp, tableContent + '\n', 'utf-8');
           }
         } else if (fmt === 'xlsx') {
-          // Bug 2 fix: displayRadar('xlsx') side-effects the real .xlsx file and returns
-          // a status string; copy the real file from its side-effect location instead
+          // displayRadar('xlsx') side-effects the .xlsx file; rotate before it writes
           await displayRadar(result, { format: 'xlsx' });
-          const runIdLower = result.run.runId.toLowerCase();
-          const xlsxSource = path.join(dataDir, `crypto-radar-${runIdLower}.xlsx`);
-          const xlsxDest = path.join(dataDir, `cron-${date}.xlsx`);
-          if (fs.existsSync(xlsxSource)) {
-            fs.copyFileSync(xlsxSource, xlsxDest);
-          }
+          // The xlsx export writes to dataDir directly (radar.ts:426-429)
+          // It already uses a fixed name, so rotation happens in radar.ts
         } else {
           const content = await displayRadar(result, { format: fmt });
           if (content) {
-            fs.writeFileSync(path.join(dataDir, `cron-${date}.${fmt}`), content + '\n', 'utf-8');
+            const fp = path.join(dataDir, `radar-output.${fmt}`);
+            rotateFile(fp);
+            fs.writeFileSync(fp, content + '\n', 'utf-8');
           }
         }
       }
+
+      // ── Run-history ledger (APPEND-ONLY JSONL) ──
+      // Single file accumulates all runs. A single file per type is intentional
+      // (the user requested: 1 current file + archive/ for rotated copies).
+      const runLogLine = JSON.stringify({
+        runId: result.run.runId,
+        tsUtc: result.run.tsUtc,
+        numTokens: result.run.numTokens,
+        numSignals: result.run.numSignals,
+        durationMs: result.run.durationMs,
+        tickers: result.tickers.length,
+        buySignals: result.aggregatedSignals.filter(s => /buy/i.test(s.direction ?? '')).length,
+        sellSignals: result.aggregatedSignals.filter(s => /sell/i.test(s.direction ?? '')).length,
+      });
+      fs.appendFileSync(
+        path.join(dataDir, 'radar-runlog.jsonl'),
+        runLogLine + '\n', 'utf-8',
+      );
+
+      // ── Ticker dataset (APPEND-ONLY JSONL, ML-ready) ──
+      // One EnrichedTicker per line. Single file accumulates all runs.
+      // Schema consistent: optional fields are `null`, not missing.
+      const tickersPath = path.join(dataDir, 'radar-tickers.jsonl');
+      let tickerBatch = '';
+      for (const ticker of result.tickers) {
+        tickerBatch += toJSONLine(ticker) + '\n';
+      }
+      fs.appendFileSync(tickersPath, tickerBatch, 'utf-8');
+      console.error(`       ${result.tickers.length} tickers appended to ticker dataset`);
     } catch (err) {
       console.error(`[ERROR] Radar scan failed:`, err instanceof Error ? err.message : err);
       process.exit(1);
@@ -885,6 +925,150 @@ program
       (globalThis as Record<string, unknown>).__lastBacktestResult = btResult;
     } catch (err) {
       console.error(`[ERROR] Backtest failed:`, err instanceof Error ? err.message : err);
+      process.exit(1);
+    }
+  });
+
+// ── ml command ──
+program
+  .command('ml')
+  .description('ML pipeline: train, predict, or check status')
+  .argument('<action>', 'train | predict | status')
+  .option('--symbols <syms...>', 'Filter to specific symbols')
+  .option('--horizon <n>', 'Label horizon (1/5/20/60)', '5')
+  .option('--lookback <days>', 'Training lookback days', '90')
+  .option('--interval <i>', 'Kline interval for prediction', '1h')
+  .action(async (action, opts) => {
+    try {
+      const config = loadConfig();
+      const store = Store.open(config.dataDir);
+      store.migrate();
+
+      if (action === 'status') {
+        const stats = store.stats();
+        const predictions = store.getPredictions({ limit: 5 });
+        const hasModel = fs.existsSync('ml/models');
+        console.log('📊 ML Pipeline Status\n');
+        console.log(`  Enabled:       ${config.ml?.enabled ? '✅' : '❌'} (set RADAR__ML_ENABLED=true)`);
+        console.log(`  Store rows:    ${stats.tickers ?? 0} tickers, ${stats.klines ?? 0} klines`);
+        console.log(`  Predictions:   ${stats.predictions ?? 0} total`);
+        console.log(`  Models dir:    ${hasModel ? '✅ exists' : '❌ not found'}`);
+        if (predictions.length > 0) {
+          console.log(`  Latest pred:   ${predictions[0]?.symbol ?? 'N/A'} → ${predictions[0]?.direction ?? 'N/A'} (${(predictions[0]?.confidence ?? 0 * 100).toFixed(0)}%)`);
+        }
+        process.exit(0);
+      }
+
+      if (action === 'train') {
+        console.error('Training ML model...');
+        const symbols = opts.symbols ?? getTokenList().map((t: TokenDef) => t.sym).slice(0, 20);
+        const horizon = parseInt(opts.horizon, 10) || 5;
+        const lookbackDays = parseInt(opts.lookback, 10) || 90;
+        const intervals: KlineInterval[] = ['15m', '1h', '4h', '1d'];
+
+        const allFeatures: import('./ml/types.js').FeatureRow[] = [];
+        const allLabels: import('./ml/types.js').LabelRow[] = [];
+
+        for (const symbol of symbols) {
+          for (const interval of intervals) {
+            const klines = store.getKlines(symbol, interval, {
+              limit: 1000,
+              order: 'desc',
+            }).reverse();
+            if (klines.length < 60) {
+              console.error(`  ${symbol} ${interval}: insufficient data (${klines.length})`);
+              continue;
+            }
+
+            const crossAsset = store.getCrossAsset(200);
+            const funding = store.getFunding(symbol, 100);
+            const features = (await import('./ml/features.js')).buildFeatures(
+              symbol, interval, klines,
+              { includeReturns: true, includeIndicators: true, includeCrossAsset: true, includeFutures: true, includeTemporal: true },
+              crossAsset, funding,
+            );
+
+            const closes = klines.map(k => k.close);
+            const labels = (await import('./ml/labels.js')).computeLabels(closes, interval, { classHorizon: horizon as 1 | 5 | 20 | 60 });
+
+            for (const f of features) {
+              const lbl = labels.find(l => l.open_time === f.open_time);
+              if (lbl && lbl.label_class !== null) {
+                allFeatures.push(f);
+                allLabels.push(lbl);
+              }
+            }
+            console.error(`  ${symbol} ${interval}: ${features.length} feature rows`);
+          }
+        }
+
+        console.error(`Total: ${allFeatures.length} feature rows`);
+
+        if (allFeatures.length < 100) {
+          console.error(`Need at least 100 rows, got ${allFeatures.length}. Collect more data first.`);
+          process.exit(1);
+        }
+
+        const { assembleDataset } = await import('./ml/dataset.js');
+        const dataset = assembleDataset(allFeatures, allLabels, {
+          labelHorizon: horizon as 1 | 5 | 20 | 60,
+          normalize: true,
+        });
+
+        // Spawn Python training
+        const { spawn } = await import('node:child_process');
+        const python = process.env.RADAR__ML_PYTHON ?? 'python3';
+
+        await new Promise<void>((resolve, reject) => {
+          const proc = spawn(python, [
+            'ml/train.py',
+            '--data', dataset.trainPath,
+            '--output', 'ml/models',
+            '--class-weight', 'custom',
+          ], { stdio: ['ignore', 'pipe', 'inherit'] });
+
+          proc.on('close', (code) => {
+            if (code === 0) {
+              console.error(`✅ Training complete. Dataset: ${dataset.trainPath}`);
+              resolve();
+            } else {
+              reject(new Error(`Training exited with code ${code}`));
+            }
+          });
+        });
+        process.exit(0);
+      }
+
+      if (action === 'predict') {
+        console.error('Running ML prediction...');
+        const symbols = opts.symbols ?? getTokenList().map((t: TokenDef) => t.sym).slice(0, 20);
+        const results = await batchPredict(store, symbols, opts.interval ?? '1h', {
+          minConfidence: 0,
+        });
+
+        if (results.length === 0) {
+          console.error('No predictions generated. Has a model been trained?');
+          process.exit(1);
+        }
+
+        // Display results
+        console.log('\n🤖 ML Predictions:\n');
+        for (const r of results) {
+          const dirIcon = r.direction === 1 ? '🟢' : r.direction === -1 ? '🔴' : '⚪';
+          const dirLabel = r.direction === 1 ? 'BUY' : r.direction === -1 ? 'SELL' : 'NEUTRAL';
+          console.log(`  ${dirIcon} ${r.symbol.padEnd(6)} → ${dirLabel.padEnd(8)} (${(r.confidence * 100).toFixed(0)}%)`);
+        }
+
+        // Persist to store
+        persistPredictions(store, results, 'cli-manual');
+        console.error(`\n✅ ${results.length} predictions persisted`);
+        process.exit(0);
+      }
+
+      console.error(`Unknown action: ${action}. Use train, predict, or status.`);
+      process.exit(1);
+    } catch (err) {
+      console.error(`[ERROR] ML command failed:`, err instanceof Error ? err.message : err);
       process.exit(1);
     }
   });

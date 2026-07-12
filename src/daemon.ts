@@ -29,6 +29,11 @@ import { logWarn } from './core/errors.js';
 import { Store } from './store/db.js';
 import { createRestHandler } from './api/rest.js';
 import { createWsHub } from './api/ws.js';
+import { batchPredict, persistPredictions } from './ml/predict.js';
+import { assembleDataset } from './ml/dataset.js';
+import { buildFeatures } from './ml/features.js';
+import { computeLabels } from './ml/labels.js';
+import * as crypto from 'node:crypto';
 
 // ── Config ──
 
@@ -51,6 +56,12 @@ let _scanCount = 0;
 let _errorCount = 0;
 let _store: Store | null = null;
 let _wsHub: ReturnType<typeof createWsHub> | null = null;
+
+// ── ML state (F8) ──
+let _lastMlTrain = 0;
+let _lastMlPredict = 0;
+let _mlModelId = '';
+let _mlNormalizationStats: import('./ml/types.js').NormalizationStats | null = null;
 
 // ── Warm-up functions ──
 
@@ -97,7 +108,175 @@ async function refreshAll(): Promise<void> {
   _lastRefresh = Date.now();
   _refreshCount++;
   _ready = true;
+
+  // F8: Auto-retrain ML model if enabled and due
+  if (_store) {
+    const config = loadConfig();
+    if (config.ml?.enabled) {
+      await autoRetrain(config);
+      await runMlPrediction(config);
+    }
+  }
+
   log.info(`Cache refresh complete (#${_refreshCount})`);
+}
+
+// ── ML Auto-Retrain (F8) ──
+
+const INTERVALS = ['15m', '1h', '4h', '1d'] as const;
+
+async function autoRetrain(config: ReturnType<typeof loadConfig>): Promise<void> {
+  const retrainHours = config.ml?.training?.retrainIntervalHours ?? 24;
+  const lookbackDays = config.ml?.training?.lookbackDays ?? 90;
+  const now = Date.now();
+
+  if (_lastMlTrain > 0 && (now - _lastMlTrain) < retrainHours * 3_600_000) {
+    return; // Not due yet
+  }
+
+  if (!_store) return;
+
+  log.info('ML auto-retrain starting...');
+  const start = Date.now();
+
+  try {
+    const symbols = config.ml?.training?.symbols ?? getTokenList().map(t => t.sym).slice(0, 20);
+
+    // Collect feature rows + labels from the store
+    const allFeatures: import('./ml/types.js').FeatureRow[] = [];
+    const allLabels: import('./ml/types.js').LabelRow[] = [];
+    const allKlinesBySymbol = new Map<string, number[]>();
+
+    for (const symbol of symbols) {
+      for (const interval of INTERVALS) {
+        const klines = _store.getKlines(symbol, interval, {
+          limit: 1000,
+          order: 'desc',
+        }).reverse();
+        if (klines.length < 60) continue;
+
+        const crossAsset = _store.getCrossAsset(200);
+        const funding = _store.getFunding(symbol, 100);
+
+        const features = buildFeatures(
+          symbol, interval, klines,
+          {
+            includeReturns: true, includeIndicators: true,
+            includeCrossAsset: true, includeFutures: true,
+            includeTemporal: true,
+          },
+          crossAsset, funding,
+        );
+
+        const closes = klines.map(k => k.close);
+        const labels = computeLabels(closes, interval, { classHorizon: 5 });
+
+        // Align labels with feature rows by open_time using a Map (avoids O(n²) findIndex)
+        const labelByTime = new Map<number, import('./ml/types.js').LabelRow>();
+        for (const lbl of labels) {
+          if (lbl.label_class !== null) {
+            labelByTime.set(lbl.open_time, lbl);
+          }
+        }
+
+        for (const f of features) {
+          const matched = labelByTime.get(f.open_time);
+          if (matched) {
+            allFeatures.push(f);
+            allLabels.push(matched);
+          }
+        }
+      }
+    }
+
+    if (allFeatures.length < 100) {
+      log.warn(`Auto-retrain skipped: only ${allFeatures.length} rows (need ≥100)`);
+      return;
+    }
+
+    // Assemble dataset and train
+    const dataset = assembleDataset(allFeatures, allLabels, {
+      labelHorizon: 5,
+      testSplit: 0.15,
+      valSplit: 0.15,
+      normalize: true,
+      outputPathPrefix: `data/ml/auto_${crypto.createHash('md5').update(String(now)).digest('hex').slice(0, 8)}`,
+    });
+
+    // Spawn Python training subprocess
+    const { spawn } = await import('node:child_process');
+    const python = process.env.RADAR__ML_PYTHON ?? 'python3';
+
+    await new Promise<void>((resolve, reject) => {
+      const proc = spawn(python, [
+        'ml/train.py',
+        '--data', dataset.trainPath,
+        '--output', 'ml/models',
+        '--class-weight', 'custom',
+        '--seed', '42',
+        '--verbose',
+      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+
+      let stdout = '';
+      let stderr = '';
+      proc.stdout.on('data', (d: Buffer) => { stdout += d.toString(); });
+      proc.stderr.on('data', (d: Buffer) => { stderr += d.toString(); });
+
+      proc.on('close', (code) => {
+        if (code === 0) {
+          // Log training stderr (may contain LightGBM progress, warnings)
+          if (stderr) {
+            const lines = stderr.trim().split('\n').filter(l => l);
+            for (const line of lines) {
+              log.debug(`[train] ${line}`);
+            }
+          }
+          // Parse metrics from stdout JSON
+          try {
+            const metrics = JSON.parse(stdout);
+            _mlModelId = metrics.model_path ?? 'unknown';
+            _lastMlTrain = Date.now();
+            _mlNormalizationStats = dataset.normalizationStats;
+            log.info(`ML auto-retrain complete: ${dataset.rowCount} rows, ${dataset.featureCount} features, accuracy=${metrics.accuracy?.toFixed(3)}`);
+          } catch {
+            log.info('ML auto-retrain complete (metrics parse skipped)');
+            _lastMlTrain = Date.now();
+          }
+          resolve();
+        } else {
+          log.warn(`ML auto-retrain failed with code ${code}`);
+          resolve(); // Non-fatal — don't crash daemon
+        }
+      });
+    });
+  } catch (err) {
+    log.warn('ML auto-retrain error', { error: String(err) });
+  }
+
+  log.info(`ML auto-retrain finished in ${Date.now() - start}ms`);
+}
+
+async function runMlPrediction(config: ReturnType<typeof loadConfig>): Promise<void> {
+  if (!_store || !_mlModelId) return;
+
+  const symbols = config.ml?.training?.symbols ?? getTokenList().map(t => t.sym).slice(0, 20);
+  const minConfidence = config.ml?.prediction?.minConfidence ?? 0.6;
+
+  try {
+    const results = await batchPredict(_store, symbols, '1h', {
+      modelPath: _mlModelId,
+      normalizationStats: _mlNormalizationStats ?? undefined,
+      minConfidence,
+    });
+
+    if (results.length > 0) {
+      persistPredictions(_store, results, _mlModelId);
+    }
+
+    _lastMlPredict = Date.now();
+  } catch (err) {
+    log.warn('ML prediction error', { error: String(err) });
+  }
 }
 
 // ── HTTP server ──

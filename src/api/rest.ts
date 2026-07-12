@@ -245,6 +245,31 @@ export function createRestHandler(store: Store): (req: IncomingMessage, url: URL
         return;
       }
 
+      // ── GET /api/predictions ──
+      if (pathname === '/api/predictions') {
+        const symbol = url.searchParams.get('symbol') ?? undefined;
+        const modelId = url.searchParams.get('model_id') ?? undefined;
+        const minConfidence = url.searchParams.get('minConfidence');
+        const limit = intParam(url.searchParams.get('limit'), 200);
+        sendJson(res, 200, store.getPredictions({
+          symbol,
+          model_id: modelId,
+          minConfidence: minConfidence !== null ? parseFloat(minConfidence) : undefined,
+          limit,
+        }));
+        return;
+      }
+
+      // ── GET /api/predictions/:symbol ──
+      {
+        const m = pathname.match(/^\/api\/predictions\/([^/]+)$/);
+        if (m) {
+          const limit = intParam(url.searchParams.get('limit'), 50);
+          sendJson(res, 200, store.getPredictions({ symbol: m[1]!, limit }));
+          return;
+        }
+      }
+
       // ── 404 fallback ──
       sendError(res, 404, 'NOT_FOUND', `Unknown route: ${method} ${pathname}`);
     } catch (err) {

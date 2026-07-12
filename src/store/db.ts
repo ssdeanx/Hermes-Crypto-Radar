@@ -6,10 +6,11 @@ import { createHash } from 'node:crypto';
 import { migrate } from './schema.js';
 import { DataError } from '../core/errors.js';
 import { logger } from '../core/logger.js';
+import { getGlobalCache } from '../core/cache.js';
 import type {
   KlineRow, TickerRow, SignalRow, NewsRow, PaperTradeRow,
   FundingRow, OIRow, LsRatioRow, LiquidationRow,
-  FearGreedRow, OrderBookRow, CrossAssetRow,
+  FearGreedRow, OrderBookRow, CrossAssetRow, PredictionRow,
 } from '../types.js';
 import type { EnrichedTicker, NewsMatch, TokenSignal } from '../types.js';
 
@@ -28,6 +29,8 @@ function oneRow<T>(stmt: Stmt, ...params: SQLInputValue[]): T | undefined {
 export class Store {
   private db: DatabaseSync;
   private stmts = new Map<string, Stmt>();
+  // F10: AsyncMutex — promise chain serializes concurrent writes
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(opts: { path: string; createIfMissing?: boolean }) {
     const dbPath = resolve(opts.path);
@@ -63,16 +66,22 @@ export class Store {
     return stmt;
   }
 
-  private runInTransaction(fn: () => void): void {
-    this.db.exec('BEGIN');
-    try {
-      fn();
-      this.db.exec('COMMIT');
-    } catch (err) {
-      this.db.exec('ROLLBACK');
-      log.error('Transaction rolled back', { error: String(err) });
-      throw err;
-    }
+  // F10: Serialize write transactions through a promise chain to prevent SQLITE_BUSY
+  private async withWrite<T>(fn: () => T): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      this.writeQueue = this.writeQueue.then(async () => {
+        this.db.exec('BEGIN');
+        try {
+          const result = fn();
+          this.db.exec('COMMIT');
+          resolve(result);
+        } catch (err) {
+          this.db.exec('ROLLBACK');
+          log.error('Write transaction rolled back', { error: String(err) });
+          reject(err);
+        }
+      });
+    });
   }
 
   // ── Klines ──
@@ -86,20 +95,27 @@ export class Store {
       const stmt = this.prep(sql);
       for (const r of rows) {
         const result = stmt.run(r.symbol, r.interval, r.open_time, r.open, r.high, r.low, r.close, r.volume, r.quote_volume, r.taker_buy_vol, r.taker_buy_quote_vol);
-        if (result.changes > 0) count++;
+        if (Number(result.changes) > 0) count++;
       }
     });
     return count;
   }
 
   getKlines(symbol: string, interval: string, opts?: { from?: number; to?: number; limit?: number; order?: 'asc' | 'desc' }): KlineRow[] {
+    // Use global cache for frequent reads (TTL: 60s, keyed on query params)
+    const cacheKey = `klines:${symbol}:${interval}:${opts?.from ?? ''}:${opts?.to ?? ''}:${opts?.limit ?? ''}:${opts?.order ?? 'asc'}`;
+    const cached = getGlobalCache().get<KlineRow[]>(cacheKey);
+    if (cached) return cached;
+
     let sql = 'SELECT * FROM klines WHERE symbol = ? AND interval = ?';
     const params: SQLInputValue[] = [symbol, interval];
     if (opts?.from !== undefined) { sql += ' AND open_time >= ?'; params.push(opts.from); }
     if (opts?.to !== undefined) { sql += ' AND open_time <= ?'; params.push(opts.to); }
     sql += ` ORDER BY open_time ${opts?.order === 'desc' ? 'DESC' : 'ASC'}`;
     if (opts?.limit !== undefined) { sql += ' LIMIT ?'; params.push(opts.limit); }
-    return allRows<KlineRow>(this.prep(sql), ...params);
+    const result = allRows<KlineRow>(this.prep(sql), ...params);
+    getGlobalCache().set(cacheKey, result, 60_000);
+    return result;
   }
 
   latestKlineTime(symbol: string, interval: string): number | null {
@@ -116,7 +132,7 @@ export class Store {
     return row?.c ?? 0;
   }
 
-  // ── Scan archive ──
+  // ── Scan archive (F1: snapshot+history split) ──
 
   persistRun(result: {
     tickers: EnrichedTicker[];
@@ -124,28 +140,43 @@ export class Store {
     signals: TokenSignal[];
   }): void {
     this.runInTransaction(() => {
-      const tickerStmt = this.prep(`INSERT OR IGNORE INTO tickers
+      // F1: Snapshot upsert — one row per symbol (latest state)
+      const tickerSnapshot = this.prep(`INSERT OR REPLACE INTO tickers
+        (symbol, ts_utc, price, price_change_pct, volume, quote_volume,
+         rsi, macd_hist, bb_width, atr_pct, adx, regime, composite_score)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      // F1: History insert — append-only time series
+      const tickerHistory = this.prep(`INSERT OR IGNORE INTO ticker_history
         (symbol, ts_utc, price, price_change_pct, volume, quote_volume,
          rsi, macd_hist, bb_width, atr_pct, adx, regime, composite_score)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       for (const t of result.tickers) {
-        tickerStmt.run(
+        const params: SQLInputValue[] = [
           t.symbol, t.tsUtc, t.lastPrice, t.priceChangePercent,
           t.volume, t.quoteVolume,
           t.rsi ?? null, t.macdHistogram ?? null, t.bbWidth ?? null, t.atrPct ?? null,
           t.adx ?? null, t.regime ?? null, t.compositeScore ?? null,
-        );
+        ];
+        tickerSnapshot.run(...params);
+        tickerHistory.run(...params);
       }
 
-      const signalStmt = this.prep(`INSERT OR IGNORE INTO signals
+      // F1: Signal snapshot upsert
+      const signalSnapshot = this.prep(`INSERT OR REPLACE INTO signals
+        (symbol, ts_utc, composite_score, direction, momentum_score, mean_reversion_score, trend_following_score, regime, adx)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      // F1: Signal history insert
+      const signalHistory = this.prep(`INSERT OR IGNORE INTO signal_history
         (symbol, ts_utc, composite_score, direction, momentum_score, mean_reversion_score, trend_following_score, regime, adx)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`);
       for (const s of result.signals) {
-        signalStmt.run(
+        const params: SQLInputValue[] = [
           s.symbol, s.timestamp, s.compositeScore, s.alerts?.[0] ?? null,
           s.momentumScore ?? null, s.technicalScore ?? null, s.newsScore ?? null,
           s.regime ?? null, s.adx ?? null,
-        );
+        ];
+        signalSnapshot.run(...params);
+        signalHistory.run(...params);
       }
 
       const newsStmt = this.prep(`INSERT OR IGNORE INTO news
@@ -158,11 +189,24 @@ export class Store {
     });
   }
 
+  /** Apply data retention policy: delete history rows older than N days */
+  enforceRetention(days: number): void {
+    if (days <= 0) return;
+    this.runInTransaction(() => {
+      const cutoff = new Date(Date.now() - days * 86400_000).toISOString();
+      this.prep("DELETE FROM ticker_history WHERE ts_utc < ?").run(cutoff);
+      this.prep("DELETE FROM signal_history WHERE ts_utc < ?").run(cutoff);
+      const oldTs = Date.now() - days * 86400_000;
+      this.prep("DELETE FROM predictions WHERE ts < ?").run(String(oldTs));
+      log.info(`Retention enforced: deleted rows older than ${days} days`);
+    });
+  }
+
   getLatestTickers(filter?: { symbol?: string; chain?: string; limit?: number }): TickerRow[] {
     let sql = 'SELECT * FROM tickers';
     const params: SQLInputValue[] = [];
     if (filter?.symbol) { sql += ' WHERE symbol = ?'; params.push(filter.symbol); }
-    sql += ' ORDER BY ts_utc DESC';
+    sql += ' ORDER BY symbol ASC';
     if (filter?.limit !== undefined) { sql += ' LIMIT ?'; params.push(filter.limit); }
     else { sql += ' LIMIT 200'; params.push(200); }
     return allRows<TickerRow>(this.prep(sql), ...params);
@@ -177,6 +221,26 @@ export class Store {
     if (filter?.limit !== undefined) { sql += ' LIMIT ?'; params.push(filter.limit); }
     else { sql += ' LIMIT 200'; params.push(200); }
     return allRows<SignalRow>(this.prep(sql), ...params);
+  }
+
+  /** Get signal history for a symbol (time series) */
+  getSignalHistory(symbol: string, opts?: { from?: string; limit?: number; order?: 'asc' | 'desc' }): SignalRow[] {
+    let sql = 'SELECT * FROM signal_history WHERE symbol = ?';
+    const params: SQLInputValue[] = [symbol];
+    if (opts?.from) { sql += ' AND ts_utc >= ?'; params.push(opts.from); }
+    sql += ` ORDER BY ts_utc ${opts?.order === 'asc' ? 'ASC' : 'DESC'}`;
+    if (opts?.limit !== undefined) { sql += ' LIMIT ?'; params.push(opts.limit); }
+    return allRows<SignalRow>(this.prep(sql), ...params);
+  }
+
+  /** Get ticker history for a symbol (time series) */
+  getTickerHistory(symbol: string, opts?: { from?: string; limit?: number; order?: 'asc' | 'desc' }): TickerRow[] {
+    let sql = 'SELECT * FROM ticker_history WHERE symbol = ?';
+    const params: SQLInputValue[] = [symbol];
+    if (opts?.from) { sql += ' AND ts_utc >= ?'; params.push(opts.from); }
+    sql += ` ORDER BY ts_utc ${opts?.order === 'asc' ? 'ASC' : 'DESC'}`;
+    if (opts?.limit !== undefined) { sql += ' LIMIT ?'; params.push(opts.limit); }
+    return allRows<TickerRow>(this.prep(sql), ...params);
   }
 
   getNews(filter?: { symbol?: string; limit?: number }): NewsRow[] {
@@ -213,7 +277,7 @@ export class Store {
     let count = 0;
     this.runInTransaction(() => {
       const stmt = this.prep(sql);
-      for (const r of rows) { if (stmt.run(r.symbol, r.ts, r.rate).changes > 0) count++; }
+      for (const r of rows) { if (Number(stmt.run(r.symbol, r.ts, r.rate).changes) > 0) count++; }
     });
     return count;
   }
@@ -224,7 +288,7 @@ export class Store {
     let count = 0;
     this.runInTransaction(() => {
       const stmt = this.prep(sql);
-      for (const r of rows) { if (stmt.run(r.symbol, r.ts, r.open_interest).changes > 0) count++; }
+      for (const r of rows) { if (Number(stmt.run(r.symbol, r.ts, r.open_interest).changes) > 0) count++; }
     });
     return count;
   }
@@ -235,7 +299,7 @@ export class Store {
     let count = 0;
     this.runInTransaction(() => {
       const stmt = this.prep(sql);
-      for (const r of rows) { if (stmt.run(r.symbol, r.ts, r.long_account, r.short_account, r.long_position, r.short_position).changes > 0) count++; }
+      for (const r of rows) { if (Number(stmt.run(r.symbol, r.ts, r.long_account, r.short_account, r.long_position, r.short_position).changes) > 0) count++; }
     });
     return count;
   }
@@ -246,7 +310,7 @@ export class Store {
     let count = 0;
     this.runInTransaction(() => {
       const stmt = this.prep(sql);
-      for (const r of rows) { if (stmt.run(r.id, r.symbol, r.ts, r.side, r.price, r.qty, r.usd).changes > 0) count++; }
+      for (const r of rows) { if (Number(stmt.run(r.id, r.symbol, r.ts, r.side, r.price, r.qty, r.usd).changes) > 0) count++; }
     });
     return count;
   }
@@ -297,16 +361,49 @@ export class Store {
   }
 
   getCrossAsset(limit = 50): CrossAssetRow[] {
-    return allRows<CrossAssetRow>(this.prep('SELECT * FROM cross_asset ORDER BY ts DESC LIMIT ?'), limit);
+    const cacheKey = `cross_asset:${limit}`;
+    const cached = getGlobalCache().get<CrossAssetRow[]>(cacheKey);
+    if (cached) return cached;
+    const result = allRows<CrossAssetRow>(this.prep('SELECT * FROM cross_asset ORDER BY ts DESC LIMIT ?'), limit);
+    getGlobalCache().set(cacheKey, result, 60_000);
+    return result;
+  }
+
+  // ── Predictions (F4) ──
+
+  upsertPrediction(row: PredictionRow): void {
+    this.prep(`INSERT OR REPLACE INTO predictions
+      (id, symbol, ts, direction, confidence, model_id, horizon, ml_score, features_hash)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(row.id, row.symbol, row.ts, row.direction, row.confidence, row.model_id, row.horizon, row.ml_score ?? null, row.features_hash ?? null);
+  }
+
+  getPredictions(filter?: { symbol?: string; model_id?: string; limit?: number; minConfidence?: number }): PredictionRow[] {
+    let sql = 'SELECT * FROM predictions WHERE 1=1';
+    const params: SQLInputValue[] = [];
+    if (filter?.symbol) { sql += ' AND symbol = ?'; params.push(filter.symbol); }
+    if (filter?.model_id) { sql += ' AND model_id = ?'; params.push(filter.model_id); }
+    if (filter?.minConfidence !== undefined) { sql += ' AND confidence >= ?'; params.push(filter.minConfidence); }
+    sql += ' ORDER BY ts DESC';
+    if (filter?.limit !== undefined) { sql += ' LIMIT ?'; params.push(filter.limit); }
+    else { sql += ' LIMIT 200'; params.push(200); }
+    return allRows<PredictionRow>(this.prep(sql), ...params);
+  }
+
+  /** Delete old predictions */
+  prunePredictions(olderThanMs: number): number {
+    const cutoff = olderThanMs.toString();
+    const result = this.prep("DELETE FROM predictions WHERE CAST(ts AS INTEGER) < ?").run(cutoff);
+    return Number(result.changes);
   }
 
   // ── Meta ──
 
   stats(): Record<string, number> {
     const tables = [
-      'klines', 'tickers', 'signals', 'news', 'paper_trades',
+      'klines', 'tickers', 'ticker_history', 'signals', 'signal_history', 'news', 'paper_trades',
       'futures_funding', 'futures_oi', 'futures_ls_ratio', 'liquidations',
-      'fear_greed', 'orderbook', 'cross_asset',
+      'fear_greed', 'orderbook', 'cross_asset', 'predictions',
     ];
     const result: Record<string, number> = {};
     for (const t of tables) {
@@ -314,6 +411,20 @@ export class Store {
       result[t] = row?.c ?? 0;
     }
     return result;
+  }
+
+  // ── Internal helpers ──
+
+  private runInTransaction(fn: () => void): void {
+    this.db.exec('BEGIN');
+    try {
+      fn();
+      this.db.exec('COMMIT');
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      log.error('Transaction rolled back', { error: String(err) });
+      throw err;
+    }
   }
 }
 
