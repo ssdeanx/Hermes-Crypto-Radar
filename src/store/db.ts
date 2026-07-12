@@ -66,6 +66,26 @@ export class Store {
     return stmt;
   }
 
+  /** Escape a single-quoted string safely for inline SQL */
+  private static esc(val: unknown): string {
+    if (val === null || val === undefined) return 'NULL';
+    if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
+    if (typeof val === 'number' && Number.isFinite(val)) return String(val);
+    if (typeof val === 'boolean') return val ? '1' : '0';
+    return `'${String(val)}'`;
+  }
+
+  /**
+   * Build a SQL query string with inline-escaped values and execute it
+   * via prepared statement (no binding — avoids node:sqlite ? binding bugs).
+   * Values are escaped via Store.esc() (single-quote doubling for strings, direct for numbers).
+   */
+  private queryAll<T>(sql: string, params: SQLInputValue[]): T[] {
+    const paramIdx = { current: 0 };
+    const built = sql.replace(/\?/g, () => Store.esc(params[paramIdx.current++]));
+    return this.db.prepare(built).all() as unknown as T[];
+  }
+
   // F10: Serialize write transactions through a promise chain to prevent SQLITE_BUSY
   private async withWrite<T>(fn: () => T): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -209,7 +229,7 @@ export class Store {
     sql += ' ORDER BY symbol ASC';
     if (filter?.limit !== undefined) { sql += ' LIMIT ?'; params.push(filter.limit); }
     else { sql += ' LIMIT 200'; params.push(200); }
-    return allRows<TickerRow>(this.prep(sql), ...params);
+    return this.queryAll<TickerRow>(sql, params);
   }
 
   getSignals(filter?: { symbol?: string; minScore?: number; direction?: string; limit?: number }): SignalRow[] {
@@ -221,7 +241,7 @@ export class Store {
     sql += ' ORDER BY composite_score DESC';
     if (filter?.limit !== undefined) { sql += ' LIMIT ?'; params.push(filter.limit); }
     else { sql += ' LIMIT 200'; params.push(200); }
-    return allRows<SignalRow>(this.prep(sql), ...params);
+    return this.queryAll<SignalRow>(sql, params);
   }
 
   /** Get signal history for a symbol (time series) */
@@ -388,7 +408,7 @@ export class Store {
     sql += ' ORDER BY ts DESC';
     if (filter?.limit !== undefined) { sql += ' LIMIT ?'; params.push(filter.limit); }
     else { sql += ' LIMIT 200'; params.push(200); }
-    return allRows<PredictionRow>(this.prep(sql), ...params);
+    return this.queryAll<PredictionRow>(sql, params);
   }
 
   /** Delete old predictions */

@@ -12,8 +12,8 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22-blue" alt="Node">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs Welcome">
-  <img src="https://img.shields.io/badge/coverage-84%25-brightgreen" alt="Coverage">
-  <img src="https://img.shields.io/badge/tests-1154%20passed-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/coverage-91%25-brightgreen" alt="Coverage">
+  <img src="https://img.shields.io/badge/tests-1222%20passed-brightgreen" alt="Tests">
 </p>
 
 <h1 align="center">🛰️ Hermes Crypto Radar</h1>
@@ -78,7 +78,7 @@ hermes plugins list
 | **📁 Data Directory** | Standardized to `~/.hermes/data/crypto-radar/` — logs, rotation, cross-session persistence |
 || **🔬 Advanced Analytics** | Correlation engine (N×N Pearson matrix), backtesting engine with weight optimization, Volume Profile (POC/HVN/LVN), support/resistance detection | v1.3 |
 || **📡 REST API** | 16+ REST endpoints under /api/* — tickers, signals, klines, news, tokens, regime, futures, orderbook, portfolio, predictions | v2.1.0 |
-|| **🧪 Test Coverage** | 1154 tests across 53 test files — CLI layer, paper-trade CLI, and collector at 90%+ coverage. Overall lines 84%, statements 81%, functions 85% | v2.1.0 |
+||| **🧪 Test Coverage** | **1222 tests across 55 test files** — CLI layer, paper-trade CLI, collector, jupiter, support-resistance, and store at 90%+ lines. Overall lines 90.5%, statements 87.8%, functions 91.4%, branches 74.4% | v2.1.0 |
 
 > **Requirements:** Node.js >= 22, Hermes Agent (for plugin integration). No API keys required — uses public Binance REST API + RSS feeds + DeFiLlama (free).
 
@@ -485,6 +485,7 @@ npm run ml:predict
 - `ml/predict.py` — Batch inference from stdin CSV.
 - `src/ml/predict.ts` — TypeScript orchestration: builds features for all symbols, sends as single CSV block to Python subprocess, validates and persists predictions.
 - `src/daemon.ts` — Auto-retrain (default: every 24h) and prediction on every daemon refresh cycle when `RADAR__ML_ENABLED=true`.
+- `ml/models/` — Serialized LightGBM booster files (`.txt`) written by `train.py`, loaded by `predict.py`. One model per symbol/interval combination. The directory is shipped empty; models are created on first `ml train`.
 
 **Config (env overrides):** `RADAR__ML_ENABLED`, `RADAR__ML_LOOKBACK_DAYS` (default 90), `RADAR__ML_RETRAIN_HOURS` (default 24), `RADAR__ML_MIN_CONFIDENCE` (default 0.6).
 

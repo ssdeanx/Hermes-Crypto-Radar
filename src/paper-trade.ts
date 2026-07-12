@@ -329,7 +329,7 @@ export class PaperTrader {
    */
   async buy(symbol: string, amount: number, reason?: string): Promise<PaperTrade | null> {
     const upperSym = symbol.toUpperCase();
-    if (amount <= 0) return null;
+    if (!Number.isFinite(amount) || amount <= 0) return null;
 
     const token = this.validateToken(upperSym);
     if (!token) return null;
@@ -338,6 +338,7 @@ export class PaperTrader {
     if (price === null || price <= 0) return null;
 
     const totalCost = amount * price;
+    if (!Number.isFinite(totalCost) || totalCost <= 0) return null;
 
     if (totalCost > this.state.cash) {
       return null; // insufficient funds
@@ -600,16 +601,22 @@ export class PaperTrader {
       }
     }
 
-    // Sharpe-like ratio: using return per trade vs std dev
+    // Sharpe ratio using percentage returns (not raw USD P&L)
     let sharpeRatio = 0;
-    const returns = sellTrades.map(t => t.pnl ?? 0);
+    const returns = sellTrades.map(t => {
+      // Compute % return: pnl / costBasis * 100
+      // costBasis = total - pnl (since pnl = totalValue - costBasis)
+      const total = t.total ?? 0;
+      const pnl = t.pnl ?? 0;
+      const costBasis = total - pnl;
+      return costBasis > 0 && Number.isFinite(costBasis) ? (pnl / costBasis) * 100 : 0;
+    });
     if (returns.length >= 2) {
       const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
       const variance = returns.reduce((sum, r) => sum + (r - mean) ** 2, 0) / (returns.length - 1);
       const stdDev = Math.sqrt(variance);
       if (stdDev > 0) {
-        // Annualized approximation: sqrt(365) for daily, but we use trade-level
-        // sqrt(number of trades) since we have per-trade returns
+        // Sharpe ratio using percentage returns with sqrt(n) adjustment
         sharpeRatio = (mean / stdDev) * Math.sqrt(returns.length);
       }
     }
@@ -773,6 +780,7 @@ export class PaperTrader {
         if (alloc <= 0) continue;
 
         const amount = alloc / rec.currentPrice;
+        if (!Number.isFinite(amount) || amount <= 0) continue;
         const trade = await this.buy(rec.symbol, amount, rec.reason);
         if (trade) executed.push(trade);
       } else if (rec.action === 'sell') {

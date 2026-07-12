@@ -250,6 +250,7 @@ function findSignalKlineIndex(
       }
     }
     // Fallback: use the last kline
+    logger.debug(`Signal for ${signal.symbol}: lastPrice ${signal.lastPrice} didn't match any close within 0.5%% — matching to last kline (idx ${klines.length - 1})`);
     return klines.length - 1;
   }
 
@@ -282,8 +283,9 @@ function computeSharpe(returns: number[]): number {
 
   if (stdDev === 0) return 0;
 
-  // Annualized approximation: sqrt(365 * 24 / horizon) but we use
-  // per-candle returns, so just return the basic ratio
+  // Sharpe ratio = (mean / stdDev) * sqrt(n)
+  // Uses per-candle returns with sqrt(n) adjustment (number of signals, NOT annualized).
+  // Despite the old comment, no sqrt(365*24/horizon) factor is applied.
   return parseFloat(((mean / stdDev) * Math.sqrt(n)).toFixed(4));
 }
 

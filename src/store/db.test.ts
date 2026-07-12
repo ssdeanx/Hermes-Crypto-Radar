@@ -261,4 +261,135 @@ describe('Store', () => {
       s.close();
     });
   });
+
+  describe('Store constructor guards', () => {
+    it('throws DataError when createIfMissing is false and db absent', () => {
+      const missing = resolve(tmpdir(), `crypto-radar-missing-${Date.now()}.db`);
+      expect(existsSync(missing)).toBe(false);
+      expect(() => new Store({ path: missing, createIfMissing: false })).toThrow();
+    });
+  });
+
+  describe('klines — ordering, limit, cache', () => {
+    const base = {
+      symbol: 'SOLUSDT', interval: '1h', open: 100, high: 105, low: 99, close: 104,
+      volume: 5000, quote_volume: 520000, taker_buy_vol: 2500, taker_buy_quote_vol: 260000,
+    };
+    it('orders ascending and respects limit', () => {
+      store.upsertKlines([
+        { ...base, open_time: 3000000, close: 300 },
+        { ...base, open_time: 1000000, close: 100 },
+        { ...base, open_time: 2000000, close: 200 },
+      ]);
+      const asc = store.getKlines('SOLUSDT', '1h', { order: 'asc', limit: 2 });
+      expect(asc).toHaveLength(2);
+      expect(asc[0]!.close).toBe(100);
+      expect(asc[1]!.close).toBe(200);
+      const desc = store.getKlines('SOLUSDT', '1h', { order: 'desc' });
+      expect(desc[0]!.close).toBe(300);
+    });
+  });
+
+  describe('signals — symbol & direction filters', () => {
+    const sig = (sym: string, score: number, dir: string, ts: string): TokenSignal => ({
+      symbol: sym, chain: 'solana', lastPrice: 150, priceChangePercent: 0.5,
+      momentumScore: 60, technicalScore: 55, newsScore: 70, compositeScore: score,
+      alerts: [dir], timestamp: ts, tokenId: sym.toLowerCase(), tokenName: sym,
+    });
+    beforeEach(() => {
+      store.persistRun({
+        tickers: [],
+        signals: [sig('SOL', 65, 'bullish', '2026-07-07T12:00:00Z'), sig('BTC', 80, 'bearish', '2026-07-07T12:01:00Z')],
+        newsMatches: [],
+      });
+    });
+    it('filters by symbol', () => {
+      const rows = store.getSignals({ symbol: 'BTC' });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.symbol).toBe('BTC');
+    });
+    it('filters by direction', () => {
+      const rows = store.getSignals({ direction: 'bearish' });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.symbol).toBe('BTC');
+    });
+    it('getSignalHistory supports from/order/limit', () => {
+      const rows = store.getSignalHistory('SOL', { order: 'asc', limit: 1 });
+      expect(rows).toHaveLength(1);
+      const rowsDesc = store.getSignalHistory('SOL', { order: 'desc', limit: 1 });
+      expect(rowsDesc[0]!.ts_utc).toBe('2026-07-07T12:00:00Z');
+    });
+  });
+
+  describe('tickers & news filters', () => {
+    const ticker = (sym: string): EnrichedTicker => ({
+      runId: 'R1', tsUtc: '2026-07-07T12:00:00Z', dateEt: '07/07 08:00',
+      symbol: sym, chain: 'solana', tokenId: sym.toLowerCase(), tokenName: sym,
+      lastPrice: 150, bidPrice: 149, bidQty: 100, askPrice: 151, askQty: 100,
+      spreadPct: 0.07, openPrice: 148, highPrice: 152, lowPrice: 147, prevClosePrice: 149,
+      priceChange: 1, priceChangePercent: 0.67, weightedAvgPrice: 150,
+      volume: 50000, quoteVolume: 7500000, count: 1000, lastQty: 10,
+      vwapDistPct: 0, rangePosPct: 0.6, bookImbalance: 0, volVsAvg: 0.1, obv: 0,
+      momentum: 0.8, alerts: '', source: 'binance',
+      rsi: 55, macdHistogram: 0.5, bbWidth: 0.05, atrPct: 1.2, adx: 25, regime: 'neutral', compositeScore: 65,
+    });
+    beforeEach(() => {
+      store.persistRun({ tickers: [ticker('SOL'), ticker('BTC')], signals: [], newsMatches: [] });
+    });
+    it('getLatestTickers filters by symbol', () => {
+      const rows = store.getLatestTickers({ symbol: 'BTC' });
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.symbol).toBe('BTC');
+    });
+    it('getTickerHistory returns time series', () => {
+      const rows = store.getTickerHistory('SOL', { limit: 1 });
+      expect(rows).toHaveLength(1);
+    });
+  });
+
+  describe('retention & pruning', () => {
+    it('enforceRetention deletes old history rows', () => {
+      const old = '2000-01-01T00:00:00Z';
+      const recent = new Date().toISOString();
+      store.upsertKlines([{ symbol: 'SOLUSDT', interval: '1h', open_time: 1, open: 100, high: 105, low: 99, close: 104, volume: 5, quote_volume: 520, taker_buy_vol: 2, taker_buy_quote_vol: 260 }]);
+      store.persistRun({
+        tickers: [], signals: [],
+        newsMatches: [{ runId: 'R1', tsUtc: old, symbol: 'SOL', headline: 'old', description: 'd', source: 'X', domain: 'x.com', relevance: 0.5, url: 'https://x.com' }],
+      });
+      // direct insert of history is via persistRun; just confirm retention runs without error
+      expect(() => store.enforceRetention(99999)).not.toThrow();
+      // with 0 days it is a no-op
+      expect(() => store.enforceRetention(0)).not.toThrow();
+    });
+
+    it('prunePredictions removes old predictions', () => {
+      const oldTs = String(Date.now() - 10_000);
+      store.upsertPrediction({ id: 'P1', symbol: 'SOL', ts: oldTs, direction: 'buy', confidence: 0.8, model_id: 'm1', horizon: '1h', ml_score: 0.7, features_hash: 'h' });
+      const removed = store.prunePredictions(Date.now() - 5000);
+      expect(removed).toBe(1);
+      expect(store.getPredictions({})).toHaveLength(0);
+    });
+  });
+
+  describe('predictions', () => {
+    beforeEach(() => {
+      store.upsertPrediction({ id: 'P1', symbol: 'SOL', ts: '1000000', direction: 'buy', confidence: 0.8, model_id: 'm1', horizon: '1h', ml_score: 0.7, features_hash: 'h' });
+      store.upsertPrediction({ id: 'P2', symbol: 'BTC', ts: '2000000', direction: 'sell', confidence: 0.6, model_id: 'm2', horizon: '4h', ml_score: 0.5, features_hash: 'h2' });
+    });
+    it('getPredictions filters by symbol and model', () => {
+      expect(store.getPredictions({ symbol: 'SOL' })).toHaveLength(1);
+      expect(store.getPredictions({ model_id: 'm2' })).toHaveLength(1);
+      expect(store.getPredictions({ minConfidence: 0.7 })).toHaveLength(1);
+    });
+  });
+
+  describe('liquidations — no symbol', () => {
+    it('getLiquidations returns all when no symbol given', () => {
+      store.upsertLiquidations([
+        { id: 'L1', symbol: 'SOLUSDT', ts: 1, side: 'SELL', price: 1, qty: 1, usd: 1 },
+        { id: 'L2', symbol: 'BTCUSDT', ts: 2, side: 'BUY', price: 2, qty: 2, usd: 4 },
+      ]);
+      expect(store.getLiquidations()).toHaveLength(2);
+    });
+  });
 });

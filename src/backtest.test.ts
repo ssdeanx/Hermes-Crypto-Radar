@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import { describe, it, expect } from 'vitest';
-import { runBacktest, formatBacktest, winRate, overallWinRate, formatSingleBacktest } from './backtest.js';
+import { runBacktest, formatBacktest, winRate, overallWinRate, formatSingleBacktest, optimizeWeights, formatOptimization } from './backtest.js';
 import type { Kline } from './types.js';
 import type { AggregatedSignal, SignalDirection } from './analysis/strategies.js';
 
@@ -278,5 +278,96 @@ describe('formatSingleBacktest', () => {
     expect(formatted).toContain('Win Rate');
     expect(formatted).toContain('Total Ret');
     expect(formatted).toContain('Sharpe');
+  });
+});
+
+// ── Regression: optimizeWeights (F weight optimization) ──
+
+describe('optimizeWeights', () => {
+  // Build deterministic signals with individual strategy breakdowns
+  function stratSig(symbol: string, direction: 'buy' | 'sell', conf: number, lastPrice: number): AggregatedSignal {
+    return {
+      symbol,
+      tokenName: symbol,
+      chain: 'solana',
+      lastPrice,
+      priceChangePercent: 0,
+      direction,
+      compositeConfidence: conf,
+      signals: [
+        { strategy: 'momentum', direction, confidence: conf, reason: 'm', indicators: {}, timeframe: '1h' },
+        { strategy: 'mean-reversion', direction, confidence: conf, reason: 'mr', indicators: {}, timeframe: '1h' },
+        { strategy: 'trend-following', direction, confidence: conf, reason: 'tf', indicators: {}, timeframe: '1h' },
+      ],
+      alerts: [],
+      timestamp: new Date(startTime).toISOString(),
+    };
+  }
+
+  function klinesUp(sym: string, base: number, n = 5): Kline[] {
+    // ascending closes so 'buy' is a win
+    return Array.from({ length: n }, (_, i) => makeKline(base + i * 2, startTime + i * 3600000));
+  }
+
+  it('returns defaults when no strategy-breakdown signals', () => {
+    const signals = [makeSignal('SOL', 'buy', 0.8, { signals: [] })];
+    const klines = makeKlines([100, 102, 104], startTime);
+    const klinesBySymbol = new Map<string, Kline[]>([['SOL', klines]]);
+    const result = optimizeWeights(signals, klinesBySymbol);
+    expect(result.combinationsTested).toBe(0);
+    expect(result.bestWeights).toEqual({ momentum: 0.4, meanReversion: 0.2, trendFollowing: 0.4 });
+    expect(result.defaultPerformance).toBeNull();
+  });
+
+  it('tests weight combinations and returns improvement metrics', () => {
+    const signals = [
+      stratSig('SOL', 'buy', 0.9, 100),
+      stratSig('BTC', 'buy', 0.9, 100),
+    ];
+    const klinesBySymbol = new Map<string, Kline[]>([
+      ['SOL', klinesUp('SOL', 100)],
+      ['BTC', klinesUp('BTC', 100)],
+    ]);
+    const result = optimizeWeights(signals, klinesBySymbol);
+    expect(result.combinationsTested).toBeGreaterThan(0);
+    expect(result.bestWeights.momentum + result.bestWeights.meanReversion + result.bestWeights.trendFollowing).toBeCloseTo(1, 5);
+    expect(result.performance).toBeDefined();
+    expect(result.defaultPerformance).toBeDefined();
+    expect(result.improvement).toBeDefined();
+    expect(result.timestamp).toBeTruthy();
+  });
+
+  it('bestWeights respect minWeight floor', () => {
+    const signals = [stratSig('SOL', 'buy', 0.9, 100)];
+    const klinesBySymbol = new Map<string, Kline[]>([['SOL', klinesUp('SOL', 100)]]);
+    const result = optimizeWeights(signals, klinesBySymbol, { step: 0.2, minWeight: 0.2 });
+    expect(result.bestWeights.momentum).toBeGreaterThanOrEqual(0.2 - 1e-9);
+    expect(result.bestWeights.meanReversion).toBeGreaterThanOrEqual(0.2 - 1e-9);
+    expect(result.bestWeights.trendFollowing).toBeGreaterThanOrEqual(0.2 - 1e-9);
+  });
+
+  it('formatOptimization renders without throwing', () => {
+    const signals = [stratSig('SOL', 'buy', 0.9, 100)];
+    const klinesBySymbol = new Map<string, Kline[]>([['SOL', klinesUp('SOL', 100)]]);
+    const result = optimizeWeights(signals, klinesBySymbol);
+    const out = formatOptimization(result);
+    expect(typeof out).toBe('string');
+    expect(out).toContain('Weight Optimization');
+  });
+});
+
+// ── Regression: kline fallback (F6) ──
+
+describe('kline fallback behavior', () => {
+  it('handles signal whose lastPrice does not match any kline (uses fallback, no crash)', () => {
+    const signals: AggregatedSignal[] = [
+      makeSignal('SOL', 'buy', 0.8, { lastPrice: 9999 }), // way off from kline prices
+    ];
+    const klines = makeKlines([100, 102, 104], startTime);
+    const klinesBySymbol = new Map<string, Kline[]>([['SOL', klines]]);
+    // Should not throw — fallback to last kline
+    const result = runBacktest(signals, klinesBySymbol);
+    expect(result.bySymbol.has('SOL')).toBe(true);
+    expect(Number.isFinite(result.totals.sharpeRatio)).toBe(true);
   });
 });

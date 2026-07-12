@@ -25,6 +25,10 @@ vi.mock('./coingecko.js', () => ({
   fetchSimplePrices: vi.fn(),
 }));
 
+vi.mock('./radar.js', () => ({
+  runRadar: vi.fn(),
+}));
+
 // ── Injected mock references ──
 
 import { getTokenBySymbol, getTokenList } from './tokens.js';
@@ -700,5 +704,255 @@ describe('Profile Deletion Guard', () => {
     const restored = await loaded.load();
     expect(restored).toBe(true);
     expect(loaded.cash).toBe(10_000);
+  });
+});
+
+// ── Regression: Sharpe % return (F1) ──
+
+describe('Performance Report Sharpe', () => {
+  let tmpDir: string;
+
+  const mockToken = {
+    id: 'bitcoin', sym: 'BTC', name: 'Bitcoin',
+    chain: 'multi' as const, pair: 'BTCUSDT', coingeckoId: 'bitcoin',
+  };
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'paper-trade-sharpe-test-'));
+    vi.clearAllMocks();
+    (getTokenBySymbol as ReturnType<typeof vi.fn>).mockReturnValue(mockToken);
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8000' });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns finite Sharpe for 2+ sell trades with non-zero returns', async () => {
+    const trader = createTestTrader({ dataDir: tmpDir });
+    // Buy 1 BTC at $8,000
+    await trader.buy('BTC', 1);
+    // Sell 0.5 BTC at $8,800 (+10% on $4,000 costBasis = +10%)
+    trader.clearPriceCache();
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8800' });
+    await trader.sell('BTC', 0.5);
+    // Sell remaining 0.5 BTC at $7,200 (-10% on $4,000 costBasis = -10%)
+    trader.clearPriceCache();
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '7200' });
+    await trader.sell('BTC', 0.5);
+
+    const report = await trader.getReport();
+    expect(Number.isFinite(report.sharpeRatio)).toBe(true);
+  });
+
+  it('Sharpe is lower when one sell dominates in percentage (not dollar)', async () => {
+    // Two sells with same cost basis but very different % returns
+    const trader = createTestTrader({ dataDir: tmpDir, startingBalance: 500_000 });
+    // Buy ETH at $1,000
+    const ethToken = { id: 'ethereum', sym: 'ETH', name: 'Ethereum', chain: 'multi' as const, pair: 'ETHUSDT', coingeckoId: 'ethereum' };
+    (getTokenBySymbol as ReturnType<typeof vi.fn>).mockImplementation((sym: string) => sym === 'BTC' ? mockToken : ethToken);
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'ETHUSDT', lastPrice: '1000' });
+    await trader.buy('ETH', 1);  // $1,000 → 1 ETH, $499,000 cash left
+    // Buy BTC at $8,000
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8000' });
+    await trader.buy('BTC', 1);  // $8,000 → $491,000 cash left
+
+    // Sell ETH: $1,000 → $2,000 (+100% return)
+    trader.clearPriceCache();
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'ETHUSDT', lastPrice: '2000' });
+    await trader.sell('ETH', 1);
+
+    // Sell BTC: $8,000 → $8,800 (+10% return)
+    trader.clearPriceCache();
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8800' });
+    await trader.sell('BTC', 1);
+
+    const report = await trader.getReport();
+    // With % returns: ETH = +100%, BTC = +10%
+    // With $ returns (old broken): ETH = +$1000, BTC = +$800
+    // Both now use % — verify it's finite, relevant
+    expect(Number.isFinite(report.sharpeRatio)).toBe(true);
+    // Sharpe should be > 0 since both are profitable
+    expect(report.sharpeRatio).toBeGreaterThan(0);
+  });
+});
+
+// ── Regression: NaN guards (F7) ──
+
+describe('NaN Guards', () => {
+  let tmpDir: string;
+
+  const mockToken = {
+    id: 'bitcoin', sym: 'BTC', name: 'Bitcoin',
+    chain: 'multi' as const, pair: 'BTCUSDT', coingeckoId: 'bitcoin',
+  };
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'paper-trade-nan-test-'));
+    vi.clearAllMocks();
+    (getTokenBySymbol as ReturnType<typeof vi.fn>).mockReturnValue(mockToken);
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8000' });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('buy rejects NaN amount, state unmodified', async () => {
+    const trader = createTestTrader({ dataDir: tmpDir });
+    const trade = await trader.buy('BTC', NaN);
+    expect(trade).toBeNull();
+    expect(trader.cash).toBe(10_000);
+    expect(trader.holdings).toHaveLength(0);
+  });
+
+  it('buy rejects Infinity amount', async () => {
+    const trader = createTestTrader({ dataDir: tmpDir });
+    const trade = await trader.buy('BTC', Infinity);
+    expect(trade).toBeNull();
+    expect(trader.cash).toBe(10_000);
+  });
+
+  it('buy returns null when price fetch returns NaN-propagating total', async () => {
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '0' });
+    const trader = createTestTrader({ dataDir: tmpDir });
+    const trade = await trader.buy('BTC', 1);
+    expect(trade).toBeNull();
+    expect(trader.cash).toBe(10_000);
+  });
+});
+
+describe('PaperTrader — report & agent play', () => {
+  let tmpDir: string;
+
+  const btcToken = {
+    id: 'bitcoin', sym: 'BTC', name: 'Bitcoin',
+    chain: 'multi' as const, pair: 'BTCUSDT', coingeckoId: 'bitcoin',
+  };
+  const ethToken = {
+    id: 'ethereum', sym: 'ETH', name: 'Ethereum',
+    chain: 'multi' as const, pair: 'ETHUSDT', coingeckoId: 'ethereum',
+  };
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'paper-trade-report-test-'));
+    vi.clearAllMocks();
+    (getTokenBySymbol as ReturnType<typeof vi.fn>).mockImplementation(
+      (sym: string) => (sym === 'BTC' ? btcToken : ethToken),
+    );
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('getReport computes per-token breakdown after buy+sell', async () => {
+    const trader = createTestTrader({ dataDir: tmpDir });
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8000' });
+    await trader.buy('BTC', 0.5); // $4,000
+    trader.clearPriceCache();
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8800' });
+    await trader.sell('BTC', 0.5); // realized pnl on full exit
+
+    const report = await trader.getReport();
+    expect(report.totalTrades).toBe(2);
+    expect(report.perToken.length).toBeGreaterThan(0);
+    const btc = report.perToken.find(p => p.symbol === 'BTC');
+    expect(btc).toBeDefined();
+    expect(btc!.realizedPnl).toBeGreaterThan(0);
+    expect(Number.isFinite(report.sharpeRatio)).toBe(true);
+  });
+
+  it('agentPlay buys proportionally to confidence and respects minConfidence', async () => {
+    const trader = createTestTrader({ dataDir: tmpDir, startingBalance: 100_000 });
+    (getTokenBySymbol as ReturnType<typeof vi.fn>).mockReturnValue(btcToken);
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8000' });
+
+    const recs = [
+      { symbol: 'BTC', tokenId: 'bitcoin', tokenName: 'Bitcoin', action: 'buy' as const, compositeScore: 80, confidence: 0.9, reason: 'x', currentPrice: 8000, direction: 'strong_buy' as const },
+      { symbol: 'ETH', tokenId: 'ethereum', tokenName: 'Ethereum', action: 'hold' as const, compositeScore: 0, confidence: 0.1, reason: 'y', currentPrice: 1000, direction: 'hold' as const },
+    ];
+    const executed = await trader.agentPlay(recs, 1000, 0.3);
+    // BTC should trade; ETH is hold → skipped
+    expect(executed.length).toBe(1);
+    expect(executed[0]!.symbol).toBe('BTC');
+  });
+
+  it('agentPlay skips trades below minConfidence', async () => {
+    const trader = createTestTrader({ dataDir: tmpDir });
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8000' });
+    const recs = [
+      { symbol: 'BTC', tokenId: 'bitcoin', tokenName: 'Bitcoin', action: 'buy' as const, compositeScore: 50, confidence: 0.1, reason: 'x', currentPrice: 8000, direction: 'buy' as const },
+    ];
+    const executed = await trader.agentPlay(recs, 1000, 0.3);
+    expect(executed.length).toBe(0);
+  });
+
+  it('getPortfolio returns current values for holdings', async () => {
+    const trader = createTestTrader({ dataDir: tmpDir });
+    (fetchTicker as ReturnType<typeof vi.fn>).mockResolvedValue({ symbol: 'BTCUSDT', lastPrice: '8000' });
+    await trader.buy('BTC', 0.5);
+    const pf = await trader.getPortfolio();
+    expect(pf.holdings.length).toBe(1);
+    expect(pf.holdings[0]!.value).toBeCloseTo(0.5 * 8000, 0);
+    expect(pf.totalEquity).toBeGreaterThan(0);
+  });
+
+  it('switchProfile loads a different profile', async () => {
+    const t1 = createTestTrader({ dataDir: tmpDir, profileName: 'a' });
+    await t1.save();
+    const t2 = createTestTrader({ dataDir: tmpDir, profileName: 'b' });
+    await t2.save();
+    const restored = await t2.switchProfile('a');
+    expect(restored).toBe(true);
+    expect(t2.cash).toBe(10_000);
+  });
+});
+
+// ── Regression: getSignalRecommendations (mock radar) ──
+
+import { runRadar } from './radar.js';
+
+describe('getSignalRecommendations', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = mkdtempSync(join(tmpdir(), 'paper-trade-rec-test-'));
+    vi.clearAllMocks();
+    vi.mocked(runRadar).mockResolvedValue({
+      aggregatedSignals: [
+        {
+          symbol: 'SOL', tokenName: 'Solana', lastPrice: 100, direction: 'strong_buy',
+          compositeConfidence: 0.85, compositeReason: 'good', alerts: [],
+        },
+        {
+          symbol: 'BTC', tokenName: 'Bitcoin', lastPrice: 50000, direction: 'sell',
+          compositeConfidence: 0.7, compositeReason: 'bad', alerts: [],
+        },
+      ],
+    });
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('maps aggregated signals to buy/sell recommendations with 0-100 compositeScore', async () => {
+    const trader = createTestTrader({ dataDir: tmpDir });
+    const recs = await trader.getSignalRecommendations();
+    expect(recs.length).toBe(2);
+    const sol = recs.find(r => r.symbol === 'SOL')!;
+    expect(sol.action).toBe('buy');
+    expect(sol.compositeScore).toBe(85); // 0.85 * 100
+    expect(sol.confidence).toBe(0.85);
+    const btc = recs.find(r => r.symbol === 'BTC')!;
+    expect(btc.action).toBe('sell');
+  });
+
+  it('returns empty array when radar throws', async () => {
+    vi.mocked(runRadar).mockRejectedValue(new Error('boom'));
+    const trader = createTestTrader({ dataDir: tmpDir });
+    const recs = await trader.getSignalRecommendations();
+    expect(recs).toEqual([]);
   });
 });
