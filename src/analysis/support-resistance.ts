@@ -201,9 +201,9 @@ export function findSupportResistance(
   const nearestSupport = sortedSupport.length > 0 ? sortedSupport[sortedSupport.length - 1]! : null;
   const nearestResistance = resistanceAbove.length > 0 ? resistanceAbove[0]! : null;
 
-  // Actually find the nearest below and above properly
-  const nearestS = supportBelow.length > 0 ? supportBelow[0]! : null;
-  const nearestR = resistanceAbove.length > 0 ? resistanceAbove[0]! : null;
+  // Use the properly computed nearest support/resistance for targets
+  const nearestS = nearestSupport;
+  const nearestR = nearestResistance;
 
   const upsideTarget = nearestR ? ((nearestR.price - lastPrice) / lastPrice) * 100 : null;
   const downsideRisk = nearestS ? ((lastPrice - nearestS.price) / lastPrice) * 100 : null;
@@ -526,20 +526,9 @@ export function formatSR(result: SupportResistanceResult): string {
       ? result.nearestResistance.price * 0.98
       : 0;
 
-  // Actually, let's try to get the current price from the result. We need to infer it.
-  // Since we don't store it directly in the result, let's compute it from upside/downside
-  // or just show the market if we can estimate.
-  // We'll derive from the nearest levels.
-
-  let derivedPrice: number | null = null;
-  if (result.nearestResistance && result.upsideTarget !== null && result.upsideTarget > 0) {
-    derivedPrice = result.nearestResistance.price / (1 + result.upsideTarget / 100);
-  } else if (result.nearestSupport && result.downsideRisk !== null && result.downsideRisk > 0) {
-    derivedPrice = result.nearestSupport.price / (1 - result.downsideRisk / 100);
-  }
-
-  if (derivedPrice !== null) {
-    lines.push(`  ${'─'.repeat(5)} ${fmtPrice(derivedPrice)} ← Current ${'─'.repeat(5)}`);
+  // Use the computed currentPrice estimate for the marker display.
+  if (currentPrice > 0) {
+    lines.push(`  ${'─'.repeat(5)} ${fmtPrice(currentPrice)} ← Current ${'─'.repeat(5)}`);
   } else {
     lines.push(`  ${'─'.repeat(18)}`);
   }

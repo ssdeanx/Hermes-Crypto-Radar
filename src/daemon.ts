@@ -17,7 +17,6 @@
 //   RADAR__DAEMON_PORT    — HTTP server port (default: 9877)
 //   RADAR__REFRESH_SEC    — cache refresh interval (default: 300 = 5 min)
 
-import * as http from 'node:http';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { loadConfig } from './core/config.js';
@@ -27,12 +26,12 @@ import { getTokenList, getBinancePair, getActiveTokenCount, reloadTokenConfig } 
 import { Cache, getGlobalCache } from './core/cache.js';
 import { logWarn } from './core/errors.js';
 import { Store } from './store/db.js';
-import { createRestHandler } from './api/rest.js';
 import { createWsHub } from './api/ws.js';
 import { batchPredict, persistPredictions } from './ml/predict.js';
 import { assembleDataset } from './ml/dataset.js';
 import { buildFeatures } from './ml/features.js';
 import { computeLabels } from './ml/labels.js';
+import { createApp } from './api/fastify/app.js';
 import * as crypto from 'node:crypto';
 
 // ── Config ──
@@ -150,10 +149,11 @@ async function autoRetrain(config: ReturnType<typeof loadConfig>): Promise<void>
     for (const symbol of symbols) {
       for (const interval of INTERVALS) {
         const klines = _store.getKlines(symbol, interval, {
-          limit: 1000,
+          limit: Math.max(60, lookbackDays * 24),
           order: 'desc',
         }).reverse();
         if (klines.length < 60) continue;
+        allKlinesBySymbol.set(`${symbol}:${interval}`, klines.map(k => k.close));
 
         const crossAsset = _store.getCrossAsset(200);
         const funding = _store.getFunding(symbol, 100);
@@ -245,12 +245,18 @@ async function autoRetrain(config: ReturnType<typeof loadConfig>): Promise<void>
           resolve();
         } else {
           log.warn(`ML auto-retrain failed with code ${code}`);
-          resolve(); // Non-fatal — don't crash daemon
+          reject(new Error(`Training subprocess exited with code ${code}`));
         }
+      });
+
+      proc.on('error', (err) => {
+        log.warn('ML auto-retrain subprocess error', { error: String(err) });
+        reject(err);
       });
     });
   } catch (err) {
     log.warn('ML auto-retrain error', { error: String(err) });
+    throw err;
   }
 
   log.info(`ML auto-retrain finished in ${Date.now() - start}ms`);
@@ -279,107 +285,87 @@ async function runMlPrediction(config: ReturnType<typeof loadConfig>): Promise<v
   }
 }
 
-// ── HTTP server ──
+// ── Fastify server ──
 
-function startHttp(): http.Server {
-  const restHandler = _store ? createRestHandler(_store) : null;
-
-  const server = http.createServer((req, res) => {
-    const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-    const pathname = url.pathname;
-
-    // ── REST API under /api/* ──
-    if (pathname.startsWith('/api')) {
-      if (!restHandler) {
-        res.writeHead(503, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'store unavailable', code: 'STORE_UNAVAILABLE' }));
-        return;
-      }
-      restHandler(req, url, res).catch(err => {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: String(err), code: 'INTERNAL_ERROR' }));
-      });
-      return;
-    }
-
-    // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-
-    // Security headers
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('X-Frame-Options', 'DENY');
-    res.setHeader('X-XSS-Protection', '1; mode=block');
-    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
-    res.setHeader('Referrer-Policy', 'no-referrer');
-
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
-    // ── Health check ──
-    if (pathname === '/' || pathname === '/health') {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        status: _ready ? 'ready' : 'warming',
-        uptime: _startTime > 0 ? Math.floor((Date.now() - _startTime) / 1000) : 0,
-        ready: _ready,
-        lastRefresh: _lastRefresh,
-        refreshCount: _refreshCount,
-        scanCount: _scanCount,
-        errorCount: _errorCount,
-        activeTokens: getActiveTokenCount(),
-        cacheEntries: getGlobalCache().stats().size,
-        refreshIntervalMs: refreshMs,
-        memoryUsage: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
-      }));
-      return;
-    }
-
-    // ── Force refresh ──
-    if (pathname === '/refresh') {
-      refreshAll().then(() => {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, refreshCount: _refreshCount }));
-      }).catch(err => {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
-      });
-      return;
-    }
-
-    // ── Reload token config ──
-    if (pathname === '/reload-config') {
-      try {
-        reloadTokenConfig();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: true, activeTokens: getActiveTokenCount() }));
-      } catch (err) {
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }));
-      }
-      return;
-    }
-
-    // ── Check if scanning ──
-    if (pathname === '/scan-complete' && req.method === 'POST') {
-      _scanCount++;
-      if (_wsHub) _wsHub.broadcast('news', { scanCount: _scanCount, ts: Date.now() });
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, scanCount: _scanCount }));
-      return;
-    }
-
-    // 404
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'not found', path: pathname }));
+async function startFastify(): Promise<{ fastify: import('fastify').FastifyInstance }> {
+  const jwtSecret = process.env['RADAR__JWT_SECRET'] ?? 'dev-secret-change-in-production';
+  const fastify = await createApp({
+    store: _store!,
+    jwtSecret,
+    corsOrigin: [
+      'https://crypto-radar.vercel.app',
+      'http://localhost:5173',
+      'http://localhost:4173',
+    ],
   });
 
-  return server;
+  // ── Daemon management routes (registered directly on Fastify) ──
+  fastify.get('/', () => ({
+    status: _ready ? 'ready' : 'warming',
+    uptime: _startTime > 0 ? Math.floor((Date.now() - _startTime) / 1000) : 0,
+    ready: _ready,
+    lastRefresh: _lastRefresh,
+    refreshCount: _refreshCount,
+    scanCount: _scanCount,
+    errorCount: _errorCount,
+    lastMlPredict: _lastMlPredict,
+    activeTokens: getActiveTokenCount(),
+    cacheEntries: getGlobalCache().stats().size,
+    cacheHealth: Cache.getAllHealthStats(),
+    refreshIntervalMs: refreshMs,
+    memoryUsage: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+  }));
+
+  fastify.get('/health', () => ({
+    status: _ready ? 'ready' : 'warming',
+    uptime: _startTime > 0 ? Math.floor((Date.now() - _startTime) / 1000) : 0,
+    ready: _ready,
+    lastRefresh: _lastRefresh,
+    refreshCount: _refreshCount,
+    scanCount: _scanCount,
+    errorCount: _errorCount,
+    activeTokens: getActiveTokenCount(),
+    cacheEntries: getGlobalCache().stats().size,
+    refreshIntervalMs: refreshMs,
+    memoryUsage: Math.round(process.memoryUsage().heapUsed / 1024 / 1024) + 'MB',
+  }));
+
+  fastify.get('/refresh', async (_req, reply) => {
+    try {
+      await refreshAll();
+      return { ok: true, refreshCount: _refreshCount };
+    } catch (err) {
+      return reply.status(500).send({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  fastify.get('/reload-config', (_req, reply) => {
+    try {
+      reloadTokenConfig();
+      return { ok: true, activeTokens: getActiveTokenCount() };
+    } catch (err) {
+      return reply.status(500).send({
+        ok: false,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
+  fastify.post('/scan-complete', () => {
+    _scanCount++;
+    if (_wsHub) _wsHub.broadcast('news', { scanCount: _scanCount, ts: Date.now() });
+    return { ok: true, scanCount: _scanCount };
+  });
+
+  // Note: 404 catch-all is already registered by createApp() in api/fastify/app.ts.
+  // Calling setNotFoundHandler again on the same instance throws
+  // "Not found handler already set", so we must not re-register it here.
+
+  await fastify.ready();
+  return { fastify };
 }
 
 // ── PID file management ──
@@ -422,16 +408,25 @@ export async function runDaemon(): Promise<void> {
   writePid();
   _startTime = Date.now();
 
-  const server = startHttp();
+  // ── Start Fastify API server ──
+  if (!_store) {
+    log.warn('No store available — halting');
+    return;
+  }
 
-  // ── WebSocket push hub (client push) ──
-  if (_store) {
-    try {
-      _wsHub = createWsHub(server, _store);
-      log.info('WebSocket push hub started');
-    } catch (err) {
-      log.warn('Failed to start WebSocket hub', { error: String(err) });
-    }
+  const { fastify } = await startFastify();
+
+  // Start Fastify server first — we need the underlying http.Server for WebSocket
+  await fastify.listen({ port, host: '127.0.0.1' });
+  _ready = true;
+  log.info(`Daemon ready on http://127.0.0.1:${port} — refresh every ${refreshMs / 1000}s`);
+
+  // ── WebSocket push hub (attaches to Fastify's underlying http.Server) ──
+  try {
+    _wsHub = createWsHub(fastify.server, _store);
+    log.info('WebSocket push hub started');
+  } catch (err) {
+    log.warn('Failed to start WebSocket hub', { error: String(err) });
   }
 
   // Initial warm-up
@@ -447,18 +442,12 @@ export async function runDaemon(): Promise<void> {
   }, refreshMs);
   refreshTimer.unref();
 
-  // Start HTTP server
-  server.listen(port, '127.0.0.1', () => {
-    _ready = true;
-    log.info(`Daemon ready on http://127.0.0.1:${port} — refresh every ${refreshMs / 1000}s`);
-  });
-
   // Graceful shutdown
-  const shutdown = () => {
+  const shutdown = async () => {
     log.info('Shutting down daemon...');
     clearInterval(refreshTimer);
     if (_wsHub) _wsHub.close();
-    server.close();
+    await fastify.close();
     if (_store) _store.close();
     removePid();
     process.exit(0);

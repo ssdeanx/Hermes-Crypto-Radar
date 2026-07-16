@@ -828,12 +828,14 @@ export class PaperTrader {
   /**
    * Validate that a parsed object conforms to PortfolioState shape.
    */
-  private validatePortfolioState(data: any): data is PortfolioState {
+  private validatePortfolioState(data: unknown): data is PortfolioState {
+    if (typeof data !== 'object' || data === null) return false;
+    const d = data as Record<string, unknown>;
     return (
-      typeof data.cash === 'number' &&
-      Array.isArray(data.holdings) &&
-      Array.isArray(data.trades) &&
-      (data.startBalance === undefined || typeof data.startBalance === 'number')
+      typeof d.cash === 'number' &&
+      Array.isArray(d.holdings) &&
+      Array.isArray(d.trades) &&
+      (d.startBalance === undefined || typeof d.startBalance === 'number')
     );
   }
 
@@ -889,7 +891,7 @@ export class PaperTrader {
     const legacyPath = path.join(dir, 'paper-trader-state.json');
 
     // 1. Try profile file
-    if (fs.existsSync(profilePath)) {
+    if (existsSync(profilePath)) {
       try {
         const raw = fs.readFileSync(profilePath, 'utf-8');
         const data = JSON.parse(raw) as ProfileStateFile;
@@ -907,7 +909,7 @@ export class PaperTrader {
     }
 
     // 2. Try legacy migration
-    if (fs.existsSync(legacyPath)) {
+    if (existsSync(legacyPath)) {
       try {
         const raw = fs.readFileSync(legacyPath, 'utf-8');
         const legacyState = JSON.parse(raw) as PortfolioState;
@@ -918,7 +920,7 @@ export class PaperTrader {
 
         // Immediately save in new format (migrates + writes last-profile)
         await this.save();
-        console.error(`[paper-trade] Migrated legacy state to profile "${this.profileName}"`);
+        logWarn("paper-trade", `Migrated legacy state to profile "${this.profileName}"`);
         return true;
       } catch (err) {
         logWarn("paper-trade", "Legacy migration load failed", err);
@@ -1000,7 +1002,7 @@ export async function listProfiles(dataDir?: string): Promise<ProfileSummary[]> 
   const fs = await import('node:fs');
   const path = await import('node:path');
 
-  if (!fs.existsSync(profilesDir)) return [];
+  if (!existsSync(profilesDir)) return [];
 
   const files = fs.readdirSync(profilesDir)
     .filter((f: string) => f.endsWith('.json'))

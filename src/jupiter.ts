@@ -143,6 +143,10 @@ export async function fetchJupiterPrices(
     const res = await fetchWithRetry(url);
     const data = (await res.json()) as JupiterPriceResponse;
 
+    if (typeof data !== 'object' || data === null) {
+      throw new DataError('JUPITER_BAD_RESPONSE', 'Jupiter price response is not an object');
+    }
+
     const result = new Map<string, number>();
 
     for (const mint of deduped) {

@@ -91,7 +91,7 @@ export class HealthMonitor {
     const allCacheStats = Cache.getAllHealthStats();
     const feedReport = getFeedHealthReport();
 
-    return {
+    const healthStatus: HealthStatus = {
       status,
       uptime: Math.floor((Date.now() - _startTime) / 1000),
       checks: this.checks,
@@ -127,6 +127,9 @@ export class HealthMonitor {
         })),
       },
     };
+
+    log.info(`Health check complete: ${status} (${failures} failures, ${warnings} warnings)`);
+    return healthStatus;
   }
 
   // ── Individual checks ──────────────────────────────────────────────
@@ -173,7 +176,7 @@ export class HealthMonitor {
     const start = Date.now();
     const fs = await import('node:fs');
     const path = await import('node:path');
-    const dataDir = 'data';
+    const dataDir = path.resolve('data');
 
     try {
       if (!fs.existsSync(dataDir)) {
@@ -181,6 +184,7 @@ export class HealthMonitor {
       }
 
       const latency = Date.now() - start;
+      log.debug(`Data directory check passed: ${dataDir}`);
       return {
         name: 'data-files',
         status: 'pass',
@@ -190,6 +194,7 @@ export class HealthMonitor {
       };
     } catch (err) {
       const latency = Date.now() - start;
+      log.warn(`Data directory check failed: ${err instanceof Error ? err.message : String(err)}`);
       return {
         name: 'data-files',
         status: 'warn',

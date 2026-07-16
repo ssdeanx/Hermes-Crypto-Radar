@@ -465,7 +465,8 @@ function recompositeSignal(
     buy: 0, sell: 0, neutral: 0, strong_buy: 0, strong_sell: 0,
   };
 
-  for (const s of signal.signals) {
+  for (const raw of signal.signals) {
+    const s: StrategySignal = raw;
     const w = weightMap[s.strategy] ?? (1 / Math.max(signal.signals.length, 1));
     const normalized = totalWeight > 0 ? w / totalWeight : w;
     weightedConfidence += s.confidence * normalized;
@@ -643,7 +644,7 @@ export function formatOptimization(result: WeightOptimizationResult): string {
 
     lines.push('── Improvement ──');
     lines.push('');
-    /* eslint-disable-next-line @typescript-eslint/no-non-null-assertion */
+
     const imp = result.improvement!;
     lines.push(`  Win Rate:         ${coloredNum(imp.winRate * 100, imp.winRate >= 0, 4)} pp`);
     lines.push(`  Total Return:     ${coloredNum(imp.totalReturn, imp.totalReturn >= 0)} pp`);

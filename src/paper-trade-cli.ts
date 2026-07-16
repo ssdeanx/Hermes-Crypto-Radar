@@ -22,6 +22,7 @@ import { Command } from 'commander';
 import { PaperTrader, createPaperTrader, listProfiles, getActiveProfileName, expandHome } from './paper-trade.js';
 import type { PaperTraderConfig, PaperTrade, PerformanceReport, PortfolioHolding } from './paper-trade.js';
 import { loadConfig } from './core/config.js';
+import { logger } from './core/logger.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // Constants
@@ -68,19 +69,19 @@ export function createPaperTradeCommand(): Command {
         if (!trade) {
           const price = await trader.getPrice(symbol);
           if (price === null) {
-            console.error(`❌ Could not fetch price for ${symbol.toUpperCase()}`);
+            logger.error(`❌ Could not fetch price for ${symbol.toUpperCase()}`);
             process.exit(1);
           }
           const cost = amount * price;
           const portfolio = await trader.getPortfolio();
-          console.error(`❌ Insufficient funds: need $${cost.toFixed(2)} but have $${portfolio.cash.toFixed(2)}`);
+          logger.error(`❌ Insufficient funds: need $${cost.toFixed(2)} but have $${portfolio.cash.toFixed(2)}`);
           process.exit(1);
         }
         await trader.save(!opts.profile);
-        console.log(`✅ BOUGHT ${trade.amount.toFixed(4)} ${trade.symbol} @ $${trade.price.toFixed(6)}`);
-        console.log(`   Total: $${trade.total.toFixed(2)} | Cash remaining: $${trader.cash.toFixed(2)}`);
+        logger.stdout(`✅ BOUGHT ${trade.amount.toFixed(4)} ${trade.symbol} @ $${trade.price.toFixed(6)}`);
+        logger.stdout(`   Total: $${trade.total.toFixed(2)} | Cash remaining: $${trader.cash.toFixed(2)}`);
       } catch (err) {
-        console.error(`[ERROR] Buy failed:`, err instanceof Error ? err.message : String(err));
+        logger.error('[ERROR] Buy failed:', { message: err instanceof Error ? err.message : String(err) });
         process.exit(1);
       }
     });
@@ -97,17 +98,17 @@ export function createPaperTradeCommand(): Command {
         const trader = await loadPaperTrader(opts.profile);
         const trade = await trader.sell(symbol, amount);
         if (!trade) {
-          console.error(`❌ No holdings for ${symbol.toUpperCase()} or insufficient balance`);
+          logger.error(`❌ No holdings for ${symbol.toUpperCase()} or insufficient balance`);
           process.exit(1);
         }
         await trader.save(!opts.profile);
         const pnlStr = trade.pnl != null
           ? (trade.pnl >= 0 ? `+$${trade.pnl.toFixed(2)}` : `-$${Math.abs(trade.pnl).toFixed(2)}`)
           : 'N/A';
-        console.log(`✅ SOLD ${trade.amount.toFixed(4)} ${trade.symbol} @ $${trade.price.toFixed(6)}`);
-        console.log(`   Total: $${trade.total.toFixed(2)} | P&L: ${pnlStr} | Cash: $${trader.cash.toFixed(2)}`);
+        logger.stdout(`✅ SOLD ${trade.amount.toFixed(4)} ${trade.symbol} @ $${trade.price.toFixed(6)}`);
+        logger.stdout(`   Total: $${trade.total.toFixed(2)} | P&L: ${pnlStr} | Cash: $${trader.cash.toFixed(2)}`);
       } catch (err) {
-        console.error(`[ERROR] Sell failed:`, err instanceof Error ? err.message : String(err));
+        logger.error('[ERROR] Sell failed:', { message: err instanceof Error ? err.message : String(err) });
         process.exit(1);
       }
     });
@@ -124,34 +125,34 @@ export function createPaperTradeCommand(): Command {
         const trader = await loadPaperTrader(opts.profile);
         const portfolio = await trader.getPortfolio();
 
-        console.log(`\n📊 Paper Trading Portfolio\n`);
-        console.log(`   Cash: $${portfolio.cash.toFixed(2)}`);
-        console.log(`   Holdings Value: $${portfolio.totalHoldingsValue.toFixed(2)}`);
-        console.log(`   Total Equity: $${portfolio.totalEquity.toFixed(2)}`);
+        logger.stdout(`\n📊 Paper Trading Portfolio\n`);
+        logger.stdout(`   Cash: $${portfolio.cash.toFixed(2)}`);
+        logger.stdout(`   Holdings Value: $${portfolio.totalHoldingsValue.toFixed(2)}`);
+        logger.stdout(`   Total Equity: $${portfolio.totalEquity.toFixed(2)}`);
         const startBal = trader.startBalance;
         const totalReturn = portfolio.totalEquity - startBal;
         const returnPct = startBal > 0 ? (totalReturn / startBal) * 100 : 0;
         const returnSign = totalReturn >= 0 ? '+' : '';
-        console.log(`   Net P&L: ${returnSign}$${totalReturn.toFixed(2)} (${returnSign}${returnPct.toFixed(2)}%)\n`);
+        logger.stdout(`   Net P&L: ${returnSign}$${totalReturn.toFixed(2)} (${returnSign}${returnPct.toFixed(2)}%)\n`);
 
         if (portfolio.holdings.length === 0) {
-          console.log('   No holdings. Start trading with: paper-trade buy <symbol> <amount>\n');
+          logger.stdout('   No holdings. Start trading with: paper-trade buy <symbol> <amount>\n');
           return;
         }
 
         // Table header
-        console.log(`   ${'Token'.padEnd(8)} ${'Amount'.padEnd(12)} ${'Entry'.padEnd(12)} ${'Price'.padEnd(12)} ${'Value'.padEnd(12)} ${'P&L'.padEnd(14)} ${'Return'}`);
-        console.log(`   ${''.padEnd(8, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(14, '─')} ${''.padEnd(7, '─')}`);
+        logger.stdout(`   ${'Token'.padEnd(8)} ${'Amount'.padEnd(12)} ${'Entry'.padEnd(12)} ${'Price'.padEnd(12)} ${'Value'.padEnd(12)} ${'P&L'.padEnd(14)} ${'Return'}`);
+        logger.stdout(`   ${''.padEnd(8, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(14, '─')} ${''.padEnd(7, '─')}`);
 
         for (const h of portfolio.holdings) {
           const pnlSign = h.unrealizedPnl >= 0 ? '+' : '';
           const pnlStr = `${pnlSign}$${h.unrealizedPnl.toFixed(2)}`;
           const retStr = `${pnlSign}${h.unrealizedPnlPercent.toFixed(2)}%`;
-          console.log(`   ${h.symbol.padEnd(8)} ${h.amount.toFixed(6).padEnd(12)} $${h.avgEntryPrice.toFixed(4).padEnd(9)} $${h.currentPrice.toFixed(4).padEnd(9)} $${h.value.toFixed(2).padEnd(9)} ${pnlStr.padEnd(14)} ${retStr}`);
+          logger.stdout(`   ${h.symbol.padEnd(8)} ${h.amount.toFixed(6).padEnd(12)} $${h.avgEntryPrice.toFixed(4).padEnd(9)} $${h.currentPrice.toFixed(4).padEnd(9)} $${h.value.toFixed(2).padEnd(9)} ${pnlStr.padEnd(14)} ${retStr}`);
         }
-        console.log('');
+        logger.stdout('');
       } catch (err) {
-        console.error(`[ERROR] Portfolio failed:`, err instanceof Error ? err.message : String(err));
+        logger.error('[ERROR] Portfolio failed:', { message: err instanceof Error ? err.message : String(err) });
         process.exit(1);
       }
     });
@@ -166,47 +167,47 @@ export function createPaperTradeCommand(): Command {
     .action(async (opts) => {
       try {
         const trader = await loadPaperTrader(opts.profile);
-        const report = await trader.getReport();
+        const report: PerformanceReport = await trader.getReport();
 
-        console.log(`\n📈 Paper Trading Performance Report\n`);
-        console.log(`   ┌─ Overview ─────────────────────────────┐`);
-        console.log(`   │ Start Balance:    $${report.startBalance.toFixed(2).padStart(10)} │`);
-        console.log(`   │ Current Cash:     $${report.currentCash.toFixed(2).padStart(10)} │`);
-        console.log(`   │ Holdings Value:   $${report.holdingsValue.toFixed(2).padStart(10)} │`);
-        console.log(`   │ Total Equity:     $${report.totalEquity.toFixed(2).padStart(10)} │`);
+        logger.stdout(`\n📈 Paper Trading Performance Report\n`);
+        logger.stdout(`   ┌─ Overview ─────────────────────────────┐`);
+        logger.stdout(`   │ Start Balance:    $${report.startBalance.toFixed(2).padStart(10)} │`);
+        logger.stdout(`   │ Current Cash:     $${report.currentCash.toFixed(2).padStart(10)} │`);
+        logger.stdout(`   │ Holdings Value:   $${report.holdingsValue.toFixed(2).padStart(10)} │`);
+        logger.stdout(`   │ Total Equity:     $${report.totalEquity.toFixed(2).padStart(10)} │`);
         const retSign = report.totalReturn >= 0 ? '+' : '';
-        console.log(`   │ Total Return:     ${retSign}$${report.totalReturn.toFixed(2).padStart(9)} │`);
-        console.log(`   │ Return %:         ${retSign}${report.totalReturnPercent.toFixed(2).padStart(9)}% │`);
-        console.log(`   └─────────────────────────────────────────┘\n`);
+        logger.stdout(`   │ Total Return:     ${retSign}$${report.totalReturn.toFixed(2).padStart(9)} │`);
+        logger.stdout(`   │ Return %:         ${retSign}${report.totalReturnPercent.toFixed(2).padStart(9)}% │`);
+        logger.stdout(`   └─────────────────────────────────────────┘\n`);
 
-        console.log(`   ┌─ Trade Statistics ─────────────────────┐`);
-        console.log(`   │ Total Trades:     ${String(report.totalTrades).padStart(11)} │`);
-        console.log(`   │ Wins:             ${String(report.wins).padStart(11)} │`);
-        console.log(`   │ Losses:           ${String(report.losses).padStart(11)} │`);
-        console.log(`   │ Win Rate:         ${(report.winRate * 100).toFixed(1).padStart(9)}%   │`);
-        console.log(`   │ Sharpe Ratio:     ${report.sharpeRatio.toFixed(2).padStart(11)} │`);
-        console.log(`   └─────────────────────────────────────────┘\n`);
+        logger.stdout(`   ┌─ Trade Statistics ─────────────────────┐`);
+        logger.stdout(`   │ Total Trades:     ${String(report.totalTrades).padStart(11)} │`);
+        logger.stdout(`   │ Wins:             ${String(report.wins).padStart(11)} │`);
+        logger.stdout(`   │ Losses:           ${String(report.losses).padStart(11)} │`);
+        logger.stdout(`   │ Win Rate:         ${(report.winRate * 100).toFixed(1).padStart(9)}%   │`);
+        logger.stdout(`   │ Sharpe Ratio:     ${report.sharpeRatio.toFixed(2).padStart(11)} │`);
+        logger.stdout(`   └─────────────────────────────────────────┘\n`);
 
         if (report.bestTrade) {
-          console.log(`   🏆 Best Trade: ${report.bestTrade.type.toUpperCase()} ${report.bestTrade.amount.toFixed(4)} ${report.bestTrade.symbol} @ $${report.bestTrade.price.toFixed(4)} (P&L: +$${report.bestTrade.pnl?.toFixed(2) ?? 'N/A'})`);
+          logger.stdout(`   🏆 Best Trade: ${report.bestTrade.type.toUpperCase()} ${report.bestTrade.amount.toFixed(4)} ${report.bestTrade.symbol} @ $${report.bestTrade.price.toFixed(4)} (P&L: +$${report.bestTrade.pnl?.toFixed(2) ?? 'N/A'})`);
         }
         if (report.worstTrade) {
-          console.log(`   💀 Worst Trade: ${report.worstTrade.type.toUpperCase()} ${report.worstTrade.amount.toFixed(4)} ${report.worstTrade.symbol} @ $${report.worstTrade.price.toFixed(4)} (P&L: ${report.worstTrade.pnl != null ? `-$${Math.abs(report.worstTrade.pnl).toFixed(2)}` : 'N/A'})`);
+          logger.stdout(`   💀 Worst Trade: ${report.worstTrade.type.toUpperCase()} ${report.worstTrade.amount.toFixed(4)} ${report.worstTrade.symbol} @ $${report.worstTrade.price.toFixed(4)} (P&L: ${report.worstTrade.pnl != null ? `-$${Math.abs(report.worstTrade.pnl).toFixed(2)}` : 'N/A'})`);
         }
 
         if (report.perToken.length > 0) {
-          console.log(`\n   ┌─ Per-Token Breakdown ───────────────────────────────────────────────────────────────────┐`);
-          console.log(`   │ ${'Token'.padEnd(8)} ${'Holdings'.padEnd(10)} ${'Entry'.padEnd(10)} ${'Price'.padEnd(10)} ${'Value'.padEnd(10)} ${'Unrealized'.padEnd(12)} ${'Realized'.padEnd(10)} ${'Total P&L'.padEnd(12)} │`);
-          console.log(`   │ ${''.padEnd(8, '─')} ${''.padEnd(10, '─')} ${''.padEnd(10, '─')} ${''.padEnd(10, '─')} ${''.padEnd(10, '─')} ${''.padEnd(12, '─')} ${''.padEnd(10, '─')} ${''.padEnd(12, '─')} │`);
+          logger.stdout(`\n   ┌─ Per-Token Breakdown ───────────────────────────────────────────────────────────────────┐`);
+          logger.stdout(`   │ ${'Token'.padEnd(8)} ${'Holdings'.padEnd(10)} ${'Entry'.padEnd(10)} ${'Price'.padEnd(10)} ${'Value'.padEnd(10)} ${'Unrealized'.padEnd(12)} ${'Realized'.padEnd(10)} ${'Total P&L'.padEnd(12)} │`);
+          logger.stdout(`   │ ${''.padEnd(8, '─')} ${''.padEnd(10, '─')} ${''.padEnd(10, '─')} ${''.padEnd(10, '─')} ${''.padEnd(10, '─')} ${''.padEnd(12, '─')} ${''.padEnd(10, '─')} ${''.padEnd(12, '─')} │`);
           for (const pt of report.perToken) {
             const pnlSign = pt.totalPnl >= 0 ? '+' : '';
-            console.log(`   │ ${pt.symbol.padEnd(8)} ${pt.amount.toFixed(4).padEnd(10)} $${(pt.avgEntry || 0).toFixed(2).padEnd(7)} $${(pt.currentPrice || 0).toFixed(2).padEnd(7)} $${pt.value.toFixed(2).padEnd(7)} ${pnlSign}$${pt.unrealizedPnl.toFixed(2).padEnd(8)} ${pnlSign}$${pt.realizedPnl.toFixed(2).padEnd(7)} ${pnlSign}$${pt.totalPnl.toFixed(2).padEnd(8)} │`);
+            logger.stdout(`   │ ${pt.symbol.padEnd(8)} ${pt.amount.toFixed(4).padEnd(10)} $${(pt.avgEntry || 0).toFixed(2).padEnd(7)} $${(pt.currentPrice || 0).toFixed(2).padEnd(7)} $${pt.value.toFixed(2).padEnd(7)} ${pnlSign}$${pt.unrealizedPnl.toFixed(2).padEnd(8)} ${pnlSign}$${pt.realizedPnl.toFixed(2).padEnd(7)} ${pnlSign}$${pt.totalPnl.toFixed(2).padEnd(8)} │`);
           }
-          console.log(`   └────────────────────────────────────────────────────────────────────────────────────────┘`);
+          logger.stdout(`   └────────────────────────────────────────────────────────────────────────────────────────┘`);
         }
-        console.log('');
+        logger.stdout('');
       } catch (err) {
-        console.error(`[ERROR] Report failed:`, err instanceof Error ? err.message : String(err));
+        logger.error('[ERROR] Report failed:', { message: err instanceof Error ? err.message : String(err) });
         process.exit(1);
       }
     });
@@ -220,12 +221,12 @@ export function createPaperTradeCommand(): Command {
     .action(async (opts) => {
       try {
         const trader = await loadPaperTrader(opts.profile);
-        console.log(`\n📡 Current Market Signals & Recommendations\n`);
-        console.log(`   Fetching live data...\n`);
+        logger.stdout(`\n📡 Current Market Signals & Recommendations\n`);
+        logger.stdout(`   Fetching live data...\n`);
 
         const recommendations = await trader.getSignalRecommendations();
         if (recommendations.length === 0) {
-          console.log('   No signals available right now. Try running the scan command first.\n');
+          logger.stdout('   No signals available right now. Try running the scan command first.\n');
           return;
         }
 
@@ -235,8 +236,8 @@ export function createPaperTradeCommand(): Command {
           return order[a.action] - order[b.action] || b.confidence - a.confidence;
         });
 
-        console.log(`   ${'Action'.padEnd(8)} ${'Token'.padEnd(8)} ${'Price'.padEnd(12)} ${'Confidence'.padEnd(12)} ${'Signal'}${'Score'.padStart(8)}`);
-        console.log(`   ${''.padEnd(8, '─')} ${''.padEnd(8, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(20, '─')}`);
+        logger.stdout(`   ${'Action'.padEnd(8)} ${'Token'.padEnd(8)} ${'Price'.padEnd(12)} ${'Confidence'.padEnd(12)} ${'Signal'}${'Score'.padStart(8)}`);
+        logger.stdout(`   ${''.padEnd(8, '─')} ${''.padEnd(8, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(20, '─')}`);
 
         for (const rec of sorted) {
           const actionStr = rec.action === 'buy'
@@ -246,11 +247,11 @@ export function createPaperTradeCommand(): Command {
               : '⚪ HOLD';
           const confStr = `${(rec.confidence * 100).toFixed(0)}%`;
           const priceStr = `$${rec.currentPrice.toFixed(4)}`;
-          console.log(`   ${actionStr.padEnd(8)} ${rec.symbol.padEnd(8)} ${priceStr.padEnd(12)} ${confStr.padEnd(12)} ${(rec.reason || '').substring(0, 40).padEnd(20)}`);
+          logger.stdout(`   ${actionStr.padEnd(8)} ${rec.symbol.padEnd(8)} ${priceStr.padEnd(12)} ${confStr.padEnd(12)} ${(rec.reason || '').substring(0, 40).padEnd(20)}`);
         }
-        console.log(`\n   Tip: Use "paper-trade buy <symbol> <amount>" or "paper-trade agent" to auto-trade\n`);
+        logger.stdout(`\n   Tip: Use "paper-trade buy <symbol> <amount>" or "paper-trade agent" to auto-trade\n`);
       } catch (err) {
-        console.error(`[ERROR] Signals failed:`, err instanceof Error ? err.message : String(err));
+        logger.error('[ERROR] Signals failed:', { message: err instanceof Error ? err.message : String(err) });
         process.exit(1);
       }
     });
@@ -265,16 +266,16 @@ export function createPaperTradeCommand(): Command {
     .action(async (opts) => {
       try {
         const trader = await loadPaperTrader(opts.profile);
-        const trades = [...trader.trades];
+        const trades: readonly PaperTrade[] = [...trader.trades];
 
         if (trades.length === 0) {
-          console.log('\n   No trades yet. Start with: paper-trade buy <symbol> <amount>\n');
+          logger.stdout('\n   No trades yet. Start with: paper-trade buy <symbol> <amount>\n');
           return;
         }
 
-        console.log(`\n📜 Trade History (${trades.length} trades)\n`);
-        console.log(` ${'ID'.padEnd(14)} ${'Type'.padEnd(6)} ${'Symbol'.padEnd(8)} ${'Amount'.padEnd(14)} ${'Price'.padEnd(12)} ${'Total'.padEnd(12)} ${'P&L'.padEnd(12)} ${'Timestamp'}`);
-        console.log(` ${''.padEnd(14, '─')} ${''.padEnd(6, '─')} ${''.padEnd(8, '─')} ${''.padEnd(14, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(20, '─')}`);
+        logger.stdout(`\n📜 Trade History (${trades.length} trades)\n`);
+        logger.stdout(` ${'ID'.padEnd(14)} ${'Type'.padEnd(6)} ${'Symbol'.padEnd(8)} ${'Amount'.padEnd(14)} ${'Price'.padEnd(12)} ${'Total'.padEnd(12)} ${'P&L'.padEnd(12)} ${'Timestamp'}`);
+        logger.stdout(` ${''.padEnd(14, '─')} ${''.padEnd(6, '─')} ${''.padEnd(8, '─')} ${''.padEnd(14, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(12, '─')} ${''.padEnd(20, '─')}`);
 
         for (const t of trades) {
           const typeStr = t.type === 'buy' ? '🟢 BUY' : '🔴 SELL';
@@ -282,11 +283,11 @@ export function createPaperTradeCommand(): Command {
             ? (t.pnl >= 0 ? `+$${t.pnl.toFixed(2)}` : `-$${Math.abs(t.pnl).toFixed(2)}`)
             : '     N/A';
           const dateStr = t.timestamp.substring(0, 19).replace('T', ' ');
-          console.log(` ${t.id.padEnd(14)} ${typeStr.padEnd(6)} ${t.symbol.padEnd(8)} ${t.amount.toFixed(6).padEnd(14)} $${t.price.toFixed(4).padEnd(9)} $${t.total.toFixed(2).padEnd(9)} ${pnlStr.padEnd(12)} ${dateStr}`);
+          logger.stdout(` ${t.id.padEnd(14)} ${typeStr.padEnd(6)} ${t.symbol.padEnd(8)} ${t.amount.toFixed(6).padEnd(14)} $${t.price.toFixed(4).padEnd(9)} $${t.total.toFixed(2).padEnd(9)} ${pnlStr.padEnd(12)} ${dateStr}`);
         }
-        console.log('');
+        logger.stdout('');
       } catch (err) {
-        console.error(`[ERROR] History failed:`, err instanceof Error ? err.message : String(err));
+        logger.error('[ERROR] History failed:', { message: err instanceof Error ? err.message : String(err) });
         process.exit(1);
       }
     });
@@ -303,21 +304,21 @@ export function createPaperTradeCommand(): Command {
     .action(async (maxPerTrade, opts) => {
       try {
         const trader = await loadPaperTrader(opts.profile);
-        console.log(`\n🤖 Hermes Agent Trading Mode\n`);
-        console.log(`   Max per trade: $${maxPerTrade}`);
-        console.log(`   Min confidence: ${(opts.minConfidence * 100).toFixed(0)}%`);
-        console.log(`   Max trades: ${opts.maxTrades}\n`);
+        logger.stdout(`\n🤖 Hermes Agent Trading Mode\n`);
+        logger.stdout(`   Max per trade: $${maxPerTrade}`);
+        logger.stdout(`   Min confidence: ${(opts.minConfidence * 100).toFixed(0)}%`);
+        logger.stdout(`   Max trades: ${opts.maxTrades}\n`);
 
         const recommendations = await trader.getSignalRecommendations();
         if (recommendations.length === 0) {
-          console.log('   No trade recommendations available. Try running signals first.\n');
+          logger.stdout('   No trade recommendations available. Try running signals first.\n');
           return;
         }
 
         const buyRecs = recommendations.filter(r => r.action === 'buy');
         const sellRecs = recommendations.filter(r => r.action === 'sell');
 
-        console.log(`   Found ${buyRecs.length} buy signals, ${sellRecs.length} sell signals\n`);
+        logger.stdout(`   Found ${buyRecs.length} buy signals, ${sellRecs.length} sell signals\n`);
 
         // Execute sell recommendations first (free up cash for buys)
         let totalTrades = 0;
@@ -348,22 +349,22 @@ export function createPaperTradeCommand(): Command {
         }
 
         if (allTrades.length === 0) {
-          console.log('   🤷 No trades executed. Try lowering --min-confidence.\n');
+          logger.stdout('   🤷 No trades executed. Try lowering --min-confidence.\n');
         } else {
-          console.log(`   Executed ${allTrades.length} trades:\n`);
+          logger.stdout(`   Executed ${allTrades.length} trades:\n`);
           for (const t of allTrades) {
             const pnlStr = t.pnl != null
               ? (t.pnl >= 0 ? ` (P&L: +$${t.pnl.toFixed(2)})` : ` (P&L: -$${Math.abs(t.pnl).toFixed(2)})`)
               : '';
-            console.log(`     ${t.type === 'buy' ? '🟢' : '🔴'} ${t.type.toUpperCase()} ${t.amount.toFixed(4)} ${t.symbol} @ $${t.price.toFixed(4)} — $${t.total.toFixed(2)}${pnlStr}`);
+            logger.stdout(`     ${t.type === 'buy' ? '🟢' : '🔴'} ${t.type.toUpperCase()} ${t.amount.toFixed(4)} ${t.symbol} @ $${t.price.toFixed(4)} — $${t.total.toFixed(2)}${pnlStr}`);
           }
           await trader.save(!opts.profile);
           const portfolio = await trader.getPortfolio();
-          console.log(`\n   💰 Cash: $${portfolio.cash.toFixed(2)} | Holdings: $${portfolio.totalHoldingsValue.toFixed(2)} | Equity: $${portfolio.totalEquity.toFixed(2)}`);
+          logger.stdout(`\n   💰 Cash: $${portfolio.cash.toFixed(2)} | Holdings: $${portfolio.totalHoldingsValue.toFixed(2)} | Equity: $${portfolio.totalEquity.toFixed(2)}`);
         }
-        console.log('');
+        logger.stdout('');
       } catch (err) {
-        console.error(`[ERROR] Agent trade failed:`, err instanceof Error ? err.message : String(err));
+        logger.error('[ERROR] Agent trade failed:', { message: err instanceof Error ? err.message : String(err) });
         process.exit(1);
       }
     });
@@ -377,8 +378,8 @@ export function createPaperTradeCommand(): Command {
     .action(async (opts) => {
       // Simple confirmation
       if (!opts.force) {
-        console.error('⚠️  This will delete all trading history and reset to $10,000.');
-        console.error('   Pass --force to skip this prompt.');
+        logger.error('⚠️  This will delete all trading history and reset to $10,000.');
+        logger.error('   Pass --force to skip this prompt.');
         // We can't prompt interactively, so just show the message and exit
         process.exit(0);
       }
@@ -387,9 +388,9 @@ export function createPaperTradeCommand(): Command {
         const trader = await loadPaperTrader(opts.profile);
         trader.reset();
         await trader.save(!opts.profile);
-        console.log('✅ Portfolio reset to $10,000. All trades cleared.\n');
+        logger.stdout('✅ Portfolio reset to $10,000. All trades cleared.\n');
       } catch (err) {
-        console.error(`[ERROR] Reset failed:`, err instanceof Error ? err.message : String(err));
+        logger.error('[ERROR] Reset failed:', { message: err instanceof Error ? err.message : String(err) });
         process.exit(1);
       }
     });
@@ -401,12 +402,14 @@ export function createPaperTradeCommand(): Command {
     .option('--profile <name>', 'Profile name to use (temporary override)')
     .action(async (opts) => {
       const trader = await loadPaperTrader(opts.profile);
-      console.log('\n⚙️  Paper Trader Configuration\n');
-      console.log(`   Starting Balance: $${trader.startBalance.toFixed(2)}`);
-      console.log(`   Current Cash:     $${trader.cash.toFixed(2)}`);
-      console.log(`   Total Trades:     ${trader.tradeCount}`);
-      console.log(`   Active Holdings:  ${trader.holdings.length}`);
-      console.log('');
+      const rawState = trader.getRawState();
+      const holdings: readonly PortfolioHolding[] = rawState.holdings;
+      logger.stdout('\n⚙️  Paper Trader Configuration\n');
+      logger.stdout(`   Starting Balance: $${trader.startBalance.toFixed(2)}`);
+      logger.stdout(`   Current Cash:     $${trader.cash.toFixed(2)}`);
+      logger.stdout(`   Total Trades:     ${trader.tradeCount}`);
+      logger.stdout(`   Active Holdings:  ${holdings.length}`);
+      logger.stdout('');
     });
 
   // ── profile command group ──
@@ -421,24 +424,24 @@ export function createPaperTradeCommand(): Command {
     .action(async (name) => {
       // Validate name
       if (!/^[a-zA-Z0-9_-]{1,64}$/.test(name)) {
-        console.error('❌ Invalid profile name. Use letters, numbers, hyphens, and underscores only (1–64 chars).');
+        logger.error('❌ Invalid profile name. Use letters, numbers, hyphens, and underscores only (1–64 chars).');
         process.exit(1);
       }
       if (name === 'last-profile') {
-        console.error('❌ "last-profile" is a reserved name.');
+        logger.error('❌ "last-profile" is a reserved name.');
         process.exit(1);
       }
       try {
         const trader = new PaperTrader({ profileName: name });
         const exists = await trader.load();
         if (exists) {
-          console.error(`❌ Profile "${name}" already exists.`);
+          logger.error(`❌ Profile "${name}" already exists.`);
           process.exit(1);
         }
         await trader.save(); // writes fresh state
-        console.log(`✅ Created profile "${name}" with $10,000.00`);
+        logger.stdout(`✅ Created profile "${name}" with $10,000.00`);
       } catch (err) {
-        console.error(`[ERROR] ${err instanceof Error ? err.message : String(err)}`);
+        logger.error('[ERROR]', { message: err instanceof Error ? err.message : String(err) });
         process.exit(1);
       }
     });
@@ -451,19 +454,19 @@ export function createPaperTradeCommand(): Command {
       const activeProfile = getActiveProfileName();
       const profiles = await listProfiles();
       if (profiles.length === 0) {
-        console.log('\n📋 No profiles found.\n');
+        logger.stdout('\n📋 No profiles found.\n');
         return;
       }
-      console.log('\n📋 Paper Trading Profiles\n');
+      logger.stdout('\n📋 Paper Trading Profiles\n');
       for (const p of profiles) {
         const active = p.profileName === activeProfile ? '  ← active' : '';
-        console.log(
+        logger.stdout(
           `  ${p.profileName.padEnd(20)} $${p.cash.toFixed(2).padStart(10)}  ` +
           `${String(p.tradeCount).padStart(4)} trades  ` +
           `Created ${p.createdAt?.substring(0, 10) ?? '?'}${active}`
         );
       }
-      console.log('');
+      logger.stdout('');
     });
 
   // ── profile switch ──
@@ -474,25 +477,25 @@ export function createPaperTradeCommand(): Command {
     .action(async (name) => {
       // Validate profile name
       if (!/^[a-zA-Z0-9_-]{1,64}$/.test(name)) {
-        console.error('❌ Invalid profile name. Use letters, numbers, hyphens, and underscores only (1–64 chars).');
+        logger.error('❌ Invalid profile name. Use letters, numbers, hyphens, and underscores only (1–64 chars).');
         process.exit(1);
       }
       const activeProfile = getActiveProfileName();
       if (name === activeProfile) {
-        console.log(`ℹ️  Already on profile "${name}".`);
+        logger.stdout(`ℹ️  Already on profile "${name}".`);
         return;
       }
       // Verify profile exists by trying to load it
       const trader = new PaperTrader({ profileName: name });
       const exists = await trader.load();
       if (!exists) {
-        console.error(`❌ Profile "${name}" not found. Use "profile create ${name}" first.`);
+        logger.error(`❌ Profile "${name}" not found. Use "profile create ${name}" first.`);
         process.exit(1);
       }
       // Write last-profile.txt
       const fs = await import('node:fs');
       fs.writeFileSync(lastProfilePath(), `${name}\n`, 'utf-8');
-      console.log(`✅ Switched to profile "${name}".`);
+      logger.stdout(`✅ Switched to profile "${name}".`);
     });
 
   // ── profile delete ──
@@ -503,12 +506,12 @@ export function createPaperTradeCommand(): Command {
     .action(async (name) => {
       // Validate profile name
       if (!/^[a-zA-Z0-9_-]{1,64}$/.test(name)) {
-        console.error('❌ Invalid profile name. Use letters, numbers, hyphens, and underscores only (1–64 chars).');
+        logger.error('❌ Invalid profile name. Use letters, numbers, hyphens, and underscores only (1–64 chars).');
         process.exit(1);
       }
       const activeProfile = getActiveProfileName();
       if (name === activeProfile) {
-        console.error(`❌ Cannot delete active profile "${name}". Switch to another profile first.`);
+        logger.error(`❌ Cannot delete active profile "${name}". Switch to another profile first.`);
         process.exit(1);
       }
       const profiles = await listProfiles();
@@ -516,17 +519,17 @@ export function createPaperTradeCommand(): Command {
       const fs = await import('node:fs');
       const profilePath = `${profilesDirPath()}/${name}.json`;
       if (!fs.existsSync(profilePath)) {
-        console.error(`❌ Profile "${name}" not found.`);
+        logger.error(`❌ Profile "${name}" not found.`);
         process.exit(1);
       }
       fs.unlinkSync(profilePath);
-      console.log(`✅ Deleted profile "${name}".`);
+      logger.stdout(`✅ Deleted profile "${name}".`);
 
       // P2: If it was the last profile, auto-create "trader1" with fresh state
       if (isLastProfile) {
         const trader = new PaperTrader({});
         await trader.save();
-        console.log(`ℹ️  Last profile deleted. Created default "trader1" profile with $10,000.00.`);
+        logger.stdout(`ℹ️  Last profile deleted. Created default "trader1" profile with $10,000.00.`);
       }
     });
 
@@ -536,7 +539,7 @@ export function createPaperTradeCommand(): Command {
     .description('Show the currently active profile name')
     .action(() => {
       const activeProfile = getActiveProfileName();
-      console.log(`${activeProfile}`);
+      logger.stdout(`${activeProfile}`);
     });
 
   return cmd;
@@ -578,9 +581,9 @@ export async function runPaperTradeCli(): Promise<void> {
 // ═══════════════════════════════════════════════════════════════════════
 
 /** Load or create a PaperTrader, restoring state from disk if available. */
-async function loadPaperTrader(profileName?: string): Promise<PaperTrader> {
+async function loadPaperTrader(profileName?: string, config?: PaperTraderConfig): Promise<PaperTrader> {
   const name = profileName ?? getActiveProfileName();
-  const trader = createPaperTrader({ profileName: name });
+  const trader = createPaperTrader({ profileName: name, ...config });
   const restored = await trader.load();
   if (restored) {
     // State restored from disk
@@ -596,7 +599,7 @@ async function loadPaperTrader(profileName?: string): Promise<PaperTrader> {
 const isMainModule = process.argv[1]?.endsWith('paper-trade-cli.js');
 if (isMainModule) {
   runPaperTradeCli().catch(err => {
-    console.error(`[FATAL] ${err instanceof Error ? err.message : String(err)}`);
+    logger.error('[FATAL]', { message: err instanceof Error ? err.message : String(err) });
     process.exit(1);
   });
 }

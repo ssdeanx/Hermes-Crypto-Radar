@@ -182,18 +182,19 @@ export class MomentumStrategy implements SignalStrategy {
     }
 
     // ── 5. MACD alignment ──
-    if (technical?.macd != null) {
-      indicators.macdHistogram = technical.macd.histogram;
-      if (technical.macd.histogram > 0 && roc > 0) {
+    if (technical?.macd != null && technical.macd.histogram != null) {
+      const macdHist = technical.macd.histogram;
+      indicators.macdHistogram = macdHist;
+      if (macdHist > 0 && roc > 0) {
         confidence += 0.08;
         reasons.push('MACD positive and expanding');
-      } else if (technical.macd.histogram < 0 && roc < 0) {
+      } else if (macdHist < 0 && roc < 0) {
         confidence += 0.08;
         reasons.push('MACD negative and declining');
-      } else if (technical.macd.histogram > 0 && roc < 0) {
+      } else if (macdHist > 0 && roc < 0) {
         reasons.push('⚠️ bullish MACD divergence (price down, MACD up)');
         confidence += 0.05;
-      } else if (technical.macd.histogram < 0 && roc > 0) {
+      } else if (macdHist < 0 && roc > 0) {
         reasons.push('⚠️ bearish MACD divergence (price up, MACD down)');
         confidence -= 0.05;
       }
@@ -222,6 +223,8 @@ export class MomentumStrategy implements SignalStrategy {
     }
 
     confidence = Math.max(0, Math.min(1, confidence));
+
+    indicators.volumeProfileConfirmed = volumeProfileConfirmed ? 1 : 0;
 
     return {
       strategy: this.name,

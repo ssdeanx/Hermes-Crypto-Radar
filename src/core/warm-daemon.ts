@@ -36,6 +36,7 @@ async function refreshScan(): Promise<CachedState> {
   try {
     logger.info('[warm-daemon] Running radar scan...');
     const config = loadConfig();
+    logger.info(`[warm-daemon] Using dataDir: ${config.dataDir}`);
     const result = await runRadar({
       includeTech: true,
       includeNews: true,

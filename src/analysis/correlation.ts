@@ -259,7 +259,7 @@ export function formatCorrelationTable(matrix: CorrelationMatrix): string {
 
   // Separator
   const sepParts: string[] = [''.padEnd(labelWidth, '─')];
-  for (const _ of header) {
+  for (let i = 0; i < header.length; i++) {
     sepParts.push(''.padEnd(colWidth, '─'));
   }
   lines.push(sepParts.join('─'));

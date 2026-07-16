@@ -56,8 +56,7 @@ async function fetchWithRetry(url: string, retries = MAX_RETRIES): Promise<Respo
 
       if (res.status === 429) {
         const retryAfter = parseInt(res.headers.get('retry-after') ?? '10', 10);
-        await sleep(Math.min(retryAfter * 1000, 20_000));
-        continue;
+        throw new RateLimitError('coingecko', retryAfter * 1000);
       }
 
       if (res.status === 404) {
@@ -122,6 +121,9 @@ export async function fetchSimplePrices(ids: string[]): Promise<Map<string, Coin
         }
       }
     } catch (err) {
+      if (err instanceof RateLimitError) {
+        throw err;
+      }
       logger.warn(`CoinGecko batch price fetch failed`, {
         batchSize: batch.length,
         error: err instanceof Error ? err.message : String(err),
@@ -154,7 +156,14 @@ export async function fetchMarketData(
 
   try {
     const res = await fetchWithRetry(url);
-    const data = (await res.json()) as Array<Record<string, unknown>>;
+    const json = (await res.json()) as unknown;
+    if (!Array.isArray(json)) {
+      throw new CryptoRadarError('COINGECKO_BAD_RESPONSE', `Expected array from coins/markets, got ${typeof json}`, {
+        recoverable: false,
+        context: { source: 'coingecko' },
+      });
+    }
+    const data = json as Array<Record<string, unknown>>;
 
     return data.map((coin) => ({
       id: coin.id as string,
@@ -173,4 +182,3 @@ export async function fetchMarketData(
   }
 }
 
-export type { CryptoRadarError, NetworkError, DataError } from './core/errors.js';

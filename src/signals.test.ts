@@ -5,7 +5,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { computeSignals, computeOnchainBoost, clearAlertCache } from './signals.js';
 import type { EnrichedTicker, TechnicalIndicators, NewsMatch } from './types.js';
-import type { OnChainMetrics, ProtocolMetrics } from './onchain.js';
+import type { OnChainMetrics } from './onchain.js';
 
 function makeTicker(overrides: Partial<EnrichedTicker> = {}): EnrichedTicker {
   return {
@@ -177,41 +177,41 @@ describe('computeOnchainBoost', () => {
   });
 
   it('returns 10-15 for high TVL (>$1B)', () => {
-    const onchain = makeOnchain(5_000_000_000, 'lido');
-    const boost = computeOnchainBoost('LDOUSDT', 'lido-dao', onchain);
+    const onchain = makeOnchain(5_000_000_000, 'jupiter-lend');
+    const boost = computeOnchainBoost('JUPUSDT', 'jupiter', onchain);
     expect(boost).toBeGreaterThanOrEqual(10);
     expect(boost).toBeLessThanOrEqual(15);
   });
 
   it('returns 5-10 for medium TVL ($100M-$1B)', () => {
-    const onchain = makeOnchain(500_000_000, 'sushi');
-    const boost = computeOnchainBoost('SUSHIUSDT', 'sushi', onchain);
+    const onchain = makeOnchain(500_000_000, 'raydium-amm');
+    const boost = computeOnchainBoost('RAYUSDT', 'raydium', onchain);
     expect(boost).toBeGreaterThanOrEqual(5);
     expect(boost).toBeLessThanOrEqual(10);
   });
 
   it('returns 0-5 for low TVL (<$100M)', () => {
-    const onchain = makeOnchain(50_000_000, 'sushi');
-    const boost = computeOnchainBoost('SUSHIUSDT', 'sushi', onchain);
+    const onchain = makeOnchain(50_000_000, 'raydium-amm');
+    const boost = computeOnchainBoost('RAYUSDT', 'raydium', onchain);
     expect(boost).toBeGreaterThanOrEqual(0);
     expect(boost).toBeLessThanOrEqual(5);
   });
 
   it('returns 10 for high TVL with flat trend (instead of old formula max)', () => {
-    const onchain = makeOnchain(2_000_000_000_000, 'uniswap-v3', 'flat');
-    const boost = computeOnchainBoost('UNIUSDT', 'uniswap', onchain);
+    const onchain = makeOnchain(2_000_000_000_000, 'jupiter-lend', 'flat');
+    const boost = computeOnchainBoost('JUPUSDT', 'jupiter', onchain);
     expect(boost).toBe(10);
   });
 
   it('returns 15 for high TVL with uptrend', () => {
-    const onchain = makeOnchain(2_000_000_000_000, 'uniswap-v3', 'up');
-    const boost = computeOnchainBoost('UNIUSDT', 'uniswap', onchain);
+    const onchain = makeOnchain(2_000_000_000_000, 'jupiter-lend', 'up');
+    const boost = computeOnchainBoost('JUPUSDT', 'jupiter', onchain);
     expect(boost).toBe(15);
   });
 
   it('returns 0 for high TVL with downtrend', () => {
-    const onchain = makeOnchain(2_000_000_000_000, 'lido', 'down');
-    const boost = computeOnchainBoost('LDOUSDT', 'lido-dao', onchain);
+    const onchain = makeOnchain(2_000_000_000_000, 'jupiter-lend', 'down');
+    const boost = computeOnchainBoost('JUPUSDT', 'jupiter', onchain);
     expect(boost).toBe(0);
   });
 });
@@ -231,9 +231,9 @@ describe('computeSignals with onchain', () => {
   });
 
   it('applies on-chain boost to composite score for mapped token', () => {
-    const tickers = [makeTicker({ symbol: 'UNIUSDT', tokenId: 'uniswap', priceChangePercent: 0 })];
+    const tickers = [makeTicker({ symbol: 'JUPUSDT', tokenId: 'jupiter', priceChangePercent: 0 })];
     const onchain: OnChainMetrics = {
-      protocols: [{ name: 'uniswap-v3', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
+      protocols: [{ name: 'jupiter-lend', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
       chains: [],
       fetchedAt: '2026-07-03T00:00:00Z',
     };
@@ -244,9 +244,9 @@ describe('computeSignals with onchain', () => {
   });
 
   it('adds Strong on-chain TVL alert for high boost', () => {
-    const tickers = [makeTicker({ symbol: 'UNIUSDT', tokenId: 'uniswap', priceChangePercent: 0 })];
+    const tickers = [makeTicker({ symbol: 'JUPUSDT', tokenId: 'jupiter', priceChangePercent: 0 })];
     const onchain: OnChainMetrics = {
-      protocols: [{ name: 'uniswap-v3', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
+      protocols: [{ name: 'jupiter-lend', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
       chains: [],
       fetchedAt: '2026-07-03T00:00:00Z',
     };
@@ -301,10 +301,10 @@ describe('prism-scan remediation', () => {
 
   // Finding #4 — on-chain boost is multiplicative & post-clamp (not eaten).
   it('applies on-chain boost multiplicatively after the clamp', () => {
-    const tickers = [makeTicker({ symbol: 'UNIUSDT', tokenId: 'uniswap', priceChangePercent: 0 })];
-    const tech = new Map([['UNIUSDT', makeTech({ rsi: 50, adx: undefined })]]);
+    const tickers = [makeTicker({ symbol: 'JUPUSDT', tokenId: 'jupiter', priceChangePercent: 0 })];
+    const tech = new Map([['JUPUSDT', makeTech({ rsi: 50, adx: undefined })]]);
     const onchain: OnChainMetrics = {
-      protocols: [{ name: 'uniswap-v3', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
+      protocols: [{ name: 'jupiter-lend', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
       chains: [], fetchedAt: '2026-07-03T00:00:00Z',
     };
     const without = computeSignals(tickers, tech, [], null)[0]!.compositeScore;
@@ -319,17 +319,17 @@ describe('prism-scan remediation', () => {
   // Finding #5 — ADX multiplier scales the score, NOT the on-chain boost.
   it('applies ADX multiplier to score only, leaving on-chain boost unscaled', () => {
     const mk = (adx: number) => {
-      const tickers = [makeTicker({ symbol: 'UNIUSDT', tokenId: 'uniswap', priceChangePercent: 0 })];
-      const tech = new Map([['UNIUSDT', makeTech({ rsi: 50, adx })]]);
+      const tickers = [makeTicker({ symbol: 'JUPUSDT', tokenId: 'jupiter', priceChangePercent: 0 })];
+      const tech = new Map([['JUPUSDT', makeTech({ rsi: 50, adx })]]);
       const onchain: OnChainMetrics = {
-        protocols: [{ name: 'uniswap-v3', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
+        protocols: [{ name: 'jupiter-lend', tvl: 5_000_000_000, fees1d: 0, fees7d: 0, fees30d: 0, tvlTrend: 'flat' }],
         chains: [], fetchedAt: '2026-07-03T00:00:00Z',
       };
       return computeSignals(tickers, tech, [], onchain)[0]!.compositeScore;
     };
     const baseNoAdx = computeSignals(
-      [makeTicker({ symbol: 'UNIUSDT', tokenId: 'uniswap', priceChangePercent: 0 })],
-      new Map([['UNIUSDT', makeTech({ rsi: 50, adx: undefined })]]),
+      [makeTicker({ symbol: 'JUPUSDT', tokenId: 'jupiter', priceChangePercent: 0 })],
+      new Map([['JUPUSDT', makeTech({ rsi: 50, adx: undefined })]]),
       [], null,
     )[0]!.compositeScore;
     // ADX 10 → 0.6× score, then ×1.10 boost; ADX 60 → 1.1× score, then ×1.10 boost.

@@ -43,13 +43,12 @@ const DYNAMIC_FLAG_TOP_N = 50;
 
 // ── Global error handlers ──
 process.on('uncaughtException', (err) => {
-  console.error(`[FATAL] Unhandled exception: ${err.message}`);
-  console.error(err.stack);
+  logger.fatal('Unhandled exception', { message: err.message, stack: err.stack });
   process.exit(1);
 });
 
 process.on('unhandledRejection', (reason) => {
-  console.error(`[FATAL] Unhandled rejection: ${reason}`);
+  logger.fatal('Unhandled rejection', { reason: String(reason) });
   process.exit(1);
 });
 
@@ -91,9 +90,9 @@ program
         try {
           const dynamicTokens = await getTopTokensByVolume(count);
           filter = dynamicTokens.map(t => t.sym);
-          console.error(`[auto-dynamic] Top ${dynamicTokens.length} tokens by volume`);
+          logger.info(`[auto-dynamic] Top ${dynamicTokens.length} tokens by volume`);
         } catch {
-          console.error('[auto-dynamic] Failed to fetch top tokens, using default list');
+          logger.warn('[auto-dynamic] Failed to fetch top tokens, using default list');
         }
       }
 
@@ -115,11 +114,11 @@ program
         quiet: opts.quiet ?? false,
       });
 
-      if (output) console.log(output);
+      if (output) logger.stdout(output);
 
-      console.error(`\n[done] ${result.run.runId} — ${result.run.numTokens} tokens in ${result.run.durationMs}ms`);
-      console.error(`       ${result.aggregatedSignals.length} strategy signals`);
-      if (!opts.noLog) console.error(`       Logged to data/ directory`);
+      logger.info(`\n[done] ${result.run.runId} — ${result.run.numTokens} tokens in ${result.run.durationMs}ms`);
+      logger.info(`       ${result.aggregatedSignals.length} strategy signals`);
+      if (!opts.noLog) logger.info(`       Logged to data/ directory`);
 
       // Auto-save all report formats — single current file + archive
       const dataDir = loadConfig().dataDir;
@@ -188,9 +187,9 @@ program
         tickerBatch += toJSONLine(ticker) + '\n';
       }
       fs.appendFileSync(tickersPath, tickerBatch, 'utf-8');
-      console.error(`       ${result.tickers.length} tickers appended to ticker dataset`);
+      logger.info(`       ${result.tickers.length} tickers appended to ticker dataset`);
     } catch (err) {
-      console.error(`[ERROR] Radar scan failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] Radar scan failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -210,45 +209,45 @@ program
       const sym = symbol.toUpperCase();
       const tokens = getTokenList();
       const token = tokens.find(t => t.sym === sym);
-      if (!token) { console.error(`Unknown token: ${sym}`); process.exit(1); }
+      if (!token) { logger.error(`Unknown token: ${sym}`); process.exit(1); }
 
       const pair = getBinancePair(token);
       const klines = await fetchKlines(pair, opts.period, parseInt(opts.lookback, 10));
-      if (klines.length === 0) { console.error(`No data for ${pair}`); process.exit(1); }
+      if (klines.length === 0) { logger.error(`No data for ${pair}`); process.exit(1); }
 
       switch (opts.type) {
         case 'sparkline':
-          console.log(`\n${sym} Price (${opts.period}, last ${klines.length} candles):\n`);
-          console.log(priceSparkline(klines, { height: 12 }));
-          console.log(`\nLatest: $${klines[klines.length - 1]!.close.toFixed(2)}`);
-          console.log(`High: $${Math.max(...klines.map(k => k.high)).toFixed(2)}`);
-          console.log(`Low: $${Math.min(...klines.map(k => k.low)).toFixed(2)}`);
+          logger.stdout(`\n${sym} Price (${opts.period}, last ${klines.length} candles):\n`);
+          logger.stdout(priceSparkline(klines, { height: 12 }));
+          logger.stdout(`\nLatest: $${klines[klines.length - 1]!.close.toFixed(2)}`);
+          logger.stdout(`High: $${Math.max(...klines.map(k => k.high)).toFixed(2)}`);
+          logger.stdout(`Low: $${Math.min(...klines.map(k => k.low)).toFixed(2)}`);
           break;
 
         case 'ma':
-          console.log(`\n${sym} Price + EMA20/EMA50 (${opts.period}):\n`);
-          console.log(multiMaSparkline(klines, { height: 12 }));
+          logger.stdout(`\n${sym} Price + EMA20/EMA50 (${opts.period}):\n`);
+          logger.stdout(multiMaSparkline(klines, { height: 12 }));
           break;
 
         case 'svg':
-          console.log(priceSvgChart(`${sym} Price (${opts.period})`, klines, parseInt(opts.width, 10)));
+          logger.stdout(priceSvgChart(`${sym} Price (${opts.period})`, klines, parseInt(opts.width, 10)));
           break;
 
         case 'dashboard':
-          console.log(multiPanelSvgChart(`${sym} Price + RSI`, klines, klines.map(() => null), parseInt(opts.width, 10), 400));
+          logger.stdout(multiPanelSvgChart(`${sym} Price + RSI`, klines, klines.map(() => null), parseInt(opts.width, 10), 400));
           break;
 
         case 'candlestick':
-          console.log(candlestickSvgChart(`${sym} Candlestick (${opts.period})`, klines, parseInt(opts.width, 10), Math.round(parseInt(opts.width, 10) * 0.6)));
+          logger.stdout(candlestickSvgChart(`${sym} Candlestick (${opts.period})`, klines, parseInt(opts.width, 10), Math.round(parseInt(opts.width, 10) * 0.6)));
           break;
 
         case 'watermark':
           // Watermark is embedded in all SVG charts; render a branded SVG as demo
-          console.log(priceSvgChart(`${sym} Watermark Demo (${opts.period})`, klines, parseInt(opts.width, 10)));
+          logger.stdout(priceSvgChart(`${sym} Watermark Demo (${opts.period})`, klines, parseInt(opts.width, 10)));
           break;
       }
     } catch (err) {
-      console.error(`[ERROR] Chart generation failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] Chart generation failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -261,13 +260,13 @@ program
   .action(() => {
     const engine = new StrategyEngine();
     const strategies = engine.getStrategyInfo();
-    console.log('\n📊 Signal Strategies:\n');
-    console.table(strategies.strategies.map(s => ({
+    logger.stdout('\n📊 Signal Strategies:\n');
+    logger.stdout(JSON.stringify(strategies.strategies.map(s => ({
       Name: s.name,
       Description: s.description,
       Timeframe: s.timeframe,
       Weight: `${(s.weight * 100).toFixed(0)}%`,
-    })));
+    })), null, 2));
   });
 
 // ── tokens command ──
@@ -278,7 +277,7 @@ program
   .action((opts) => {
     const tokens = getTokenList()
       .filter(t => !opts.chain || t.chain === opts.chain || t.chains?.includes(opts.chain));
-    console.table(tokens.map(t => ({ Symbol: t.sym, Name: t.name, Chain: t.chain })));
+    logger.stdout(JSON.stringify(tokens.map(t => ({ Symbol: t.sym, Name: t.name, Chain: t.chain })), null, 2));
   });
 
 // ── search command ──
@@ -341,7 +340,7 @@ program
     const limited = scored.slice(0, limit);
 
     if (opts.json) {
-      console.log(JSON.stringify(limited.map(h => ({
+      logger.stdout(JSON.stringify(limited.map(h => ({
         symbol: h.token.sym,
         name: h.token.name,
         chain: h.token.chain,
@@ -353,17 +352,17 @@ program
       })), null, 2));
     } else {
       if (limited.length === 0) {
-        console.error(`No tokens matching "${query}"`);
+        logger.error(`No tokens matching "${query}"`);
         return;
       }
-      console.table(limited.map(h => ({
+      logger.stdout(JSON.stringify(limited.map(h => ({
         Symbol: h.token.sym,
         Name: h.token.name,
         Chain: h.token.chain,
         ID: h.token.id,
         Match: `${h.matchField} (${h.score}%)`,
-      })));
-      console.error(`\n${limited.length} result(s) for "${query}"`);
+      })), null, 2));
+      logger.error(`\n${limited.length} result(s) for "${query}"`);
     }
   });
 
@@ -389,9 +388,9 @@ program
         sortBy: 'signal',
       });
       const output = await displayRadar(result, { format: opts.format as OutputFormat });
-      if (output) console.log(output);
+      if (output) logger.stdout(output);
     } catch (err) {
-      console.error(`[ERROR] Signal generation failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] Signal generation failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -410,9 +409,9 @@ program
         includeTech: false,
       });
       const output = await displayRadar(result, { format: opts.format as OutputFormat });
-      if (output) console.log(output);
+      if (output) logger.stdout(output);
     } catch (err) {
-      console.error(`[ERROR] News fetch failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] News fetch failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -424,34 +423,34 @@ program
   .action(async () => {
     const monitor = new HealthMonitor();
     const status = await monitor.check();
-    console.log(`\n🛰️  Crypto Radar — Health Check\n`);
-    console.log(`Status: ${status.status === 'healthy' ? '✅' : status.status === 'degraded' ? '⚠️' : '❌'} ${status.status.toUpperCase()}`);
-    console.log(`Uptime: ${Math.floor(status.uptime / 60)}m ${status.uptime % 60}s`);
-    console.log('');
+    logger.stdout(`\n🛰️  Crypto Radar — Health Check\n`);
+    logger.stdout(`Status: ${status.status === 'healthy' ? '✅' : status.status === 'degraded' ? '⚠️' : '❌'} ${status.status.toUpperCase()}`);
+    logger.stdout(`Uptime: ${Math.floor(status.uptime / 60)}m ${status.uptime % 60}s`);
+    logger.stdout('');
 
     // Primary checks table
     for (const check of status.checks) {
       const icon = check.status === 'pass' ? '✅' : check.status === 'warn' ? '⚠️' : '❌';
       const name = check.name.padEnd(16);
-      console.log(`  ${icon} ${name} (${check.latencyMs}ms)  ${check.message}`);
+      logger.stdout(`  ${icon} ${name} (${check.latencyMs}ms)  ${check.message}`);
     }
 
     // Cache stats summary (from HealthStatus extended fields)
     if (status.cacheStats) {
       const { entries, hitRate, memoryEstimate } = status.cacheStats;
-      console.log(`       cache stats: ${entries} entries, ${hitRate}% hit rate, ~${(memoryEstimate / 1024).toFixed(0)}KB est.`);
+      logger.stdout(`       cache stats: ${entries} entries, ${hitRate}% hit rate, ~${(memoryEstimate / 1024).toFixed(0)}KB est.`);
     }
 
     // Feed health detail lines
     if (status.feedHealth && status.feedHealth.feeds.length > 0) {
       for (const feed of status.feedHealth.feeds) {
         const icon = feed.status === 'healthy' ? '✅' : feed.status === 'degraded' ? '⚠️' : '❌';
-        console.log(`  ${icon} feed: ${feed.name} — ${feed.status} (${feed.consecutiveFailures} failures)`);
+        logger.stdout(`  ${icon} feed: ${feed.name} — ${feed.status} (${feed.consecutiveFailures} failures)`);
       }
     }
 
-    console.log('');
-    console.log('Details:', JSON.stringify(status.details, null, 2));
+    logger.stdout('');
+    logger.stdout('Details: ' + JSON.stringify(status.details, null, 2));
   });
 
 // ── configure command ──
@@ -464,14 +463,14 @@ program
   .action((opts) => {
     if (opts.generate) {
       writeDefaultConfig('radar.config.json');
-      console.log('Generated radar.config.json with defaults. Edit then restart.');
+      logger.stdout('Generated radar.config.json with defaults. Edit then restart.');
     }
     if (opts.show) {
       const config = loadConfig();
-      console.log(JSON.stringify(config, null, 2));
+      logger.stdout(JSON.stringify(config, null, 2));
     }
     if (!opts.generate && !opts.show) {
-      console.log('Usage: crypto-radar configure --show | --generate');
+      logger.stdout('Usage: crypto-radar configure --show | --generate');
     }
   });
 
@@ -484,16 +483,16 @@ program
   .option('--stdout', 'Force output to stdout (default when no -o given)')
   .option('--validate-only', 'Only validate CSV data, do not generate SQL')
   .action((opts) => {
-    const result = exportCsvToSql({
+    const result: ExportResult = exportCsvToSql({
       outputPath: opts.output,
       toStdout: opts.stdout ?? !opts.output,
       validateOnly: opts.validateOnly ?? false,
     });
     if (!opts.validateOnly) {
-      console.error(`[export-sqlite] Exported ${result.tickerRows} ticker rows, ${result.newsRows} news rows`);
-      if (result.sqlFile) console.error(`[export-sqlite] Wrote ${result.sqlFile}`);
+      logger.info(`[export-sqlite] Exported ${result.tickerRows} ticker rows, ${result.newsRows} news rows`);
+      if (result.sqlFile) logger.info(`[export-sqlite] Wrote ${result.sqlFile}`);
     } else {
-      console.error(`[export-sqlite] Validation: ${result.validationErrors} errors in ${result.validationTotal} rows`);
+      logger.warn(`[export-sqlite] Validation: ${result.validationErrors} errors in ${result.validationTotal} rows`);
     }
   });
 
@@ -511,15 +510,15 @@ program
       const sym = symbol.toUpperCase();
       const tokens = getTokenList();
       const token = tokens.find(t => t.sym === sym);
-      if (!token) { console.error(`Unknown token: ${sym}`); process.exit(1); }
+      if (!token) { logger.error(`Unknown token: ${sym}`); process.exit(1); }
 
       const pair = getBinancePair(token);
       const period = opts.period as string;
       const lookback = parseInt(opts.lookback, 10) || 200;
 
-      console.error(`Fetching ${lookback} ${period} candles for ${pair}...`);
+      logger.info(`Fetching ${lookback} ${period} candles for ${pair}...`);
       const klines = await fetchKlines(pair, period, lookback);
-      if (klines.length < 30) { console.error(`Insufficient data for ${pair} (need ≥30 candles, got ${klines.length})`); process.exit(1); }
+      if (klines.length < 30) { logger.error(`Insufficient data for ${pair} (need ≥30 candles, got ${klines.length})`); process.exit(1); }
 
       const closes = klines.map(k => k.close);
       const highs = klines.map(k => k.high);
@@ -541,20 +540,20 @@ program
       }
 
       const result = detectRegime({ adx, bbWidth, atrPct, volRatio });
-      console.log(formatRegime(result));
+      logger.stdout(formatRegime(result));
 
       // Show regime-adapted weights if requested
       if (opts.weights) {
         const weights = getRegimeWeights(result.regime);
-        console.log('📊 Regime-Adapted Strategy Weights:');
-        console.log(`    Momentum:       ${(weights.momentum * 100).toFixed(0)}%`);
-        console.log(`    Mean-Reversion: ${(weights.meanReversion * 100).toFixed(0)}%`);
-        console.log(`    Trend-Following: ${(weights.trendFollowing * 100).toFixed(0)}%`);
-        console.log(`    Position Size:  ${(weights.positionSize * 100).toFixed(0)}%`);
-        console.log('');
+        logger.stdout('📊 Regime-Adapted Strategy Weights:');
+        logger.stdout(`    Momentum:       ${(weights.momentum * 100).toFixed(0)}%`);
+        logger.stdout(`    Mean-Reversion: ${(weights.meanReversion * 100).toFixed(0)}%`);
+        logger.stdout(`    Trend-Following: ${(weights.trendFollowing * 100).toFixed(0)}%`);
+        logger.stdout(`    Position Size:  ${(weights.positionSize * 100).toFixed(0)}%`);
+        logger.stdout('');
       }
     } catch (err) {
-      console.error(`[ERROR] Regime detection failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] Regime detection failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -580,14 +579,14 @@ program
         const count = parseInt(opts.count, 10) || 10;
         const topTokens = await getTopTokensByVolume(Math.min(count, 20));
         symbols = topTokens.map(t => t.sym);
-        console.error(`[auto] Top ${symbols.length} tokens by volume selected`);
+        logger.info(`[auto] Top ${symbols.length} tokens by volume selected`);
       }
 
       // Validate tokens exist
       const tokens = getTokenList();
       const validTokens = tokens.filter(t => symbols.includes(t.sym));
       if (validTokens.length < 2) {
-        console.error(`Need at least 2 valid tokens. Found ${validTokens.length}.`);
+        logger.error(`Need at least 2 valid tokens. Found ${validTokens.length}.`);
         process.exit(1);
       }
 
@@ -595,7 +594,7 @@ program
       const lookback = parseInt(opts.lookback, 10) || 100;
 
       // Fetch klines for each token in parallel
-      console.error(`Fetching ${lookback} ${period} candles for ${validTokens.length} tokens...`);
+      logger.info(`Fetching ${lookback} ${period} candles for ${validTokens.length} tokens...`);
       const priceMap = new Map<string, number[]>();
 
       const fetchResults = await Promise.allSettled(
@@ -609,37 +608,37 @@ program
       );
 
       const failed = fetchResults.filter(r => r.status === 'rejected').length;
-      if (failed > 0) console.error(`[warn] ${failed} token(s) failed to fetch`);
+      if (failed > 0) logger.warn(`[warn] ${failed} token(s) failed to fetch`);
 
       if (priceMap.size < 2) {
-        console.error('Insufficient data: need at least 2 tokens with valid klines.');
+        logger.error('Insufficient data: need at least 2 tokens with valid klines.');
         process.exit(1);
       }
 
-      console.error(`Computing correlation matrix for ${priceMap.size} tokens...`);
+      logger.info(`Computing correlation matrix for ${priceMap.size} tokens...`);
 
       const matrix = computeCorrelationMatrix(priceMap);
 
       if (opts.json) {
-        console.log(JSON.stringify(matrix, null, 2));
+        logger.stdout(JSON.stringify(matrix, null, 2));
       } else {
-        console.log(formatCorrelationTable(matrix));
+        logger.stdout(formatCorrelationTable(matrix));
 
         // Show top correlations per symbol
         const topN = parseInt(opts.top, 10) || 3;
-        console.log(`\n📈 Top ${topN} Correlations per Token:\n`);
+        logger.stdout(`\n📈 Top ${topN} Correlations per Token:\n`);
 
         for (const sym of matrix.symbols) {
           const top = findTopCorrelations(sym, matrix, topN);
           const pairs = top.map(p =>
             `${p.symbolB}: ${p.correlation > 0 ? '+' : ''}${p.correlation.toFixed(3)}`
           ).join(', ');
-          console.log(`  ${sym.padEnd(6)} → ${pairs}`);
+          logger.stdout(`  ${sym.padEnd(6)} → ${pairs}`);
         }
-        console.log('');
+        logger.stdout('');
       }
     } catch (err) {
-      console.error(`[ERROR] Correlation analysis failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] Correlation analysis failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -652,7 +651,7 @@ program
   .option('-s, --snapshot', 'Generate compact signal snapshot instead of full report')
   .action(async (opts) => {
     try {
-      console.error('Running radar scan for report...');
+      logger.info('Running radar scan for report...');
       const result = await runRadar({
         includeTech: true,
         includeNews: true,
@@ -667,7 +666,7 @@ program
       let html: string;
       if (opts.snapshot) {
         html = generateSignalSnapshot(signals);
-        console.error(`Generating signal snapshot (${signals.length} signals)...`);
+        logger.info(`Generating signal snapshot (${signals.length} signals)...`);
       } else {
         html = generateHtmlReport({
           title: 'Crypto Radar Report',
@@ -677,15 +676,15 @@ program
           onchain,
           includeCharts: true,
         });
-        console.error(`Generating full report (${tickers.length} tokens, ${signals.length} signals)...`);
+        logger.info(`Generating full report (${tickers.length} tokens, ${signals.length} signals)...`);
       }
 
       const outputPath = opts.output;
       await import('fs').then(fs => fs.promises.writeFile(outputPath, html, 'utf-8'));
-      console.error(`✅ Report written to ${outputPath}`);
-      console.error(`   Open in browser → File → Print → Save as PDF (enable background graphics)`);
+      logger.info(`✅ Report written to ${outputPath}`);
+      logger.info(`   Open in browser → File → Print → Save as PDF (enable background graphics)`);
     } catch (err) {
-      console.error(`[ERROR] Report generation failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] Report generation failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -713,20 +712,20 @@ program
         csvPath.startsWith(prefix + pathMod.sep) || csvPath === prefix,
       );
       if (!isAllowed) {
-        console.error(`❌ Security: file path is not in allowed directories`);
+        logger.error(`❌ Security: file path is not in allowed directories`);
         process.exit(1);
       }
 
       if (!fs.existsSync(csvPath)) {
-        console.error(`❌ File not found: ${csvPath}`);
+        logger.error(`❌ File not found: ${csvPath}`);
         process.exit(1);
       }
-      console.error(`Validating ${csvPath}...`);
+      logger.info(`Validating ${csvPath}...`);
 
       const csvContent = fs.readFileSync(csvPath, 'utf-8');
       const lines = csvContent.trim().split('\n');
       if (lines.length < 2) {
-        console.error('❌ CSV file has no data rows');
+        logger.error('❌ CSV file has no data rows');
         process.exit(1);
       }
 
@@ -763,20 +762,20 @@ program
       const errors = validateOutput(tickers);
 
       if (errors.length === 0) {
-        console.log(`✅ Validation passed — ${tickers.length} rows checked, 0 errors`);
+        logger.stdout(`✅ Validation passed — ${tickers.length} rows checked, 0 errors`);
       } else {
         if (opts.json) {
-          console.log(JSON.stringify(errors, null, 2));
+          logger.stdout(JSON.stringify(errors, null, 2));
         } else {
-          console.log(`❌ Validation found ${errors.length} error(s):\n`);
+          logger.stdout(`❌ Validation found ${errors.length} error(s):\n`);
           for (const err of errors) {
-            console.log(`  ${err.field}: ${err.message} (got: ${JSON.stringify(err.value)})`);
+            logger.stdout(`  ${err.field}: ${err.message} (got: ${JSON.stringify(err.value)})`);
           }
         }
         process.exit(1);
       }
     } catch (err) {
-      console.error(`[ERROR] Validation failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] Validation failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -802,7 +801,7 @@ program
           })
         : undefined;
 
-      const report = await runCollector({
+      const report: CollectorReport = await runCollector({
         klines: opts.klines,
         futures: opts.futures,
         backfillDays: opts.backfill ? parseInt(opts.backfill, 10) : undefined,
@@ -823,14 +822,14 @@ program
       if (report.crossAssetInserted > 0) parts.push(`${report.crossAssetInserted} cross-asset`);
 
       if (parts.length > 0) {
-        console.log(`[collect] Inserted ${parts.join(', ')} in ${report.durationMs}ms`);
+        logger.stdout(`[collect] Inserted ${parts.join(', ')} in ${report.durationMs}ms`);
       } else {
-        console.log(`[collect] No data inserted (${report.durationMs}ms)`);
+        logger.stdout(`[collect] No data inserted (${report.durationMs}ms)`);
       }
 
       if (report.errors.length > 0) {
         for (const err of report.errors) {
-          console.error(`[collect] Error: ${err}`);
+          logger.error(`[collect] Error: ${err}`);
         }
       }
 
@@ -838,7 +837,7 @@ program
         process.exit(1);
       }
     } catch (err) {
-      console.error(`[ERROR] Collector failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] Collector failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -854,12 +853,12 @@ program
   .action(async (opts) => {
     if (opts.status) {
       const running = isDaemonRunning();
-      console.log(`Daemon: ${running ? '✅ RUNNING' : '⏹️  STOPPED'}`);
+      logger.stdout(`Daemon: ${running ? '✅ RUNNING' : '⏹️  STOPPED'}`);
       process.exit(running ? 0 : 1);
     }
     if (opts.stop) {
       const stopped = stopDaemon();
-      console.log(stopped ? '⏹️  Daemon stopped' : '❌ No running daemon found');
+      logger.stdout(stopped ? '⏹️  Daemon stopped' : '❌ No running daemon found');
       process.exit(stopped ? 0 : 1);
     }
     // Start foreground
@@ -877,7 +876,7 @@ program
   .option('--confidence <n>', 'Minimum confidence threshold (0-1)', '0')
   .action(async (opts) => {
     try {
-      console.error('Running radar scan for backtest data...');
+      logger.info('Running radar scan for backtest data...');
       const result = await runRadar({ includeTech: true, includeNews: false, noLog: true });
 
       const filterSymbol = opts.symbol ? opts.symbol.toUpperCase() : null;
@@ -886,7 +885,7 @@ program
         : result.aggregatedSignals;
 
       if (signals.length === 0) {
-        console.error('No signals to backtest. Try running without --symbol filter.');
+        logger.error('No signals to backtest. Try running without --symbol filter.');
         process.exit(1);
       }
 
@@ -895,7 +894,7 @@ program
       const symbols = [...new Set(signals.map(s => s.symbol))];
       const tokens = getTokenList();
 
-      console.error(`Building kline maps for ${symbols.length} symbols...`);
+      logger.info(`Building kline maps for ${symbols.length} symbols...`);
 
       for (const sym of symbols) {
         const token = tokens.find(t => t.sym === sym);
@@ -919,12 +918,12 @@ program
       };
 
       const btResult = runBacktest(signals, klinesBySymbol, backtestOptions);
-      console.log(formatBacktest(btResult));
+      logger.stdout(formatBacktest(btResult));
 
       // Store for programmatic use
       (globalThis as Record<string, unknown>).__lastBacktestResult = btResult;
     } catch (err) {
-      console.error(`[ERROR] Backtest failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] Backtest failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -948,19 +947,19 @@ program
         const stats = store.stats();
         const predictions = store.getPredictions({ limit: 5 });
         const hasModel = fs.existsSync('ml/models');
-        console.log('📊 ML Pipeline Status\n');
-        console.log(`  Enabled:       ${config.ml?.enabled ? '✅' : '❌'} (set RADAR__ML_ENABLED=true)`);
-        console.log(`  Store rows:    ${stats.tickers ?? 0} tickers, ${stats.klines ?? 0} klines`);
-        console.log(`  Predictions:   ${stats.predictions ?? 0} total`);
-        console.log(`  Models dir:    ${hasModel ? '✅ exists' : '❌ not found'}`);
+        logger.stdout('📊 ML Pipeline Status\n');
+        logger.stdout(`  Enabled:       ${config.ml?.enabled ? '✅' : '❌'} (set RADAR__ML_ENABLED=true)`);
+        logger.stdout(`  Store rows:    ${stats.tickers ?? 0} tickers, ${stats.klines ?? 0} klines`);
+        logger.stdout(`  Predictions:   ${stats.predictions ?? 0} total`);
+        logger.stdout(`  Models dir:    ${hasModel ? '✅ exists' : '❌ not found'}`);
         if (predictions.length > 0) {
-          console.log(`  Latest pred:   ${predictions[0]?.symbol ?? 'N/A'} → ${predictions[0]?.direction ?? 'N/A'} (${(predictions[0]?.confidence ?? 0 * 100).toFixed(0)}%)`);
+          logger.stdout(`  Latest pred:   ${predictions[0]?.symbol ?? 'N/A'} → ${predictions[0]?.direction ?? 'N/A'} (${(predictions[0]?.confidence ?? 0 * 100).toFixed(0)}%)`);
         }
         process.exit(0);
       }
 
       if (action === 'train') {
-        console.error('Training ML model...');
+        logger.info('Training ML model...');
         const symbols = opts.symbols ?? getTokenList().map((t: TokenDef) => t.sym).slice(0, 20);
         const horizon = parseInt(opts.horizon, 10) || 5;
         const lookbackDays = parseInt(opts.lookback, 10) || 90;
@@ -972,11 +971,11 @@ program
         for (const symbol of symbols) {
           for (const interval of intervals) {
             const klines = store.getKlines(symbol, interval, {
-              limit: 1000,
+              limit: Math.max(60, lookbackDays * 24),
               order: 'desc',
             }).reverse();
             if (klines.length < 60) {
-              console.error(`  ${symbol} ${interval}: insufficient data (${klines.length})`);
+              logger.warn(`  ${symbol} ${interval}: insufficient data (${klines.length})`);
               continue;
             }
 
@@ -998,14 +997,14 @@ program
                 allLabels.push(lbl);
               }
             }
-            console.error(`  ${symbol} ${interval}: ${features.length} feature rows`);
+            logger.info(`  ${symbol} ${interval}: ${features.length} feature rows`);
           }
         }
 
-        console.error(`Total: ${allFeatures.length} feature rows`);
+        logger.info(`Total: ${allFeatures.length} feature rows`);
 
         if (allFeatures.length < 100) {
-          console.error(`Need at least 100 rows, got ${allFeatures.length}. Collect more data first.`);
+          logger.error(`Need at least 100 rows, got ${allFeatures.length}. Collect more data first.`);
           process.exit(1);
         }
 
@@ -1029,7 +1028,7 @@ program
 
           proc.on('close', (code) => {
             if (code === 0) {
-              console.error(`✅ Training complete. Dataset: ${dataset.trainPath}`);
+              logger.info(`✅ Training complete. Dataset: ${dataset.trainPath}`);
               resolve();
             } else {
               reject(new Error(`Training exited with code ${code}`));
@@ -1040,35 +1039,35 @@ program
       }
 
       if (action === 'predict') {
-        console.error('Running ML prediction...');
+        logger.info('Running ML prediction...');
         const symbols = opts.symbols ?? getTokenList().map((t: TokenDef) => t.sym).slice(0, 20);
         const results = await batchPredict(store, symbols, opts.interval ?? '1h', {
           minConfidence: 0,
         });
 
         if (results.length === 0) {
-          console.error('No predictions generated. Has a model been trained?');
+          logger.error('No predictions generated. Has a model been trained?');
           process.exit(1);
         }
 
         // Display results
-        console.log('\n🤖 ML Predictions:\n');
+        logger.stdout('\n🤖 ML Predictions:\n');
         for (const r of results) {
           const dirIcon = r.direction === 1 ? '🟢' : r.direction === -1 ? '🔴' : '⚪';
           const dirLabel = r.direction === 1 ? 'BUY' : r.direction === -1 ? 'SELL' : 'NEUTRAL';
-          console.log(`  ${dirIcon} ${r.symbol.padEnd(6)} → ${dirLabel.padEnd(8)} (${(r.confidence * 100).toFixed(0)}%)`);
+          logger.stdout(`  ${dirIcon} ${r.symbol.padEnd(6)} → ${dirLabel.padEnd(8)} (${(r.confidence * 100).toFixed(0)}%)`);
         }
 
         // Persist to store
         persistPredictions(store, results, 'cli-manual');
-        console.error(`\n✅ ${results.length} predictions persisted`);
+        logger.info(`\n✅ ${results.length} predictions persisted`);
         process.exit(0);
       }
 
-      console.error(`Unknown action: ${action}. Use train, predict, or status.`);
+      logger.error(`Unknown action: ${action}. Use train, predict, or status.`);
       process.exit(1);
     } catch (err) {
-      console.error(`[ERROR] ML command failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] ML command failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });
@@ -1080,14 +1079,14 @@ program
   .option('--iterations <n>', 'Number of runs for median timing', '3')
   .action(async (opts) => {
     try {
-      console.error('Running performance benchmark...');
+      logger.info('Running performance benchmark...');
       const iterations = Math.max(1, parseInt(opts.iterations, 10) || 3);
       const result = iterations > 1
         ? await (await import('./core/benchmark.js')).runBenchmarkMedian(iterations)
         : await runBenchmark();
-      console.log(formatBenchmark(result));
+      logger.stdout(formatBenchmark(result));
     } catch (err) {
-      console.error(`[ERROR] Benchmark failed:`, err instanceof Error ? err.message : err);
+      logger.error('[ERROR] Benchmark failed:', { message: err instanceof Error ? err.message : err });
       process.exit(1);
     }
   });

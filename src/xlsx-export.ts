@@ -132,6 +132,12 @@ export async function exportToXlsx(
 
     const excelRow = sheet.addRow(row);
 
+    // Apply date formatting to timestamp columns
+    const tsCell = excelRow.getCell(2); // ts_utc
+    if (tsCell.value != null) tsCell.numFmt = XLSX_DATE_FMT;
+    const dateEtCell = excelRow.getCell(3); // date_et
+    if (dateEtCell.value != null) dateEtCell.numFmt = XLSX_DATE_FMT;
+
     // Apply conditional coloring on priceChangePercent column (index 16, 0-based)
     const pctCell = excelRow.getCell(16);
     if (typeof pctCell.value === 'number') {

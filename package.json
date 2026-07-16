@@ -136,33 +136,43 @@
     "Machine Learning"
   ],
   "dependencies": {
+    "@fastify/compress": "^9.1.0",
+    "@fastify/cors": "^11.3.0",
+    "@fastify/helmet": "^13.1.0",
+    "@fastify/jwt": "^10.2.0",
+    "@fastify/rate-limit": "^11.1.0",
+    "@fastify/swagger": "^9.8.1",
+    "@fastify/swagger-ui": "^6.1.0",
     "asciichart": "^1.5.25",
+    "bcrypt": "^6.0.0",
     "commander": "^15.0.0",
     "csv-stringify": "^6.8.1",
     "exceljs": "^4.4.0",
+    "fastify": "^5.10.0",
     "node-fetch": "^3.3.2",
     "picocolors": "^1.1.1",
     "rss-parser": "^3.13.0",
-    "ws": "^8.21.1"
+    "ws": "^8.21.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@testing-library/jest-dom": "^6.9.1",
+    "@types/bcrypt": "^6.0.0",
     "@types/node": "^26.1.1",
     "@types/ws": "^8.18.1",
     "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^10.7.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-formatter-compact": "^9.0.1",
     "husky": "^9.1.7",
     "prettier": "^3.9.5",
     "typedoc": "^0.28.20",
-    "typescript": "^7.0.2",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.64.0",
     "vitest": "^4.1.10"
   },
   "overrides": {
-    "uuid": ">=11.1.1",
-    "typescript-eslint": "^8.64.0",
-    "typescript": "^7.0.2"
+    "uuid": ">=11.1.1"
   }
 }

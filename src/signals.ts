@@ -253,6 +253,14 @@ export function computeOnchainBoost(
 ): number {
   if (!onchain || !onchain.protocols || onchain.protocols.length === 0) return 0;
 
+  // Resolve token metadata to validate chain support for on-chain metrics
+  const tokenMeta = getTokenById(tokenId);
+  const chain: Chain | undefined = tokenMeta?.chain;
+  if (chain && chain !== 'ethereum' && chain !== 'solana' && chain !== 'bnb') {
+    // On-chain metrics only meaningful for EVM/Solana/BSC chains
+    return 0;
+  }
+
   // Look up the DeFiLlama protocol slug for this token
   const protocolSlug = PROTOCOL_MAP[tokenId];
   if (!protocolSlug) return 0;
@@ -524,6 +532,12 @@ function tagAlertPriority(
     return `🟠 [HIGH] ${alertText}`;
   }
   if (alertText.includes('Strong trend') || alertText.includes('Very weak trend')) {
+    return `🟠 [HIGH] ${alertText}`;
+  }
+
+  // Use ADX from technicals to escalate trend-strength alerts
+  if (tech && tech.adx != null && tech.adx > 40 &&
+      (alertText.includes('trend') || alertText.includes('momentum'))) {
     return `🟠 [HIGH] ${alertText}`;
   }
 

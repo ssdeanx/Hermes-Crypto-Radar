@@ -82,15 +82,17 @@ export function createWsHub(httpServer: http.Server, _store: Store): WsHub {
       safeSend(ws, JSON.stringify({ type: 'error', message: `Invalid channel: ${msg.channel}` }));
       return;
     }
-    const subs = channelSubs.get(msg.channel);
+    const channel = msg.channel as Channel;
+    const subs = channelSubs.get(channel);
     if (subs) {
       subs.set(ws, { symbol: msg.symbol });
-      safeSend(ws, JSON.stringify({ type: 'subscribed', channel: msg.channel }));
+      safeSend(ws, JSON.stringify({ type: 'subscribed', channel }));
     }
   }
 
   function handleUnsubscribe(ws: WebSocket, msg: UnsubscribeMessage): void {
-    const subs = channelSubs.get(msg.channel);
+    const channel = msg.channel as Channel;
+    const subs = channelSubs.get(channel);
     subs?.delete(ws);
   }
 
@@ -122,6 +124,17 @@ export function createWsHub(httpServer: http.Server, _store: Store): WsHub {
       ws.ping();
     }
   }, HEARTBEAT_INTERVAL_MS);
+
+  // Enforce client heartbeat timeout: terminate connections that miss pongs
+  const timeoutTimer = setInterval(() => {
+    for (const ws of clients) {
+      if ((ws as unknown as Record<string, unknown>).alive === false) {
+        ws.terminate();
+        cleanupClient(ws);
+      }
+    }
+  }, HEARTBEAT_TIMEOUT_MS);
+  timeoutTimer.unref();
   heartbeatTimer.unref();
 
   function broadcast(channel: string, data: unknown): void {
@@ -142,6 +155,7 @@ export function createWsHub(httpServer: http.Server, _store: Store): WsHub {
 
   function close(): void {
     clearInterval(heartbeatTimer);
+    clearInterval(timeoutTimer);
     for (const ws of clients) {
       ws.close();
     }

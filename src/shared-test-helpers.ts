@@ -76,3 +76,22 @@ export function makeNews(symbol: string, relevance = 0.7): NewsMatch {
     url: 'https://example.com/test',
   };
 }
+
+/** Create a mock TokenSignal with sensible defaults */
+export function makeSignal(overrides: Partial<TokenSignal> = {}): TokenSignal {
+  return {
+    symbol: 'TEST',
+    chain: 'solana',
+    tokenId: 'test-token',
+    tokenName: 'Test Token',
+    compositeScore: 50,
+    momentumScore: 50,
+    technicalScore: 50,
+    newsScore: 50,
+    lastPrice: 100,
+    priceChangePercent: 0,
+    alerts: [],
+    timestamp: '2026-07-03T00:00:00Z',
+    ...overrides,
+  };
+}

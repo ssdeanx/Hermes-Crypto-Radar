@@ -8,7 +8,7 @@ import { DataError } from '../core/errors.js';
 import { logger } from '../core/logger.js';
 import { getGlobalCache } from '../core/cache.js';
 import type {
-  KlineRow, TickerRow, SignalRow, NewsRow, PaperTradeRow,
+  KlineRow, TickerRow, SignalRow, NewsRow, PaperTradeRow, UserRow,
   FundingRow, OIRow, LsRatioRow, LiquidationRow,
   FearGreedRow, OrderBookRow, CrossAssetRow, PredictionRow,
 } from '../types.js';
@@ -288,6 +288,33 @@ export class Store {
     const params: SQLInputValue[] = [profile];
     if (status) { sql += ' AND status = ?'; params.push(status); }
     return allRows<PaperTradeRow>(this.prep(sql), ...params);
+  }
+
+  // ── Users / Auth ──
+
+  getUserByEmail(email: string): UserRow | undefined {
+    return oneRow<UserRow>(this.prep('SELECT * FROM users WHERE email = ?'), email);
+  }
+
+  getUserById(id: string): UserRow | undefined {
+    return oneRow<UserRow>(this.prep('SELECT * FROM users WHERE id = ?'), id);
+  }
+
+  createUser(user: UserRow): void {
+    this.prep(
+      'INSERT INTO users (id, email, password_hash, name, role, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run(user.id, user.email, user.password_hash, user.name, user.role, user.created_at, user.updated_at);
+  }
+
+  updateUser(id: string, fields: Partial<Pick<UserRow, 'name' | 'role' | 'password_hash'>>): void {
+    const sets: string[] = [];
+    const params: SQLInputValue[] = [];
+    if (fields.name !== undefined) { sets.push('name = ?'); params.push(fields.name); }
+    if (fields.role !== undefined) { sets.push('role = ?'); params.push(fields.role); }
+    if (fields.password_hash !== undefined) { sets.push('password_hash = ?'); params.push(fields.password_hash); }
+    if (sets.length === 0) return;
+    sets.push('updated_at = datetime(\'now\')');
+    this.prep(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`).run(...params, id);
   }
 
   // ── Futures sources ──

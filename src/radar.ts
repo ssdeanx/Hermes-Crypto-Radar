@@ -5,7 +5,7 @@
 import type {
   BinanceTicker, EnrichedTicker, TechnicalIndicators,
   NewsMatch, TokenSignal, RadarOptions, RadarRun, KlineInterval,
-  KlineRow,
+  Kline,
 } from './types.js';
 import type { Store } from './store/db.js';
 import { getTokensByChain, getBinancePair } from './tokens.js';
@@ -39,6 +39,33 @@ let _runCounter = 0;
 /** @internal Reset the radar module-level cache (for testing) */
 export function _resetTestCache(): void {
   resetGlobalCache();
+}
+
+/** Acquire a process lock to prevent concurrent radar runs (daemon safety). */
+export function acquireLock(): boolean {
+  if (fs.existsSync(LOCK_FILE)) return false;
+  fs.writeFileSync(LOCK_FILE, String(process.pid), 'utf-8');
+  return true;
+}
+
+/** Release the process lock acquired by acquireLock(). */
+export function releaseLock(): void {
+  if (fs.existsSync(LOCK_FILE)) fs.unlinkSync(LOCK_FILE);
+}
+
+/** Persist lightweight run state to disk for crash recovery. */
+export function saveState(state: Record<string, unknown>): void {
+  fs.writeFileSync(STATE_FILE, JSON.stringify(state), 'utf-8');
+}
+
+/** Load previously persisted run state, or null if none exists. */
+export function loadState(): Record<string, unknown> | null {
+  if (!fs.existsSync(STATE_FILE)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(STATE_FILE, 'utf-8')) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
 }
 
 function getRunId(): string {
@@ -170,11 +197,49 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   const filteredTokens = options.filter && options.filter.length > 0
     ? tokens.filter(t => options.filter!.includes(t.sym)) : tokens;
 
+  // Fetch CoinGecko simple prices as fallback for tokens not on Binance
+  let cgPrices: Map<string, CoinGeckoPrice> = new Map();
+  try {
+    const cgIds = filteredTokens.map(t => t.id).filter(Boolean);
+    if (cgIds.length > 0) {
+      const prices = await fetchSimplePrices(cgIds);
+      cgPrices = prices as Map<string, CoinGeckoPrice>;
+    }
+  } catch {
+    // Non-fatal — Binance is primary source
+  }
+
   const tickers: EnrichedTicker[] = [];
   for (const token of filteredTokens) {
     const pair = getBinancePair(token);
     const raw = rawTickers.get(pair);
-    if (raw) tickers.push(enrichTicker(raw, token, runId, tsUtc));
+    if (raw) {
+      tickers.push(enrichTicker(raw, token, runId, tsUtc));
+    } else if (cgPrices.has(token.id)) {
+      // Fallback: use CoinGecko price for tokens without a Binance pair
+      const cg = cgPrices.get(token.id)!;
+      const synthetic: BinanceTicker = {
+        symbol: pair,
+        priceChange: '0',
+        priceChangePercent: String(cg.usd24hChange ?? 0),
+        weightedAvgPrice: String(cg.usd),
+        prevClosePrice: String(cg.usd),
+        lastPrice: String(cg.usd),
+        lastQty: '0',
+        bidPrice: String(cg.usd),
+        bidQty: '0',
+        askPrice: String(cg.usd),
+        askQty: '0',
+        openPrice: String(cg.usd),
+        highPrice: String(cg.usd),
+        lowPrice: String(cg.usd),
+        volume: '0',
+        quoteVolume: '0',
+        openTime: 0, closeTime: 0,
+        firstId: 0, lastId: 0, count: 0,
+      };
+      tickers.push(enrichTicker(synthetic, token, runId, tsUtc));
+    }
   }
 
   if (options.sortBy) {
@@ -187,7 +252,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   }
 
   const technicals = new Map<string, Map<string, TechnicalIndicators>>();
-  const klineCache = new Map<string, Awaited<ReturnType<typeof fetchKlines>>>();
+  const klineCache = new Map<string, Kline[]>();
   const KLINE_LIMIT = 200;
 
   if (options.includeTech !== false) {
@@ -322,7 +387,8 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
 
   if (options.store) {
     try {
-      options.store.persistRun({ tickers, signals, newsMatches });
+      const store: Store = options.store as Store;
+      store.persistRun({ tickers, signals, newsMatches });
       log.info(`Archived ${tickers.length} tickers, ${signals.length} signals, ${newsMatches.length} news items`);
     } catch (err) {
       log.warn('Failed to persist radar run', { error: String(err) });
@@ -452,6 +518,8 @@ export async function displayRadar(
       output += `\n${s.symbol} (${s.chain}) ${s.compositeScore}/100  [M:${s.momentumScore} T:${s.technicalScore} N:${s.newsScore}]`;
       if (s.alerts.length > 0) output += `  ${s.alerts.slice(0, 3).join(', ')}`;
     }
+    // Append detailed signal report
+    output += '\n\n' + toSignalReport(result.signals.slice(0, 10));
   }
   return output;
 }

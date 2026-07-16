@@ -313,7 +313,9 @@ describe('Ichimoku Cloud', () => {
     expect(result.spanB).not.toBeNull();
     expect(result.laggingSpan).not.toBeNull();
     expect(result.spanA!).toBeGreaterThan(0);
-    expect(result.laggingSpan!).toBe(ICHI_CLOSES[ICHI_CLOSES.length - 1]);
+    // Lagging span is the close from `displacement` (26) periods ago
+    const laggingIndex = Math.max(0, ICHI_CLOSES.length - 1 - 26);
+    expect(result.laggingSpan!).toBe(ICHI_CLOSES[laggingIndex]);
   });
 
   it('returns null spanB when data insufficient for spanBPeriod', () => {

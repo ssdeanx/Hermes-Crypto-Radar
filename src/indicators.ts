@@ -115,7 +115,7 @@ export function computeMFI(
  */
 export function computeMACD(closes: number[]): MACDResult {
   if (!closes || closes.length < 26) {
-    return { macd: null, signal: null, histogram: null } as any;
+    return { macd: null, signal: null, histogram: null };
   }
   const ema12Series = emaSeries(closes, 12);
   const ema26Series = emaSeries(closes, 26);
@@ -123,7 +123,7 @@ export function computeMACD(closes: number[]): MACDResult {
     ema12Series[i] != null && ema26Series[i] != null ? ema12Series[i]! - ema26Series[i]! : null
   );
   const validMacd = macdSeries.filter((v): v is number => v != null);
-  if (validMacd.length < 9) return { macd: null, signal: null, histogram: null } as any;
+  if (validMacd.length < 9) return { macd: null, signal: null, histogram: null };
   const signalSeries = emaSeries(validMacd, 9);
   const macd = validMacd[validMacd.length - 1]!;
   const signal = signalSeries[signalSeries.length - 1]!;
@@ -302,8 +302,9 @@ export function computeIchimoku(
   }
 
   // Lagging span is the current close, normally plotted `displacement`
-  // periods behind. We return the raw value.
-  const laggingSpan = closes[closes.length - 1]!;
+  // periods behind. We return the close from `displacement` periods ago.
+  const laggingSpanIndex = Math.max(0, closes.length - 1 - displacement);
+  const laggingSpan = closes[laggingSpanIndex]!;
 
   return { conversionLine, baseLine, spanA, spanB, laggingSpan };
 }

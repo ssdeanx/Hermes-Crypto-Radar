@@ -33,7 +33,7 @@ export async function sendAlert(
   type?: WebhookType,
 ): Promise<void> {
   const config = loadConfig();
-  const webhooks = (config as any).webhooks as WebhookConfig | undefined;
+  const webhooks = config.webhooks;
   if (!webhooks) return;
 
   const promises: Promise<void>[] = [];

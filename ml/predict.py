@@ -181,11 +181,13 @@ def predict(args: argparse.Namespace) -> None:
     # are available, or 0 as a safe fallback.
     fill_values = _build_fill_values(feature_cols, norm_stats)
     if fill_values:
+        # TODO:  Cannot access attribute "sum" for class "int" Attribute "sum" is unknown
         nan_count = int(df[feature_cols].isna().sum().sum())
         X = df[feature_cols].fillna(value=fill_values).to_numpy(dtype=np.float64)
         if nan_count > 0:
             logger.warning("Filled %d NaN value(s) using norm-stats median z-scores", nan_count)
     else:
+        # TODO:  Cannot access attribute "sum" for class "int" Attribute "sum" is unknown
         nan_count = int(df[feature_cols].isna().sum().sum())
         X = df[feature_cols].fillna(0).to_numpy(dtype=np.float64)
         if nan_count > 0:

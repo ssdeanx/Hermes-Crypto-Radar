@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.2.0] — 2026-07-16
+
+### Added
+
+- **Fastify API server** — Replaced raw `http.createServer` with enterprise-grade Fastify 5.10:
+  - `@fastify/cors` — Configurable CORS with credentials, preflight caching
+  - `@fastify/jwt` — Stateless JWT auth with configurable audience/issuer, 7-day expiry
+  - `@fastify/rate-limit` — 100 req/min per IP (300 for authenticated), with custom error responses
+  - `@fastify/compress` — Automatic gzip/brotli compression (threshold 1KB)
+  - `@fastify/helmet` — Security headers (XSS, clickjacking, MIME-sniffing, HSTS)
+  - `@fastify/swagger` + `@fastify/swagger-ui` — Auto-generated OpenAPI docs at `/docs`
+  - `handlerTimeout` (30s), `requestTimeout` (60s), `forceCloseConnections`, `return503OnClosing`
+  - `trustProxy` support for Railway/Vercel deployments
+  - Request logging via `onResponse` hook with structured log levels by status code
+- **Auth API** — `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/auth/me`:
+  - Password hashing via bcrypt (12 rounds)
+  - Zod v4 schema validation (`z.email()`, `z.string().min({ error })`)
+  - JWT token issuance with 7-day expiry
+  - Users stored in SQLite `users` table (schema v3)
+- **Paper trading POST** — `POST /api/portfolio/trades` with:
+  - Buy/sell execution with live Binance/CoinGecko pricing
+  - FIFO position matching and P&L computation for sells
+  - Partial fills and position tracking
+  - Zod v4 validated request schema
+- **Enterprise logger** — Default format changed to human-readable text with picocolors:
+  - Color-coded level labels (green INFO, yellow WARN, red ERROR, etc.)
+  - Bold message text, dim metadata keys, cyan values
+  - JSON format auto-selected when logging to file
+  - Child logger support with inherited settings
+
+### Changed
+
+- **API routing** — All REST endpoints migrated from raw `http` routing to Fastify:
+  - `GET /api/tickers`, `GET /api/tickers/:symbol`
+  - `GET /api/signals`, `GET /api/signals/:symbol`
+  - `GET /api/klines/:symbol`, `GET /api/futures/:symbol`
+  - `GET /api/orderbook/:symbol`, `GET /api/news`
+  - `GET /api/tokens`, `GET /api/regime/:symbol`
+  - `GET /api/portfolio`, `GET /api/portfolio/trades`
+  - `GET /api/fear-greed`, `GET /api/cross-asset`
+  - `GET /api/stats`, `GET /api/predictions`, `GET /api/predictions/:symbol`
+  - `POST /api/collect` (token-gated)
+  - Daemon management routes: `/`, `/health`, `/refresh`, `/reload-config`, `/scan-complete`
+- **Database schema** — Version bumped to 3, new `users` table for auth
+- **Logger default** — Changed from JSON to text format for CLI output; JSON auto-selected for file logging
+
+### Security
+
+- Password hashing with bcrypt (12 rounds)
+- Rate limiting on all API routes
+- Helmet security headers
+- JWT auth with configurable audience/issuer validation
+- Prototype pollution protection (Fastify built-in)
+- Handler timeouts prevent slow-loris attacks
+
 ## [2.1.0] — 2026-07-11
 
 ### Added

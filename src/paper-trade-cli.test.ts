@@ -49,6 +49,7 @@ const mockState = vi.hoisted(() => {
       getPortfolio: getPortfolioFn,
       getReport: getReportFn,
       getSignalRecommendations: getSignalRecommendationsFn,
+      getRawState: vi.fn(() => ({ holdings: t.holdings, trades: t.trades })),
       agentPlay: agentPlayFn,
       save: saveFn,
       load: loadFn,
@@ -82,6 +83,21 @@ vi.mock('./core/config.js', () => ({
   loadConfig: vi.fn().mockReturnValue({ dataDir: '~/.hermes/data/crypto-radar' }),
 }));
 
+// Mock the structured logger — paper-trade-cli uses logger.stdout/info/error/warn
+// instead of console.log/console.error. We collect calls for output assertions.
+const mockLogger = vi.hoisted(() => ({
+  logger: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+    stdout: vi.fn(),
+    child: vi.fn(() => mockLogger.logger),
+  },
+}));
+
+vi.mock('./core/logger.js', () => mockLogger);
+
 // Mock node:fs to avoid real file system operations in profile commands
 const fsMock = vi.hoisted(() => ({
   writeFileSync: vi.fn(),
@@ -111,9 +127,6 @@ async function runCommand(
   const origExit = process.exit;
   const origArgv = process.argv;
 
-  const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-  const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
   let exitCode = 0;
 
   process.exit = ((code?: number) => {
@@ -136,14 +149,25 @@ async function runCommand(
     process.argv = origArgv;
   }
 
-  // Collect all console calls BEFORE restoring spies
-  const allCalls = [
-    ...logSpy.mock.calls.map(c => c.join(' ')),
-    ...errorSpy.mock.calls.map(c => c.join(' ')),
-  ];
+  // Collect all logger calls (paper-trade-cli uses the structured logger).
+  // Stringify objects the way the real logger would (extra fields appended).
+  const stringifyCall = (call: unknown[]): string =>
+    call.map(arg => {
+      if (typeof arg === 'string') return arg;
+      if (arg && typeof arg === 'object') {
+        const obj = arg as Record<string, unknown>;
+        if ('message' in obj && Object.keys(obj).length === 1) return String(obj.message);
+        return JSON.stringify(obj);
+      }
+      return String(arg);
+    }).join(' ');
 
-  logSpy.mockRestore();
-  errorSpy.mockRestore();
+  const allCalls = [
+    ...mockLogger.logger.stdout.mock.calls.map(stringifyCall),
+    ...mockLogger.logger.info.mock.calls.map(stringifyCall),
+    ...mockLogger.logger.warn.mock.calls.map(stringifyCall),
+    ...mockLogger.logger.error.mock.calls.map(stringifyCall),
+  ];
 
   return { output: allCalls.join('\n'), exitCode };
 }
@@ -169,6 +193,11 @@ function resetMocks() {
   fsMock.existsSync.mockReturnValue(true);
   fsMock.unlinkSync.mockReset();
   fsMock.writeFileSync.mockReset();
+  // Clear logger mock calls between tests
+  mockLogger.logger.info.mockClear();
+  mockLogger.logger.warn.mockClear();
+  mockLogger.logger.error.mockClear();
+  mockLogger.logger.stdout.mockClear();
 }
 
 // ═══════════════════════════════════════════════════════════════════════

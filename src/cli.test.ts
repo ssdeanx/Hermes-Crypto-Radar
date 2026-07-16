@@ -89,6 +89,7 @@ const mockLogger = vi.hoisted(() => ({
     warn: vi.fn(),
     error: vi.fn(),
     debug: vi.fn(),
+    stdout: vi.fn(),
     child: vi.fn(() => mockLogger.logger),
   },
 }));
@@ -307,10 +308,20 @@ const MOCK_KLINES = Array.from({ length: 100 }, (_, i) => ({
 // ═══════════════════════════════════════════════════════════════════════
 
 let originalArgv: string[];
-let logSpy: ReturnType<typeof vi.spyOn>;
-let errorSpy: ReturnType<typeof vi.spyOn>;
 let exitSpy: ReturnType<typeof vi.spyOn>;
 let exitCodes: number[];
+
+// Helpers to assert against the mocked logger (cli.ts uses the structured
+// logger from core/logger.js instead of console.log/console.error).
+function loggerStdoutCalls(): string[] {
+  return mockLogger.logger.stdout.mock.calls.map(c => String(c[0] ?? ''));
+}
+function loggerInfoCalls(): string[] {
+  return mockLogger.logger.info.mock.calls.map(c => String(c[0] ?? ''));
+}
+function loggerErrorCalls(): string[] {
+  return mockLogger.logger.error.mock.calls.map(c => String(c[0] ?? ''));
+}
 
 /**
  * Set process.argv for the target command, reset the module registry,
@@ -335,10 +346,6 @@ async function runCommand(args: string[]): Promise<void> {
 
 beforeEach(() => {
   originalArgv = process.argv;
-
-  // Capture console output
-  logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-  errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
   // Spy on process.exit to record calls without throwing.
   // Commander v15 catches async handler rejections and calls process.exit,
@@ -428,8 +435,6 @@ beforeEach(() => {
 
 afterEach(() => {
   process.argv = originalArgv;
-  logSpy?.mockRestore();
-  errorSpy?.mockRestore();
   exitSpy?.mockRestore();
   vi.clearAllMocks();
 });
@@ -445,7 +450,7 @@ describe('scan command', () => {
     expect(mockTokens.getTopTokensByVolume).toHaveBeenCalledWith(30);
     expect(mockRadar.runRadar).toHaveBeenCalledTimes(1);
     expect(mockRadar.displayRadar).toHaveBeenCalled();
-    expect(errorSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.info).toHaveBeenCalledWith(
       expect.stringContaining('[done]'),
     );
   });
@@ -548,7 +553,7 @@ describe('scan command', () => {
 
     await runCommand(['scan']);
 
-    expect(errorSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('Failed to fetch top tokens'),
     );
     expect(mockRadar.runRadar).toHaveBeenCalled();
@@ -573,7 +578,7 @@ describe('chart command', () => {
     expect(mockTokens.getTokenList).toHaveBeenCalled();
     expect(mockBinance.fetchKlines).toHaveBeenCalledWith('SOLUSDT', '1h', 100);
     expect(mockCharts.priceSparkline).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('SOL Price'));
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(expect.stringContaining('SOL Price'));
   });
 
   it('generates MA chart with --type ma', async () => {
@@ -699,13 +704,13 @@ describe('search command', () => {
   it('searches tokens by exact symbol match', async () => {
     await runCommand(['search', 'SOL']);
 
-    expect(logSpy).toHaveBeenCalled();
+    expect(mockLogger.logger.stdout).toHaveBeenCalled();
   });
 
   it('outputs JSON with --json flag', async () => {
     await runCommand(['search', 'BTC', '--json']);
 
-    const jsonCalls = logSpy.mock.calls.filter(
+    const jsonCalls = mockLogger.logger.stdout.mock.calls.filter(
       (call: unknown[]) => typeof call[0] === 'string' && call[0].startsWith('['),
     );
     expect(jsonCalls.length).toBeGreaterThan(0);
@@ -719,13 +724,13 @@ describe('search command', () => {
 
   it('respects --limit option', async () => {
     await runCommand(['search', 'SOL', '--limit', '5']);
-    expect(logSpy).toHaveBeenCalled();
+    expect(mockLogger.logger.stdout).toHaveBeenCalled();
   });
 
   it('shows "no tokens matching" for unmatched queries', async () => {
     await runCommand(['search', 'ZZZZNOTFOUND']);
 
-    expect(errorSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.error).toHaveBeenCalledWith(
       expect.stringContaining('No tokens matching'),
     );
   });
@@ -733,7 +738,7 @@ describe('search command', () => {
   it('handles fuzzy matching for partial queries', async () => {
     await runCommand(['search', 'ola']);
 
-    expect(logSpy).toHaveBeenCalled();
+    expect(mockLogger.logger.stdout).toHaveBeenCalled();
   });
 });
 
@@ -814,10 +819,10 @@ describe('health command', () => {
     await runCommand(['health']);
 
     expect(mockHealthMonitorInstance.check).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('HEALTHY'));
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('binance-api'));
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(expect.stringContaining('HEALTHY'));
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(expect.stringContaining('binance-api'));
     // Check Details: is logged somewhere
-    expect(logSpy.mock.calls.some(call =>
+    expect(mockLogger.logger.stdout.mock.calls.some(call =>
       typeof call[0] === 'string' && call[0].includes('Details:'),
     )).toBe(true);
   });
@@ -840,7 +845,7 @@ describe('health command', () => {
 
     await runCommand(['health']);
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('DEGRADED'));
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(expect.stringContaining('DEGRADED'));
   });
 
   it('shows failing status when critical check fails', async () => {
@@ -857,7 +862,7 @@ describe('health command', () => {
 
     await runCommand(['health']);
 
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('FAIL'));
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(expect.stringContaining('FAIL'));
   });
 });
 
@@ -870,7 +875,7 @@ describe('configure command', () => {
     await runCommand(['configure', '--generate']);
 
     expect(mockConfig.writeDefaultConfig).toHaveBeenCalledWith('radar.config.json');
-    expect(logSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(
       expect.stringContaining('Generated radar.config.json'),
     );
   });
@@ -879,7 +884,7 @@ describe('configure command', () => {
     await runCommand(['configure', '--show']);
 
     expect(mockConfig.loadConfig).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(
       expect.stringContaining('dataDir'),
     );
   });
@@ -887,7 +892,7 @@ describe('configure command', () => {
   it('shows usage when no flags given', async () => {
     await runCommand(['configure']);
 
-    expect(logSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(
       expect.stringContaining('Usage'),
     );
   });
@@ -913,7 +918,7 @@ describe('export-sqlite command', () => {
         validateOnly: false,
       }),
     );
-    expect(errorSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.info).toHaveBeenCalledWith(
       expect.stringContaining('Exported 100 ticker rows'),
     );
   });
@@ -943,7 +948,7 @@ describe('export-sqlite command', () => {
     expect(mockSqliteExport.exportCsvToSql).toHaveBeenCalledWith(
       expect.objectContaining({ validateOnly: true }),
     );
-    expect(errorSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.warn).toHaveBeenCalledWith(
       expect.stringContaining('Validation: 3 errors'),
     );
   });
@@ -968,7 +973,7 @@ describe('regime command', () => {
     expect(mockIndicators.computeADX).toHaveBeenCalled();
     expect(mockIndicators.computeBB).toHaveBeenCalled();
     expect(mockRegime.detectRegime).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(
       expect.stringContaining('Market Regime'),
     );
   });
@@ -983,7 +988,7 @@ describe('regime command', () => {
     await runCommand(['regime', 'SOL', '--weights']);
 
     expect(mockRegime.getRegimeWeights).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(
       expect.stringContaining('Regime-Adapted Strategy Weights'),
     );
   });
@@ -1023,7 +1028,7 @@ describe('correlation command', () => {
     expect(mockBinance.fetchKlines).toHaveBeenCalled();
     expect(mockCorrelation.computeCorrelationMatrix).toHaveBeenCalled();
     expect(mockCorrelation.formatCorrelationTable).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalled();
+    expect(mockLogger.logger.stdout).toHaveBeenCalled();
   });
 
   it('uses --symbols when provided', async () => {
@@ -1053,7 +1058,7 @@ describe('correlation command', () => {
     await runCommand(['correlation', '--symbols', 'SOL', 'BTC', '--json']);
 
     expect(mockCorrelation.computeCorrelationMatrix).toHaveBeenCalled();
-    const jsonCall = logSpy.mock.calls.find(
+    const jsonCall = mockLogger.logger.stdout.mock.calls.find(
       (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('symbols'),
     );
     expect(jsonCall).toBeDefined();
@@ -1091,7 +1096,7 @@ describe('report command', () => {
       }),
     );
     expect(mockPdfExport.generateHtmlReport).toHaveBeenCalled();
-    expect(errorSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.info).toHaveBeenCalledWith(
       expect.stringContaining('Report written to'),
     );
   });
@@ -1100,7 +1105,7 @@ describe('report command', () => {
     await runCommand(['report', '--snapshot']);
 
     expect(mockPdfExport.generateSignalSnapshot).toHaveBeenCalled();
-    expect(errorSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.info).toHaveBeenCalledWith(
       expect.stringContaining('signal snapshot'),
     );
   });
@@ -1142,7 +1147,7 @@ describe('validate command', () => {
 
     expect(mockFs.existsSync).toHaveBeenCalled();
     expect(mockOutput.validateOutput).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(
       expect.stringContaining('Validation passed'),
     );
   });
@@ -1178,7 +1183,7 @@ describe('validate command', () => {
 
     await runCommand(['validate', '--json']);
 
-    const jsonCall = logSpy.mock.calls.find(
+    const jsonCall = mockLogger.logger.stdout.mock.calls.find(
       (call: unknown[]) => typeof call[0] === 'string' && call[0].includes('field'),
     );
     expect(jsonCall).toBeDefined();
@@ -1215,7 +1220,7 @@ describe('collect command', () => {
         futures: true,
       }),
     );
-    expect(logSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(
       expect.stringContaining('[collect]'),
     );
   });
@@ -1287,7 +1292,7 @@ describe('daemon command', () => {
     await runCommand(['daemon', '--status']);
 
     expect(mockDaemon.isDaemonRunning).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('RUNNING'));
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(expect.stringContaining('RUNNING'));
   });
 
   it('shows stopped status when daemon is not running', async () => {
@@ -1303,7 +1308,7 @@ describe('daemon command', () => {
     await runCommand(['daemon', '--stop']);
 
     expect(mockDaemon.stopDaemon).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('Daemon stopped'));
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(expect.stringContaining('Daemon stopped'));
   });
 
   it('handles --stop when no daemon is running', async () => {
@@ -1348,7 +1353,7 @@ describe('backtest command', () => {
     expect(mockBinance.fetchKlines).toHaveBeenCalled();
     expect(mockBacktest.runBacktest).toHaveBeenCalled();
     expect(mockBacktest.formatBacktest).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalled();
+    expect(mockLogger.logger.stdout).toHaveBeenCalled();
   });
 
   it('filters by --symbol', async () => {
@@ -1424,7 +1429,7 @@ describe('ml command', () => {
 
     expect(mockStore.Store.open).toHaveBeenCalled();
     expect(mockStoreInstance.stats).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('ML Pipeline Status'));
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(expect.stringContaining('ML Pipeline Status'));
   });
 
   it('shows latest prediction in status when available', async () => {
@@ -1435,7 +1440,7 @@ describe('ml command', () => {
 
     await runCommand(['ml', 'status']);
 
-    expect(logSpy).toHaveBeenCalledWith(
+    expect(mockLogger.logger.stdout).toHaveBeenCalledWith(
       expect.stringContaining('Latest pred'),
     );
   });
@@ -1480,7 +1485,7 @@ describe('benchmark command', () => {
     // Default iterations=3 => median path
     expect(mockBenchmark.runBenchmarkMedian).toHaveBeenCalledWith(3);
     expect(mockBenchmark.formatBenchmark).toHaveBeenCalled();
-    expect(logSpy).toHaveBeenCalled();
+    expect(mockLogger.logger.stdout).toHaveBeenCalled();
   });
 
   it('passes --iterations option', async () => {

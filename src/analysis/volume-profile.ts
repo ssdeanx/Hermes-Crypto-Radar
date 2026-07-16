@@ -90,7 +90,8 @@ export function computeVolumeProfile(
   klines: Kline[],
   options: VolumeProfileOptions = {},
 ): VolumeProfileResult {
-  const { buckets = 24, valueAreaPct = 0.70 } = options;
+  const { buckets = 24, valueAreaPct: rawValueAreaPct = 0.70 } = options;
+  const valueAreaPct = clamp(rawValueAreaPct, 0.01, 0.99);
   const n = klines.length;
   if (n === 0) {
     return {
@@ -164,8 +165,6 @@ export function computeVolumeProfile(
       bucketVolumes[firstBucket] += candleVol;
     } else {
       // Candle spans multiple buckets — distribute proportionally by price overlap
-      const numBuckets = lastBucket - firstBucket + 1;
-
       for (let b = firstBucket; b <= lastBucket; b++) {
         const overlapLow = Math.max(candleLow, bucketLows[b]);
         const overlapHigh = Math.min(candleHigh, bucketHighs[b]);
@@ -395,29 +394,12 @@ export function volumeProfileSvg(
 
     // Pick gradient fill based on type
     let fillUrl: string;
-    let isPoc = false;
     const midPrice = (node.priceLow + node.priceHigh) / 2;
 
-    if (Math.abs(midPrice - poc) / (node.priceHigh - node.priceLow || 1) < 1) {
-      // Check if this bucket IS the POC bucket
-      if (i === nodes.findIndex(n => {
-        const np = (n.priceLow + n.priceHigh) / 2;
-        return Math.abs(np - poc) / (n.priceHigh - n.priceLow || 1) < 1;
-      })) {
-        isPoc = true;
-      }
-    }
+    // Determine if this node contains the Point of Control (POC)
+    const isPoc = node.priceLow <= poc && poc <= node.priceHigh;
 
-    // Actually let's find the POC bucket index more directly
-    // POC is midpoint of the max volume bucket, so find it by volume
-    // Let's re-find the POC index
-    // Already have poc from result, find the bucket that contains it
-    let isPocBucket = false;
-    if (node.priceLow <= poc && poc <= node.priceHigh) {
-      isPocBucket = true;
-    }
-
-    if (isPocBucket) {
+    if (isPoc) {
       fillUrl = 'url(#pocGrad)';
     } else if (node.type === 'hvn') {
       fillUrl = 'url(#hvnGrad)';
@@ -429,7 +411,7 @@ export function volumeProfileSvg(
 
     // Bar
     lines.push(`<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth.toFixed(1)}" height="${Math.max(3, barH - 1).toFixed(1)}" rx="1" fill="${fillUrl}">
-      <title>${fmtPrice(midPrice)} — Vol: ${formatVolumeCompact(node.volume)} (${node.volumePercent.toFixed(1)}%)${isPocBucket ? ' [POC]' : ''}</title>
+      <title>${fmtPrice(midPrice)} — Vol: ${formatVolumeCompact(node.volume)} (${node.volumePercent.toFixed(1)}%)${isPoc ? ' [POC]' : ''}</title>
     </rect>`);
 
     // Price label on the left

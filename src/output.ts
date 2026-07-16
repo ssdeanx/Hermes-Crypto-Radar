@@ -296,7 +296,7 @@ export function toMarkdownReport(
 
     for (const [sym, ti] of Array.from(technicals)) {
       lines.push(
-        `| ${sym} | ${ti.rsi?.toFixed(1) ?? '—'} | ${ti.mfi?.toFixed(1) ?? '—'} | ${ti.bb?.width.toFixed(3) ?? '—'} | ${ti.macd?.histogram.toExponential(2) ?? '—'} | ${ti.atrPct?.toFixed(2) ?? '—'}% | ${ti.volTrend?.toFixed(2) ?? '—'} | ${ti.priceVsEma50?.toFixed(2) ?? '—'}%`,
+        `| ${sym} | ${ti.rsi?.toFixed(1) ?? '—'} | ${ti.mfi?.toFixed(1) ?? '—'} | ${ti.bb?.width.toFixed(3) ?? '—'} | ${ti.macd?.histogram != null ? ti.macd.histogram.toExponential(2) : '—'} | ${ti.atrPct?.toFixed(2) ?? '—'}% | ${ti.volTrend?.toFixed(2) ?? '—'} | ${ti.priceVsEma50?.toFixed(2) ?? '—'}%`,
       );
     }
   }
@@ -340,10 +340,20 @@ export function toTable(tickers: EnrichedTicker[], aggregatedSignals?: Aggregate
   const lines: string[] = [];
   const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
-  lines.push(`🛰️  Crypto Radar — ${now}  |  ${tickers.length} tokens\n`);
+  lines.push(`🛰️  Crypto Radar — ${now}  |  ${tickers.length} tokens` +
+    (aggregatedSignals && aggregatedSignals.length > 0 ? `  |  ${aggregatedSignals.length} signals` : '') + '\n');
 
   // Header
   lines.push('Sym     Chain    Price        24h Chg    Vol(24h)    Spread   Momentum  Tags');
+
+  // Build a lookup of signal tags per symbol
+  const signalTags = new Map<string, string>();
+  if (aggregatedSignals) {
+    for (const sig of aggregatedSignals) {
+      const dir = sig.direction === 'buy' ? '🟢' : sig.direction === 'sell' ? '🔴' : '⚪';
+      signalTags.set(sig.symbol, `${dir}${(sig.compositeConfidence * 100).toFixed(0)}%`);
+    }
+  }
 
   for (const t of tickers) {
     const sym = t.symbol.padEnd(7);
@@ -361,6 +371,8 @@ export function toTable(tickers: EnrichedTicker[], aggregatedSignals?: Aggregate
     else if (t.priceChangePercent >= 5) tags.push('🟢PUMP');
     if (t.quoteVolume >= 10e6) tags.push('💧HI-LIQ');
     if (t.spreadPct >= 1) tags.push('⚠️WIDE');
+    const sigTag = signalTags.get(t.symbol);
+    if (sigTag) tags.push(sigTag);
     const tagStr = tags.join(' ');
 
     lines.push(`${sym} ${chain} ${price} ${chgStr} ${vol} ${spread} ${momentum} ${tagStr}`);
@@ -480,4 +492,32 @@ export function validateOutput(
     }
   }
   return errors;
+}
+
+/**
+ * Format enriched tickers for display according to the requested output format.
+ * @param tickers Array of enriched tickers
+ * @param format Output format ('table' | 'csv' | 'json' | 'md' | 'xlsx')
+ * @param aggregatedSignals Optional aggregated signals to include in table output
+ * @returns Formatted string (empty for xlsx — handled by caller)
+ */
+export function formatOutput(
+  tickers: EnrichedTicker[],
+  format: OutputFormat,
+  aggregatedSignals?: AggregatedSignal[],
+): string {
+  switch (format) {
+    case 'table':
+      return toTable(tickers, aggregatedSignals);
+    case 'csv':
+      return [csvHeader(), ...tickers.map(t => toCSV(t))].join('\n');
+    case 'json':
+      return JSON.stringify(tickers, null, 2);
+    case 'md':
+      return toMarkdownReport(tickers);
+    case 'xlsx':
+      return ''; // xlsx handled by export pipeline
+    default:
+      return toTable(tickers, aggregatedSignals);
+  }
 }

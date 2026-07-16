@@ -15,6 +15,7 @@
 import { readFileSync, existsSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { loadConfig } from './core/config.js';
+import { logger } from './core/logger.js';
 
 // ── Schema validation ────────────────────────────────────────────────
 
@@ -142,7 +143,7 @@ function validateRow(
     // Required fields that must be present
     const requiredFields = new Set(['run_id', 'ts_utc', 'symbol', 'chain']);
 
-    if (val === undefined || val === '') {
+    if (!isPresent) {
       // Missing trailing columns are nullable (NULL) — only hard-error on required fields
       // but still log the missing field as a validation note
       if (requiredFields.has(col)) {
@@ -321,7 +322,7 @@ export function exportCsvToSql(options: CsvToSqlOptions = {}): ExportResult {
       }
     }
   } else {
-    console.error('[export-sqlite] Ticker CSV log not found — run a radar scan first');
+    logger.error('[export-sqlite] Ticker CSV log not found — run a radar scan first');
   }
 
   // Parse news CSV
@@ -351,7 +352,7 @@ export function exportCsvToSql(options: CsvToSqlOptions = {}): ExportResult {
       }
     }
   } else {
-    console.error('[export-sqlite] News CSV log not found — run a radar scan with news enabled first');
+    logger.error('[export-sqlite] News CSV log not found — run a radar scan with news enabled first');
   }
 
   const total = tickerRows.length + newsRows.length;
@@ -361,7 +362,7 @@ export function exportCsvToSql(options: CsvToSqlOptions = {}): ExportResult {
   if (options.validateOnly) {
     if (allErrors.length > 0) {
       for (const e of allErrors) {
-        console.error(`  [line ${e.line}] ${e.field}: ${e.message} (value: ${e.value})`);
+        logger.error(`  [line ${e.line}] ${e.field}: ${e.message} (value: ${e.value})`);
       }
     }
     return {

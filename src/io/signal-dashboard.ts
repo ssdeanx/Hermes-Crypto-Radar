@@ -238,7 +238,7 @@ export function signalDashboard(
   </defs>`;
 
   // ── HEADER ──
-  svg += `<text x="${pad}" y="${24}" class="d-header-title">🛰️ Crypto Radar <tspan fill="#64748b" font-weight="400">— Market Intelligence</tspan></text>\n`;
+  svg += `<text x="${pad}" y="${24}" class="d-header-title">🛰️ Crypto Radar <tspan fill="${SUBTLE}" font-weight="400">— Market Intelligence</tspan></text>\n`;
 
   // Status bar line
   const statusY = 44;
@@ -364,7 +364,7 @@ export function signalDashboard(
     const gaugeW = 14;
 
     // Background track
-    svg += `<rect x="${(gaugeCX - gaugeW / 2).toFixed(1)}" y="${gaugeTop}" width="${gaugeW}" height="${gaugeH}" rx="${gaugeW / 2}" fill="#1e293b"/>\n`;
+    svg += `<rect x="${(gaugeCX - gaugeW / 2).toFixed(1)}" y="${gaugeTop}" width="${gaugeW}" height="${gaugeH}" rx="${gaugeW / 2}" fill="${GRID_LINE}"/>\n`;
 
     // Fill — use pre-defined gradient from defs (no inline <defs> bug)
     const fillH = (upPct / 100) * gaugeH;
@@ -375,12 +375,13 @@ export function signalDashboard(
     </rect>\n`;
 
     // Bulb
-    svg += `<circle cx="${gaugeCX}" cy="${(gaugeTop + gaugeH).toFixed(1)}" r="${(gaugeW / 2 + 2)}" fill="#0f172a" stroke="#1e293b" stroke-width="1.5"/>\n`;
-    svg += `<circle cx="${gaugeCX}" cy="${(gaugeTop + gaugeH).toFixed(1)}" r="${(gaugeW / 2 - 1)}" fill="${upPct >= 50 ? '#22c55e' : '#ef4444'}"/>\n`;
-    svg += `<title>${upPct.toFixed(1)}% bullish — ${upCount} up / ${downCount} down</title>\n`;
+    svg += `<circle cx="${gaugeCX}" cy="${(gaugeTop + gaugeH).toFixed(1)}" r="${(gaugeW / 2 + 2)}" fill="${BG}" stroke="${MUTED}" stroke-width="1.5"/>\n`;
+    const bulbColor = lerpColor('#ef4444', ACCENT, upPct / 100);
+    svg += `<circle cx="${gaugeCX}" cy="${(gaugeTop + gaugeH).toFixed(1)}" r="${(gaugeW / 2 - 1)}" fill="${bulbColor}"/>\n`;
+    svg += `<title>${fmtPct(upPct / 100)} bullish — ${upCount} up / ${downCount} down</title>\n`;
 
     // Percentage text above gauge
-    svg += `<text x="${gaugeCX}" y="${(gaugeTop - 6).toFixed(1)}" text-anchor="middle" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="11" font-weight="700">${upPct.toFixed(0)}% Up</text>\n`;
+    svg += `<text x="${gaugeCX}" y="${(gaugeTop - 6).toFixed(1)}" text-anchor="middle" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="11" font-weight="700">${fmtPct(upPct / 100)} Up</text>\n`;
     svg += `<text x="${gaugeCX}" y="${(gaugeTop + gaugeH + 16).toFixed(1)}" text-anchor="middle" class="d-label" font-size="9">Bull <tspan fill="#22c55e">${upCount}</tspan> / Bear <tspan fill="#ef4444">${downCount}</tspan></text>\n`;
 
     // ── Gainers / Losers list (right of gauge) ──

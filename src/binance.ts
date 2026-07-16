@@ -41,23 +41,25 @@ async function fetchWithRetry(url: string, retries = MAX_RETRIES): Promise<Respo
     try {
       const res = await fetch(url, {
         signal: ctrl.signal,
-        // @ts-expect-error - Node.js >=20 supports the `agent` option on fetch
         agent,
-      });
+      } as RequestInit & { agent: http.Agent | https.Agent });
 
       // 429 rate limit — backoff
       if (res.status === 429) {
         const retryAfter = parseInt(res.headers.get('retry-after') ?? '2', 10);
+        logger.warn('Binance rate limited', { url, retryAfter, attempt, retries });
         await sleep(Math.min(retryAfter * 1000, 10_000));
         continue;
       }
 
       if (!res.ok) {
+        logger.error('Binance HTTP error', { status: res.status, statusText: res.statusText, url });
         throw new Error(`HTTP ${res.status}: ${res.statusText} — ${url}`);
       }
 
       return res;
     } catch (err) {
+      logger.warn('Binance fetch attempt failed', { url, attempt, retries, error: String(err) });
       if (attempt === retries) throw err;
       await sleep(1_000 * attempt);
     }
@@ -76,7 +78,8 @@ function sleep(ms: number): Promise<void> {
 function getPairs(): string[] {
   const seen = new Set<string>();
   const pairs: string[] = [];
-  for (const token of getTokenList()) {
+  const tokens: TokenDef[] = getTokenList();
+  for (const token of tokens) {
     const pair = getBinancePair(token);
     if (!seen.has(pair)) {
       seen.add(pair);
@@ -120,8 +123,21 @@ export async function fetchAllTickers(): Promise<Map<string, BinanceTicker>> {
     const res = await fetchWithRetry(url);
     const data = (await res.json()) as BinanceTicker[];
     const map = new Map<string, BinanceTicker>();
+
+    // Build a chain lookup for each pair from the token registry
+    const tokens: TokenDef[] = getTokenList();
+    const pairToChain = new Map<string, Chain>();
+    for (const t of tokens) {
+      pairToChain.set(getBinancePair(t), t.chain as Chain);
+    }
+
     for (const ticker of data) {
       map.set(ticker.symbol, ticker);
+      // Enrich ticker with chain metadata via the token registry
+      const chain = pairToChain.get(ticker.symbol);
+      if (chain) {
+        (ticker as BinanceTicker & { chain?: Chain }).chain = chain;
+      }
     }
     return map;
   }, async () => new Map());
@@ -184,7 +200,11 @@ export async function fetchExchangeInfo(): Promise<{
 }> {
   const url = `${BASE_URL}/api/v3/exchangeInfo`;
   const res = await fetchWithRetry(url);
-  return (await res.json()) as any;
+  const json: unknown = await res.json();
+  const data = json as {
+    symbols: Array<{ symbol: string; status: string; baseAsset: string; quoteAsset: string }>;
+  };
+  return data;
 }
 
 /**
@@ -199,7 +219,9 @@ export async function fetchDepth(pair: string, limit = 20): Promise<{
 }> {
   const url = `${BASE_URL}/api/v3/depth?symbol=${pair}&limit=${limit}`;
   const res = await fetchWithRetry(url);
-  return (await res.json()) as any;
+  const json: unknown = await res.json();
+  const data = json as { bids: [string, string][]; asks: [string, string][] };
+  return data;
 }
 
 export type { BinanceTicker } from './types.js';

@@ -202,11 +202,13 @@ function renderSRSummary(
     const sr = findSupportResistance(symbol, klines, { maxLevels: 3 });
     if (!sr.nearestSupport && !sr.nearestResistance) return '';
     const parts: string[] = [];
-    if (sr.nearestSupport) {
-      parts.push(`${pc.green('▲')} ${sr.nearestSupport.label} ${pc.green(formatPriceCompact(sr.nearestSupport.price))}`);
+    const support: PriceLevel | null = sr.nearestSupport;
+    const resistance: PriceLevel | null = sr.nearestResistance;
+    if (support) {
+      parts.push(`${pc.green('▲')} ${support.label} ${pc.green(formatPriceCompact(support.price))}`);
     }
-    if (sr.nearestResistance) {
-      parts.push(`${pc.red('▼')} ${sr.nearestResistance.label} ${pc.red(formatPriceCompact(sr.nearestResistance.price))}`);
+    if (resistance) {
+      parts.push(`${pc.red('▼')} ${resistance.label} ${pc.red(formatPriceCompact(resistance.price))}`);
     }
     if (parts.length > 0) {
       return `SR  ${parts.join('  │  ')}`;
@@ -587,7 +589,13 @@ function calculateSeriesRsi(values: number[], period: number): (number | null)[]
 
 /** Wrapper using shared svgOpen — alias for internal use */
 function svgOpen(width: number, height: number, title: string): string {
-  return sharedSvgOpen(width, height, title);
+  // Re-use shared boilerplate, then layer chart-specific style/def extensions
+  const base = sharedSvgOpen(width, height, title);
+  const extStyles = chartStyles();
+  const extDefs = chartDefs();
+  // Inject extensions just before the closing of the opening tag block
+  return base.replace('</defs>', `${extDefs.replace(/^<defs>|<\/defs>$/g, '')}</defs>`)
+             .replace('</style>', `${extStyles.replace(/^<style>|<\/style>$/g, '')}</style>`);
 }
 
 /** Render title centered with shared primitive */

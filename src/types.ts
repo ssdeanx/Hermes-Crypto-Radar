@@ -263,9 +263,9 @@ export interface BBandsResult {
 }
 
 export interface MACDResult {
-  macd: number;
-  signal: number;
-  histogram: number;
+  macd: number | null;
+  signal: number | null;
+  histogram: number | null;
 }
 
 /** News article from RSS feed */
@@ -461,6 +461,16 @@ export interface PredictionRow {
   horizon: number;
   ml_score: number | null;
   features_hash: string | null;
+}
+
+export interface UserRow {
+  id: string;
+  email: string;
+  password_hash: string;
+  name: string;
+  role: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export type CollectorReport = {

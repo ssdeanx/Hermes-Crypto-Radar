@@ -310,7 +310,7 @@ export function portfolioDashboard(
   height = 450,
 ): string {
   if (holdings.length === 0) {
-    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40"><text x="100" y="24" text-anchor="middle" fill="#94a3b8" font-size="12">No holdings</text></svg>';
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40"><rect width="200" height="40" fill="${BG}" rx="4"/><text x="100" y="24" text-anchor="middle" fill="${SUBTLE}" font-size="12">No holdings</text></svg>`;
   }
 
   const topMargin = 38;
@@ -373,7 +373,7 @@ export function portfolioDashboard(
   let dashOffset = 0;
 
   // Background circle
-  svg += `<circle cx="${donutCX.toFixed(1)}" cy="${donutCY.toFixed(1)}" r="${donutR.toFixed(1)}" class="a-donut-hole" stroke="#1e293b" stroke-width="${donutThick.toFixed(1)}" fill="none"/>\n`;
+  svg += `<circle cx="${donutCX.toFixed(1)}" cy="${donutCY.toFixed(1)}" r="${donutR.toFixed(1)}" class="a-donut-hole" stroke="${MUTED}" stroke-width="${donutThick.toFixed(1)}" fill="none"/>\n`;
 
   for (const seg of segments) {
     const segLen = (seg.value * circumference) + overlapPx;
@@ -463,7 +463,7 @@ export function marketBreadthGauge(
   height = 500,
 ): string {
   if (tokens.length === 0) {
-    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40"><text x="100" y="24" text-anchor="middle" fill="#94a3b8" font-size="12">No data</text></svg>';
+    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 40"><rect width="200" height="40" fill="${BG}" rx="4"/><text x="100" y="24" text-anchor="middle" fill="${SUBTLE}" font-size="12">No data</text></svg>`;
   }
 
   const pad = 16;
@@ -515,7 +515,7 @@ export function marketBreadthGauge(
   const gaugeW = 24;
 
   // Background track
-  svg += `<rect x="${(gaugeCX - gaugeW / 2).toFixed(1)}" y="${gaugeTop}" width="${gaugeW}" height="${gaugeH}" rx="${gaugeW / 2}" fill="#1e293b"/>\n`;
+  svg += `<rect x="${(gaugeCX - gaugeW / 2).toFixed(1)}" y="${gaugeTop}" width="${gaugeW}" height="${gaugeH}" rx="${gaugeW / 2}" fill="${GRID_LINE}"/>\n`;
 
   // Fill: height proportional to up%
   const fillH = (upPct / 100) * gaugeH;
@@ -527,11 +527,12 @@ export function marketBreadthGauge(
   </rect>\n`;
 
   // Bulb at bottom
-  svg += `<circle cx="${gaugeCX}" cy="${(gaugeTop + gaugeH).toFixed(1)}" r="${(gaugeW / 2 + 2)}" fill="#0f172a" stroke="#1e293b" stroke-width="2"/>\n`;
-  svg += `<circle cx="${gaugeCX}" cy="${(gaugeTop + gaugeH).toFixed(1)}" r="${(gaugeW / 2 - 2)}" fill="${upPct >= 50 ? '#22c55e' : '#ef4444'}"/>\n`;
+  svg += `<circle cx="${gaugeCX}" cy="${(gaugeTop + gaugeH).toFixed(1)}" r="${(gaugeW / 2 + 2)}" fill="${BG}" stroke="${MUTED}" stroke-width="2"/>\n`;
+  const bulbColor = lerpColor('#ef4444', '#22c55e', upPct / 100);
+  svg += `<circle cx="${gaugeCX}" cy="${(gaugeTop + gaugeH).toFixed(1)}" r="${(gaugeW / 2 - 2)}" fill="${bulbColor}"/>\n`;
 
   // Percentage text
-  svg += `<text x="${gaugeCX}" y="${(gaugeTop - 6).toFixed(1)}" text-anchor="middle" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="12" font-weight="700">${upPct.toFixed(0)}% Up</text>\n`;
+  svg += `<text x="${gaugeCX}" y="${(gaugeTop - 6).toFixed(1)}" text-anchor="middle" fill="${TEXT}" font-family="'Inter', sans-serif" font-size="12" font-weight="700">${shortPct(upPct / 100)} Up</text>\n`;
 
   // Gauge labels
   svg += `<text x="${(gaugeCX + gaugeW / 2 + 8).toFixed(1)}" y="${(gaugeTop + 8).toFixed(1)}" class="a-label">100%</text>\n`;
