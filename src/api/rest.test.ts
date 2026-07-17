@@ -245,7 +245,7 @@ describe('REST handler', () => {
       const { statusCode, body } = await call(handler, '/api/portfolio');
       expect(statusCode).toBe(200);
       expect(body.profile).toBe('trader1');
-      expect(body.cash).toBe(100000);
+      expect(body.cash).toBe(98700);
       expect(body.holdings).toHaveLength(1);
       const solHolding = body.holdings.find((h: { symbol: string }) => h.symbol === 'SOL');
       expect(solHolding).toBeDefined();
@@ -266,8 +266,8 @@ describe('REST handler', () => {
       });
       const { statusCode, body } = await call(handler, '/api/portfolio/trades');
       expect(statusCode).toBe(200);
-      expect(body).toHaveLength(1);
-      expect(body[0].symbol).toBe('SOL');
+      expect(body.trades).toHaveLength(1);
+      expect(body.trades[0].symbol).toBe('SOL');
     });
 
     it('filters by status', async () => {
@@ -283,8 +283,8 @@ describe('REST handler', () => {
       });
       const { statusCode, body } = await call(handler, '/api/portfolio/trades?status=open');
       expect(statusCode).toBe(200);
-      expect(body).toHaveLength(1);
-      expect(body[0].symbol).toBe('SOL');
+      expect(body.trades).toHaveLength(1);
+      expect(body.trades[0].symbol).toBe('SOL');
     });
   });
 

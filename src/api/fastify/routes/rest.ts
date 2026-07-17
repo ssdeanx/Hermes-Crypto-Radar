@@ -178,10 +178,11 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
   // ── GET /api/portfolio/trades ──
   app.get('/api/portfolio/trades', async (request) => {
     const { profile, status } = request.query as { profile?: string; status?: string };
-    return store.getPaperTrades(
+    const trades = store.getPaperTrades(
       profile ?? 'trader1',
       status as 'open' | 'closed' | undefined,
     );
+    return { trades };
   });
 
   // ── GET /api/portfolio ──
@@ -193,6 +194,10 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
     let totalPnl = 0;
     let wins = 0;
     let losses = 0;
+    // Starting paper-trading capital. Cash is derived from trade history:
+    // every open buy commits capital, every closed trade realizes its PnL.
+    const STARTING_BALANCE = 100_000;
+    let cash = STARTING_BALANCE;
 
     for (const t of trades) {
       if (t.status === 'open') {
@@ -205,12 +210,13 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
           const newQty = h.quantity + t.quantity;
           h.avgEntry = (h.avgEntry * h.quantity + t.entry_price * t.quantity) / newQty;
           h.quantity = newQty;
+          cash -= t.entry_price * t.quantity;
         } else if (t.side === 'sell' && t.quantity != null) {
           h.quantity -= t.quantity;
         }
-      }
-      if (t.status === 'closed' && t.pnl != null) {
+      } else if (t.status === 'closed' && t.pnl != null) {
         totalPnl += t.pnl;
+        cash += t.pnl;
         if (t.pnl > 0) wins++;
         else if (t.pnl < 0) losses++;
       }
@@ -220,7 +226,7 @@ export const restRoutes: FastifyPluginAsync = async (app) => {
 
     return {
       profile,
-      cash: 100000,
+      cash,
       holdings: Array.from(holdingMap.entries())
         .filter(([, h]) => h.quantity !== 0)
         .map(([symbol, h]) => ({ symbol, quantity: h.quantity, avgEntry: h.avgEntry })),
