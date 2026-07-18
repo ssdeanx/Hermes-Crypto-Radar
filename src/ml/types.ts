@@ -2,7 +2,7 @@
 // Hermes Crypto Radar — ML Type Definitions
 // ═══════════════════════════════════════════════════════════════════════
 
-import type { KlineInterval } from '../types.js';
+import type { KlineInterval } from "../types.js";
 
 /** A single feature row — one row per (symbol, interval, open_time) */
 export interface FeatureRow {
@@ -25,7 +25,7 @@ export interface LabelRow {
   label_direction_5: -1 | 0 | 1 | null;
   label_direction_20: -1 | 0 | 1 | null;
   label_direction_60: -1 | 0 | 1 | null;
-/** Tri-class label at the configured horizon */
+  /** Tri-class label at the configured horizon */
   label_class: -1 | 0 | 1 | null;
 }
 
@@ -38,6 +38,16 @@ export interface MLConfig {
     lookbackDays: number;
     labelHorizon: 1 | 5 | 20 | 60;
     retrainIntervalHours: number;
+    /** CatBoost is the only supported model */
+    modelType?: 'catboost';
+    /** Run Optuna hyperparameter search (default false) */
+    optimize?: boolean;
+    /** purgedcv walk-forward CV folds; 0 = off (default 0) */
+    cvFolds?: number;
+    /** Apply BorderlineSMOTE to training data only (default false) */
+    balance?: boolean;
+    /** Compute SHAP feature-importance analysis (default false) */
+    shap?: boolean;
   };
   prediction: {
     inferenceMode: 'subprocess' | 'onnx';
@@ -45,7 +55,6 @@ export interface MLConfig {
     modelPath?: string;
   };
 }
-
 /** Model prediction result for a single symbol/interval */
 export interface PredictionResult {
   symbol: string;

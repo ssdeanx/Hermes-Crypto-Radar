@@ -211,7 +211,7 @@ async function seedKlines(
         taker_buy_quote_vol: k.takerBuyQuoteVol,
       }));
 
-      report.klinesInserted += store.upsertKlines(rows);
+      report.klinesInserted += await store.upsertKlines(rows);
 
       const earliestOpenTime = klines[0]!.openTime;
       if (earliestOpenTime <= fromTime || klines.length < FETCH_LIMIT) break;
@@ -260,7 +260,7 @@ async function incrementalKlines(
       taker_buy_quote_vol: k.takerBuyQuoteVol,
     }));
 
-    report.klinesInserted += store.upsertKlines(rows);
+    report.klinesInserted += await store.upsertKlines(rows);
   } catch (err) {
     const msg = `Kline incremental error ${symbol} ${interval}: ${err instanceof Error ? err.message : String(err)}`;
     report.errors.push(msg);
@@ -282,7 +282,7 @@ async function collectFutures(
     try {
       const funding = await fetchFundingRates(symbol, 30);
       if (funding.length > 0) {
-        report.fundingInserted += store.upsertFunding(funding);
+        report.fundingInserted += await store.upsertFunding(funding);
       }
     } catch (err) {
       const msg = `Funding error ${symbol}: ${err instanceof Error ? err.message : String(err)}`;
@@ -293,7 +293,7 @@ async function collectFutures(
     try {
       const oi = await fetchOpenInterest(symbol);
       if (oi.length > 0) {
-        report.oiInserted += store.upsertOpenInterest(oi);
+        report.oiInserted += await store.upsertOpenInterest(oi);
       }
     } catch (err) {
       const msg = `Open interest error ${symbol}: ${err instanceof Error ? err.message : String(err)}`;
@@ -304,7 +304,7 @@ async function collectFutures(
     try {
       const ls = await fetchLongShortRatio(symbol);
       if (ls.length > 0) {
-        report.lsInserted += store.upsertLsRatio(ls);
+        report.lsInserted += await store.upsertLsRatio(ls);
       }
     } catch (err) {
       const msg = `Long/short ratio error ${symbol}: ${err instanceof Error ? err.message : String(err)}`;
@@ -315,7 +315,7 @@ async function collectFutures(
     try {
       const pos = await fetchTopLongShortPositionRatio(symbol);
       if (pos.length > 0) {
-        report.lsInserted += store.upsertLsRatio(pos);
+        report.lsInserted += await store.upsertLsRatio(pos);
       }
     } catch (err) {
       const msg = `Top position ratio error ${symbol}: ${err instanceof Error ? err.message : String(err)}`;
@@ -326,7 +326,7 @@ async function collectFutures(
     try {
       const liqs = await fetchLiquidations(symbol);
       if (liqs.length > 0) {
-        report.liquidationsInserted += store.upsertLiquidations(liqs);
+        report.liquidationsInserted += await store.upsertLiquidations(liqs);
       }
     } catch (err) {
       const msg = `Liquidations error ${symbol}: ${err instanceof Error ? err.message : String(err)}`;
@@ -349,7 +349,7 @@ async function collectOrderBook(
     try {
       const snap = await snapshotOrderBook(symbol);
       if (snap) {
-        store.upsertOrderBook(snap);
+        await store.upsertOrderBook(snap);
         report.orderBookInserted++;
       }
     } catch (err) {
@@ -371,7 +371,7 @@ async function collectFearGreed(
   try {
     const rows = await fetchFearGreed(30);
     for (const row of rows) {
-      store.upsertFearGreed(row);
+      await store.upsertFearGreed(row);
       report.fearGreedInserted++;
     }
   } catch (err) {
@@ -392,7 +392,7 @@ async function collectCrossAsset(
   try {
     const row = await fetchGlobalData();
     if (row) {
-      store.upsertCrossAsset(row);
+      await store.upsertCrossAsset(row);
       report.crossAssetInserted++;
     }
   } catch (err) {

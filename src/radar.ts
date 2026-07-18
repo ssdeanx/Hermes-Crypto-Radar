@@ -388,7 +388,7 @@ export async function runRadar(options: RadarOptions = {}): Promise<{
   if (options.store) {
     try {
       const store: Store = options.store as Store;
-      store.persistRun({ tickers, signals, newsMatches });
+      await store.persistRun({ tickers, signals, newsMatches });
       log.info(`Archived ${tickers.length} tickers, ${signals.length} signals, ${newsMatches.length} news items`);
     } catch (err) {
       log.warn('Failed to persist radar run', { error: String(err) });

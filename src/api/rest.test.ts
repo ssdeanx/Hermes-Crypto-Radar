@@ -84,7 +84,7 @@ describe('REST handler', () => {
     });
 
     it('returns tickers with limit param', async () => {
-      store.persistRun({
+      await store.persistRun({
         tickers: [{
           runId: 'R1', tsUtc: '2026-07-07T12:00:00Z', dateEt: '07/07 08:00',
           symbol: 'SOL', chain: 'solana', tokenId: 'solana', tokenName: 'Solana',
@@ -114,7 +114,7 @@ describe('REST handler', () => {
     });
 
     it('returns ticker data for existing symbol', async () => {
-      store.persistRun({
+      await store.persistRun({
         tickers: [{
           runId: 'R1', tsUtc: '2026-07-07T12:00:00Z', dateEt: '07/07 08:00',
           symbol: 'SOL', chain: 'solana', tokenId: 'solana', tokenName: 'Solana',
@@ -137,7 +137,7 @@ describe('REST handler', () => {
 
   describe('GET /api/klines/:symbol', () => {
     it('returns klines with default interval', async () => {
-      store.upsertKlines([{
+      await store.upsertKlines([{
         symbol: 'SOLUSDT', interval: '1h', open_time: 1000000,
         open: 100, high: 105, low: 99, close: 104, volume: 5000, quote_volume: 520000,
         taker_buy_vol: 2500, taker_buy_quote_vol: 260000,
@@ -149,7 +149,7 @@ describe('REST handler', () => {
     });
 
     it('accepts interval, from, to, limit params', async () => {
-      store.upsertKlines([
+      await store.upsertKlines([
         { symbol: 'SOLUSDT', interval: '1h', open_time: 1000000, open: 100, high: 105, low: 99, close: 104, volume: 5000, quote_volume: 520000, taker_buy_vol: 2500, taker_buy_quote_vol: 260000 },
         { symbol: 'SOLUSDT', interval: '1h', open_time: 2000000, open: 105, high: 110, low: 104, close: 108, volume: 6000, quote_volume: 630000, taker_buy_vol: 3000, taker_buy_quote_vol: 315000 },
         { symbol: 'SOLUSDT', interval: '4h', open_time: 1000000, open: 100, high: 110, low: 99, close: 108, volume: 11000, quote_volume: 1150000, taker_buy_vol: 5500, taker_buy_quote_vol: 575000 },
@@ -168,7 +168,7 @@ describe('REST handler', () => {
     });
 
     it('filters by minScore and direction', async () => {
-      store.persistRun({
+      await store.persistRun({
         tickers: [],
         signals: [
           { symbol: 'SOL', chain: 'solana', lastPrice: 150, priceChangePercent: 0.67, momentumScore: 60, technicalScore: 55, newsScore: 70, compositeScore: 80, alerts: ['long'], timestamp: '2026-07-07T12:00:00Z', tokenId: 'solana', tokenName: 'Solana' },
@@ -191,7 +191,7 @@ describe('REST handler', () => {
     });
 
     it('returns signals for matching symbol', async () => {
-      store.persistRun({
+      await store.persistRun({
         tickers: [],
         signals: [
           { symbol: 'SOL', chain: 'solana', lastPrice: 150, priceChangePercent: 0.67, momentumScore: 60, technicalScore: 55, newsScore: 70, compositeScore: 80, alerts: ['long'], timestamp: '2026-07-07T12:00:00Z', tokenId: 'solana', tokenName: 'Solana' },
@@ -208,7 +208,7 @@ describe('REST handler', () => {
 
   describe('GET /api/news', () => {
     it('returns news items', async () => {
-      store.persistRun({
+      await store.persistRun({
         tickers: [],
         signals: [],
         newsMatches: [{
@@ -240,7 +240,7 @@ describe('REST handler', () => {
         { id: 'T3', profile: 'trader1', symbol: 'BTC', side: 'buy', entry_price: 50000, entry_time: '2026-07-07T12:00:00Z', quantity: 1, exit_price: 52000, exit_time: '2026-07-07T14:00:00Z', pnl: 2000, fees: null, status: 'closed' },
         { id: 'T4', profile: 'trader1', symbol: 'BTC', side: 'buy', entry_price: 51000, entry_time: '2026-07-07T15:00:00Z', quantity: 0.5, exit_price: 49000, exit_time: '2026-07-07T16:00:00Z', pnl: -1000, fees: null, status: 'closed' },
       ];
-      for (const t of trades) store.upsertPaperTrade(t);
+      for (const t of trades) await store.upsertPaperTrade(t);
 
       const { statusCode, body } = await call(handler, '/api/portfolio');
       expect(statusCode).toBe(200);
@@ -259,7 +259,7 @@ describe('REST handler', () => {
 
   describe('GET /api/portfolio/trades', () => {
     it('returns trades for a profile', async () => {
-      store.upsertPaperTrade({
+      await store.upsertPaperTrade({
         id: 'T1', profile: 'trader1', symbol: 'SOL', side: 'buy',
         entry_price: 150, entry_time: '2026-07-07T12:00:00Z',
         quantity: 10, exit_price: null, exit_time: null, pnl: null, fees: null, status: 'open',
@@ -271,12 +271,12 @@ describe('REST handler', () => {
     });
 
     it('filters by status', async () => {
-      store.upsertPaperTrade({
+      await store.upsertPaperTrade({
         id: 'T1', profile: 'trader1', symbol: 'SOL', side: 'buy',
         entry_price: 150, entry_time: '2026-07-07T12:00:00Z',
         quantity: 10, exit_price: null, exit_time: null, pnl: null, fees: null, status: 'open',
       });
-      store.upsertPaperTrade({
+      await store.upsertPaperTrade({
         id: 'T2', profile: 'trader1', symbol: 'BTC', side: 'buy',
         entry_price: 50000, entry_time: '2026-07-07T12:00:00Z',
         quantity: 1, exit_price: 52000, exit_time: '2026-07-07T14:00:00Z', pnl: 2000, fees: null, status: 'closed',
@@ -290,7 +290,7 @@ describe('REST handler', () => {
 
   describe('GET /api/futures/:symbol', () => {
     it('returns funding data by default', async () => {
-      store.upsertFunding([{ symbol: 'SOLUSDT', ts: 1000000, rate: 0.0001 }]);
+      await store.upsertFunding([{ symbol: 'SOLUSDT', ts: 1000000, rate: 0.0001 }]);
       const { statusCode, body } = await call(handler, '/api/futures/SOLUSDT?limit=10');
       expect(statusCode).toBe(200);
       expect(body).toHaveLength(1);
@@ -298,7 +298,7 @@ describe('REST handler', () => {
     });
 
     it('returns OI data for type=oi', async () => {
-      store.upsertOpenInterest([{ symbol: 'SOLUSDT', ts: 1000000, open_interest: 500000 }]);
+      await store.upsertOpenInterest([{ symbol: 'SOLUSDT', ts: 1000000, open_interest: 500000 }]);
       const { statusCode, body } = await call(handler, '/api/futures/SOLUSDT?type=oi');
       expect(statusCode).toBe(200);
       expect(body).toHaveLength(1);
@@ -306,7 +306,7 @@ describe('REST handler', () => {
     });
 
     it('returns lsratio data', async () => {
-      store.upsertLsRatio([{ symbol: 'SOLUSDT', ts: 1000000, long_account: 55, short_account: 45, long_position: 60, short_position: 40 }]);
+      await store.upsertLsRatio([{ symbol: 'SOLUSDT', ts: 1000000, long_account: 55, short_account: 45, long_position: 60, short_position: 40 }]);
       const { statusCode, body } = await call(handler, '/api/futures/SOLUSDT?type=lsratio');
       expect(statusCode).toBe(200);
       expect(body).toHaveLength(1);
@@ -314,7 +314,7 @@ describe('REST handler', () => {
     });
 
     it('returns liquidations data', async () => {
-      store.upsertLiquidations([{ id: 'L1', symbol: 'SOLUSDT', ts: 1000000, side: 'SELL', price: 145, qty: 100, usd: 14500 }]);
+      await store.upsertLiquidations([{ id: 'L1', symbol: 'SOLUSDT', ts: 1000000, side: 'SELL', price: 145, qty: 100, usd: 14500 }]);
       const { statusCode, body } = await call(handler, '/api/futures/SOLUSDT?type=liquidations');
       expect(statusCode).toBe(200);
       expect(body).toHaveLength(1);
@@ -330,7 +330,7 @@ describe('REST handler', () => {
 
   describe('GET /api/fear-greed', () => {
     it('returns fear-greed data', async () => {
-      store.upsertFearGreed({ ts: 1000000, value: 55, classification: 'Neutral' });
+      await store.upsertFearGreed({ ts: 1000000, value: 55, classification: 'Neutral' });
       const { statusCode, body } = await call(handler, '/api/fear-greed?limit=10');
       expect(statusCode).toBe(200);
       expect(body).toHaveLength(1);
@@ -340,7 +340,7 @@ describe('REST handler', () => {
 
   describe('GET /api/cross-asset', () => {
     it('returns cross-asset data', async () => {
-      store.upsertCrossAsset({ ts: 1000000, btc_dominance: 45, eth_dominance: 18, total_mcap: 2000000000000, total_mcap_change_24h: 2.5, market_cap_percentage_json: '{}' });
+      await store.upsertCrossAsset({ ts: 1000000, btc_dominance: 45, eth_dominance: 18, total_mcap: 2000000000000, total_mcap_change_24h: 2.5, market_cap_percentage_json: '{}' });
       const { statusCode, body } = await call(handler, '/api/cross-asset?limit=10');
       expect(statusCode).toBe(200);
       expect(body).toHaveLength(1);
@@ -350,7 +350,7 @@ describe('REST handler', () => {
 
   describe('GET /api/orderbook/:symbol', () => {
     it('returns orderbook data', async () => {
-      store.upsertOrderBook({ symbol: 'SOLUSDT', ts: 1000000, spread_pct: 0.05, imbalance: 0.1, bids: '[[150,1]]', asks: '[[150.1,1]]' });
+      await store.upsertOrderBook({ symbol: 'SOLUSDT', ts: 1000000, spread_pct: 0.05, imbalance: 0.1, bids: '[[150,1]]', asks: '[[150.1,1]]' });
       const { statusCode, body } = await call(handler, '/api/orderbook/SOLUSDT?limit=10');
       expect(statusCode).toBe(200);
       expect(body).toHaveLength(1);

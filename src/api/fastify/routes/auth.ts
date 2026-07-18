@@ -68,7 +68,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     };
 
     try {
-      app.store.createUser(user);
+      await app.store.createUser(user);
     } catch (err) {
       log.error('Failed to create user', { error: String(err) });
       return reply.status(500).send({

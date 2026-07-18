@@ -29,7 +29,7 @@ import type { CollectorReport } from './types.js';
 import { generateHtmlReport, generateSignalSnapshot } from './pdf-export.js';
 import { validateOutput, toJSONLine } from './output.js';
 import { Store } from './store/db.js';
-import { batchPredict, persistPredictions } from './ml/predict.js';
+import { batchPredict, persistPredictions, resolveModelPath, resolveNormStatsPath } from './ml/predict.js';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -1040,11 +1040,30 @@ program
 
       if (action === 'predict') {
         logger.info('Running ML prediction...');
+        
+        const modelPath = resolveModelPath();
+        if (!modelPath) {
+          logger.error('No trained model found in ml/models/. Run "ml train" first.');
+          process.exit(1);
+        }
+
+        // Load normalization stats from latest training run
+        const normStatsPath = resolveNormStatsPath();
+        let normalizationStats: import('./ml/types.js').NormalizationStats | undefined;
+        if (normStatsPath) {
+          try {
+            normalizationStats = JSON.parse(fs.readFileSync(normStatsPath, 'utf-8'));
+          } catch {
+            logger.warn(`Could not load normalization stats from ${normStatsPath}`);
+          }
+        }
+
         const symbols = opts.symbols ?? getTokenList().map((t: TokenDef) => t.sym).slice(0, 20);
         const results = await batchPredict(store, symbols, opts.interval ?? '1h', {
+          modelPath,
+          normalizationStats,
           minConfidence: 0,
         });
-
         if (results.length === 0) {
           logger.error('No predictions generated. Has a model been trained?');
           process.exit(1);
@@ -1059,7 +1078,7 @@ program
         }
 
         // Persist to store
-        persistPredictions(store, results, 'cli-manual');
+        await persistPredictions(store, results, 'cli-manual');
         logger.info(`\n✅ ${results.length} predictions persisted`);
         process.exit(0);
       }

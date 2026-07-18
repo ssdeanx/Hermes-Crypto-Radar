@@ -4,6 +4,18 @@ coverage/
 data/
 *.csv
 *.lock
+.omo/
+.vml/
+.ruff_cache/
+catboost_info/
+.husky/
+.kilo/
+.hermes/
+ml/__pycache__/
+ml/.pytest_cache/
+ml/models/
+.env
+
 
 # Docs output
 docs/api/

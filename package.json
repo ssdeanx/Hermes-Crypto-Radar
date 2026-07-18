@@ -59,6 +59,8 @@
     "ml:train": "node dist/cli.js ml train",
     "ml:predict": "node dist/cli.js ml predict",
     "ml:setup": "bash scripts/setup-ml-env.sh",
+    "setup": "bash scripts/setup.sh",
+    "setup:ml": "bash scripts/setup-ml-env.sh",
     "clean": "rm -rf dist",
     "prepare": "husky",
     "prepublishOnly": "npm run build && npm test && npm run lint",
@@ -152,6 +154,8 @@
     "node-fetch": "^3.3.2",
     "picocolors": "^1.1.1",
     "rss-parser": "^3.13.0",
+    "simple-statistics": "^7.9.3",
+    "technicalindicators": "^3.1.0",
     "ws": "^8.21.1",
     "zod": "^4.4.3"
   },

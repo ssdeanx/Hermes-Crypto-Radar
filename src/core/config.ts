@@ -2,11 +2,11 @@
 // Hermes Crypto Radar — Configuration Management
 // ═══════════════════════════════════════════════════════════════════════
 
-import { readFileSync, existsSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { homedir } from 'node:os';
-import { ConfigError, logWarn } from './errors.js';
-import type { PriceAlert } from './alerts.js';
+import { readFileSync, existsSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { ConfigError, logWarn } from "./errors.js";
+import type { PriceAlert } from "./alerts.js";
 
 const DEFAULT_DATA_DIR = `${homedir()}/.hermes/data/crypto-radar`;
 
@@ -74,17 +74,20 @@ export interface RadarConfig {
   coinglassKey?: string;
   /** ML pipeline config */
   ml?: {
-    enabled?: boolean;           // default false
+    enabled?: boolean; // default false
     training?: {
       symbols?: string[];
       intervals?: string[];
-      lookbackDays?: number;     // default 90
-      labelHorizon?: 1 | 5 | 20 | 60;
+      lookbackDays?: number; // default 90
       retrainIntervalHours?: number;
+      optimize?: boolean; // opt-in hyperparameter optimization
+      cvFolds?: number; // opt-in cross-validation folds
+      balance?: boolean; // opt-in class balancing
+      shap?: boolean; // opt-in SHAP feature importance
     };
     prediction?: {
-      inferenceMode?: 'subprocess' | 'onnx';  // default 'subprocess'
-      minConfidence?: number;                  // default 0.6
+      inferenceMode?: "subprocess" | "onnx"; // default 'subprocess'
+      minConfidence?: number; // default 0.6
       modelPath?: string;
     };
   };
@@ -101,13 +104,13 @@ export interface RadarConfig {
 }
 
 const DEFAULTS: RadarConfig = {
-  binanceBaseUrl: 'https://data-api.binance.vision',
+  binanceBaseUrl: "https://data-api.binance.vision",
   fetchTimeoutMs: 10_000,
   maxRetries: 3,
-  cacheTtlMs: 300_000,       // 5 min
+  cacheTtlMs: 300_000, // 5 min
   rateLimitMax: 20,
-  rateLimitWindowMs: 1_000,  // 20 req/sec
-  logLevel: 'info',
+  rateLimitWindowMs: 1_000, // 20 req/sec
+  logLevel: "info",
   dataDir: DEFAULT_DATA_DIR,
   newsFeeds: true,
   maxNewsPerFeed: 30,
@@ -129,8 +132,10 @@ const DEFAULTS: RadarConfig = {
     crossAsset: true,
   },
   defiLlamaEnabled: false,
-  logRetentionDays: 30,  // auto-prune logs older than 30 days
+  logRetentionDays: 30, // auto-prune logs older than 30 days
   enableFileChecksums: true,
+  ml: {
+  },
 };
 
 let _instance: RadarConfig | null = null;
@@ -151,7 +156,7 @@ export function loadConfig(configPath?: string): RadarConfig {
   // 1. Auto-discover config file from well-known paths
   const autoPaths = configPath
     ? [configPath]
-    : ['radar.config.json', resolve('radar.config.json')];
+    : ["radar.config.json", resolve("radar.config.json")];
 
   for (const path of autoPaths) {
     if (existsSync(path)) {
@@ -163,64 +168,135 @@ export function loadConfig(configPath?: string): RadarConfig {
   // 2. File overrides (if provided or discovered)
   if (configPath && existsSync(configPath)) {
     try {
-      const raw = readFileSync(configPath, 'utf-8');
+      const raw = readFileSync(configPath, "utf-8");
       const fileConfig = JSON.parse(raw);
       mergeDeep(base as unknown as Record<string, unknown>, fileConfig);
     } catch (err) {
-      throw new ConfigError('config_file', `Failed to load ${configPath}: ${err}`);
+      throw new ConfigError(
+        "config_file",
+        `Failed to load ${configPath}: ${err}`,
+      );
     }
   }
 
   // 2. Environment overrides (RADAR__BINANCE_BASE_URL, RADAR__LOG_LEVEL, etc.)
   const envMap: Record<string, string> = {};
   for (const [key, val] of Object.entries(process.env)) {
-    if (key.startsWith('RADAR__') && val) {
+    if (key.startsWith("RADAR__") && val) {
       envMap[key.slice(7).toLowerCase()] = val;
     }
   }
 
   if (envMap.binance_base_url) base.binanceBaseUrl = envMap.binance_base_url;
-  if (envMap.fetch_timeout_ms) base.fetchTimeoutMs = parseInt(envMap.fetch_timeout_ms, 10);
+  if (envMap.fetch_timeout_ms)
+    base.fetchTimeoutMs = parseInt(envMap.fetch_timeout_ms, 10);
   if (envMap.max_retries) base.maxRetries = parseInt(envMap.max_retries, 10);
   if (envMap.cache_ttl_ms) base.cacheTtlMs = parseInt(envMap.cache_ttl_ms, 10);
   if (envMap.log_level) base.logLevel = envMap.log_level;
   if (envMap.data_dir) base.dataDir = envMap.data_dir;
-  if (envMap.rate_limit_max) base.rateLimitMax = parseInt(envMap.rate_limit_max, 10);
+  if (envMap.rate_limit_max)
+    base.rateLimitMax = parseInt(envMap.rate_limit_max, 10);
   if (envMap.tokens) {
     // Support both JSON array: ["bitcoin","ethereum"]
     // and comma-separated: bitcoin,ethereum
     const raw = envMap.tokens.trim();
-    if (raw.startsWith('[')) {
-      try { base.tokens = JSON.parse(raw); }
-      catch (err) { logWarn("config", "Failed to parse RADAR__TOKENS", err); base.tokens = raw.replace(/[[\]"'\s]/g, '').split(',').filter(Boolean); }
+    if (raw.startsWith("[")) {
+      try {
+        base.tokens = JSON.parse(raw);
+      } catch (err) {
+        logWarn("config", "Failed to parse RADAR__TOKENS", err);
+        base.tokens = raw
+          .replace(/[[\]"'\s]/g, "")
+          .split(",")
+          .filter(Boolean);
+      }
     } else {
-      base.tokens = raw.split(',').map(t => t.trim()).filter(Boolean);
+      base.tokens = raw
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
     }
   }
   if (envMap.strategy_weights) {
-    try { base.strategyWeights = JSON.parse(envMap.strategy_weights); }
-    catch (err) { logWarn("config", "Failed to parse strategy_weights", err); }
+    try {
+      base.strategyWeights = JSON.parse(envMap.strategy_weights);
+    } catch (err) {
+      logWarn("config", "Failed to parse strategy_weights", err);
+    }
   }
   if (envMap.timeframe_weights) {
-    try { base.timeframeWeights = JSON.parse(envMap.timeframe_weights); }
-    catch (err) { logWarn("config", "Failed to parse timeframe_weights", err); }
+    try {
+      base.timeframeWeights = JSON.parse(envMap.timeframe_weights);
+    } catch (err) {
+      logWarn("config", "Failed to parse timeframe_weights", err);
+    }
   }
-  if (envMap.log_retention_days) base.logRetentionDays = parseInt(envMap.log_retention_days, 10);
-  if (envMap.enable_file_checksums) base.enableFileChecksums = envMap.enable_file_checksums === 'true';
-  if (envMap.store_path) { base.store ??= {}; base.store.path = envMap.store_path; }
-  if (envMap.store_retention_days) { base.store ??= {}; base.store.retentionDays = parseInt(envMap.store_retention_days, 10); }
-  if (envMap.sources_futures) base.sources.futures = envMap.sources_futures === 'true';
-  if (envMap.sources_fear_greed) base.sources.fearGreed = envMap.sources_fear_greed === 'true';
-  if (envMap.sources_cross_asset) base.sources.crossAsset = envMap.sources_cross_asset === 'true';
-  if (envMap.sources_orderbook) base.sources.orderbook = envMap.sources_orderbook === 'true';
+  if (envMap.log_retention_days)
+    base.logRetentionDays = parseInt(envMap.log_retention_days, 10);
+  if (envMap.enable_file_checksums)
+    base.enableFileChecksums = envMap.enable_file_checksums === "true";
+  if (envMap.store_path) {
+    base.store ??= {};
+    base.store.path = envMap.store_path;
+  }
+  if (envMap.store_retention_days) {
+    base.store ??= {};
+    base.store.retentionDays = parseInt(envMap.store_retention_days, 10);
+  }
+  if (envMap.sources_futures)
+    base.sources.futures = envMap.sources_futures === "true";
+  if (envMap.sources_fear_greed)
+    base.sources.fearGreed = envMap.sources_fear_greed === "true";
+  if (envMap.sources_cross_asset)
+    base.sources.crossAsset = envMap.sources_cross_asset === "true";
+  if (envMap.sources_orderbook)
+    base.sources.orderbook = envMap.sources_orderbook === "true";
   if (envMap.api_token) base.apiToken = envMap.api_token;
   if (envMap.ws_port) base.wsPort = parseInt(envMap.ws_port, 10);
   if (envMap.coinglass_key) base.coinglassKey = envMap.coinglass_key;
   // ML config env overrides
-  if (envMap.ml_enabled) { base.ml ??= {}; base.ml.enabled = envMap.ml_enabled === 'true'; }
-  if (envMap.ml_lookback_days) { base.ml ??= {}; base.ml.training ??= {}; base.ml.training.lookbackDays = parseInt(envMap.ml_lookback_days, 10); }
-  if (envMap.ml_retrain_hours) { base.ml ??= {}; base.ml.training ??= {}; base.ml.training.retrainIntervalHours = parseInt(envMap.ml_retrain_hours, 10); }
-  if (envMap.ml_min_confidence) { base.ml ??= {}; base.ml.prediction ??= {}; base.ml.prediction.minConfidence = parseFloat(envMap.ml_min_confidence); }
+  if (envMap.ml_enabled) {
+    base.ml ??= {};
+    base.ml.enabled = envMap.ml_enabled === "true";
+  }
+  if (envMap.ml_lookback_days) {
+    base.ml ??= {};
+    base.ml.training ??= {};
+    base.ml.training.lookbackDays = parseInt(envMap.ml_lookback_days, 10);
+  }
+  if (envMap.ml_retrain_hours) {
+    base.ml ??= {};
+    base.ml.training ??= {};
+    base.ml.training.retrainIntervalHours = parseInt(
+      envMap.ml_retrain_hours,
+      10,
+    );
+  }
+  if (envMap.ml_min_confidence) {
+    base.ml ??= {};
+    base.ml.prediction ??= {};
+    base.ml.prediction.minConfidence = parseFloat(envMap.ml_min_confidence);
+  }
+  if (envMap.ml_optimize) {
+    base.ml ??= {};
+    base.ml.training ??= {};
+    base.ml.training.optimize = envMap.ml_optimize === "true";
+  }
+  if (envMap.ml_cv_folds) {
+    base.ml ??= {};
+    base.ml.training ??= {};
+    base.ml.training.cvFolds = parseInt(envMap.ml_cv_folds, 10);
+  }
+  if (envMap.ml_balance) {
+    base.ml ??= {};
+    base.ml.training ??= {};
+    base.ml.training.balance = envMap.ml_balance === "true";
+  }
+  if (envMap.ml_shap) {
+    base.ml ??= {};
+    base.ml.training ??= {};
+    base.ml.training.shap = envMap.ml_shap === "true";
+  }
 
   _instance = base;
   return base;
@@ -233,16 +309,26 @@ export function resetConfig(): void {
 
 /** Generate a default config file */
 export function writeDefaultConfig(path: string): void {
-  writeFileSync(path, JSON.stringify(DEFAULTS, null, 2) + '\n');
+  writeFileSync(path, JSON.stringify(DEFAULTS, null, 2) + "\n");
 }
 
-function mergeDeep(target: Record<string, unknown>, source: Record<string, unknown>): void {
+function mergeDeep(
+  target: Record<string, unknown>,
+  source: Record<string, unknown>,
+): void {
   for (const key of Object.keys(source)) {
-    if (source[key] && typeof source[key] === 'object' && !Array.isArray(source[key])) {
-      if (!target[key] || typeof target[key] !== 'object') {
+    if (
+      source[key] &&
+      typeof source[key] === "object" &&
+      !Array.isArray(source[key])
+    ) {
+      if (!target[key] || typeof target[key] !== "object") {
         target[key] = {};
       }
-      mergeDeep(target[key] as Record<string, unknown>, source[key] as Record<string, unknown>);
+      mergeDeep(
+        target[key] as Record<string, unknown>,
+        source[key] as Record<string, unknown>,
+      );
     } else {
       target[key] = source[key];
     }

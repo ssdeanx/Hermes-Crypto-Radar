@@ -40,7 +40,7 @@ const PID_FILE = path.resolve('data/daemon.pid');
 const DEFAULT_PORT = 9877;
 const DEFAULT_REFRESH_SEC = 300; // 5 min
 
-const port = parseInt(process.env.RADAR__DAEMON_PORT ?? String(DEFAULT_PORT), 10);
+const port = parseInt(process.env.PORT ?? process.env.RADAR__DAEMON_PORT ?? String(DEFAULT_PORT), 10);
 const refreshMs = parseInt(process.env.RADAR__REFRESH_SEC ?? String(DEFAULT_REFRESH_SEC), 10) * 1000;
 
 const log = logger.child({ module: 'daemon' });
@@ -224,7 +224,7 @@ async function autoRetrain(config: ReturnType<typeof loadConfig>): Promise<void>
 
       proc.on('close', (code) => {
         if (code === 0) {
-          // Log training stderr (may contain LightGBM progress, warnings)
+          // Log training stderr (may contain CatBoost progress, warnings)
           if (stderr) {
             const lines = stderr.trim().split('\n').filter(l => l);
             for (const line of lines) {
@@ -276,7 +276,7 @@ async function runMlPrediction(config: ReturnType<typeof loadConfig>): Promise<v
     });
 
     if (results.length > 0) {
-      persistPredictions(_store, results, _mlModelId);
+      await persistPredictions(_store, results, _mlModelId);
     }
 
     _lastMlPredict = Date.now();
@@ -288,7 +288,15 @@ async function runMlPrediction(config: ReturnType<typeof loadConfig>): Promise<v
 // ── Fastify server ──
 
 async function startFastify(): Promise<{ fastify: import('fastify').FastifyInstance }> {
-  const jwtSecret = process.env['RADAR__JWT_SECRET'] ?? 'dev-secret-change-in-production';
+  const jwtSecretRaw = process.env['RADAR__JWT_SECRET'];
+  if (!jwtSecretRaw) {
+    if (process.env['NODE_ENV'] === 'production') {
+      log.fatal('RADAR__JWT_SECRET must be set in production');
+      process.exit(1);
+    }
+    log.warn('RADAR__JWT_SECRET not set — using dev default (NOT for production)');
+  }
+  const jwtSecret = jwtSecretRaw ?? 'dev-secret-change-in-production';
   const fastify = await createApp({
     store: _store!,
     jwtSecret,
@@ -417,9 +425,9 @@ export async function runDaemon(): Promise<void> {
   const { fastify } = await startFastify();
 
   // Start Fastify server first — we need the underlying http.Server for WebSocket
-  await fastify.listen({ port, host: '127.0.0.1' });
+  await fastify.listen({ port, host: '0.0.0.0' });
   _ready = true;
-  log.info(`Daemon ready on http://127.0.0.1:${port} — refresh every ${refreshMs / 1000}s`);
+  log.info(`Daemon ready on http://0.0.0.0:${port} — refresh every ${refreshMs / 1000}s`);
 
   // ── WebSocket push hub (attaches to Fastify's underlying http.Server) ──
   try {

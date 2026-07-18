@@ -14,7 +14,7 @@ const TEST_DB = resolve(tmpdir(), `crypto-radar-test-${Date.now()}.db`);
 describe('Store', () => {
   let store: Store;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     if (existsSync(TEST_DB)) unlinkSync(TEST_DB);
     store = new Store({ path: TEST_DB });
     store.migrate();
@@ -26,7 +26,7 @@ describe('Store', () => {
   });
 
   describe('migration', () => {
-    it('creates all tables', () => {
+    it('creates all tables', async () => {
       const stats = store.stats();
       expect(stats).toHaveProperty('klines');
       expect(stats).toHaveProperty('tickers');
@@ -45,7 +45,7 @@ describe('Store', () => {
       expect(stats).toHaveProperty('predictions');
     });
 
-    it('is idempotent', () => {
+    it('is idempotent', async () => {
       expect(() => store.migrate()).not.toThrow();
       expect(() => store.migrate()).not.toThrow();
     });
@@ -58,8 +58,8 @@ describe('Store', () => {
       taker_buy_vol: 2500, taker_buy_quote_vol: 260000,
     };
 
-    it('upserts and retrieves klines', () => {
-      const inserted = store.upsertKlines([kline]);
+    it('upserts and retrieves klines', async () => {
+      const inserted = await store.upsertKlines([kline]);
       expect(inserted).toBe(1);
 
       const rows = store.getKlines('SOLUSDT', '1h');
@@ -67,34 +67,34 @@ describe('Store', () => {
       expect(rows[0]!.close).toBe(104);
     });
 
-    it('idempotent on re-insert', () => {
-      store.upsertKlines([kline]);
-      const inserted = store.upsertKlines([kline]);
+    it('idempotent on re-insert', async () => {
+      await store.upsertKlines([kline]);
+      const inserted = await store.upsertKlines([kline]);
       expect(inserted).toBe(0);
     });
 
-    it('supports from/to filtering', () => {
+    it('supports from/to filtering', async () => {
       const k1 = { ...kline, open_time: 1000000 };
       const k2 = { ...kline, open_time: 2000000, close: 110 };
       const k3 = { ...kline, open_time: 3000000, close: 115 };
-      store.upsertKlines([k1, k2, k3]);
+      await store.upsertKlines([k1, k2, k3]);
 
       const rows = store.getKlines('SOLUSDT', '1h', { from: 1500000, to: 2500000 });
       expect(rows).toHaveLength(1);
       expect(rows[0]!.close).toBe(110);
     });
 
-    it('latestKlineTime returns null for empty', () => {
+    it('latestKlineTime returns null for empty', async () => {
       expect(store.latestKlineTime('SOLUSDT', '1h')).toBeNull();
     });
 
-    it('latestKlineTime returns max open_time', () => {
-      store.upsertKlines([kline, { ...kline, open_time: 2000000 }]);
+    it('latestKlineTime returns max open_time', async () => {
+      await store.upsertKlines([kline, { ...kline, open_time: 2000000 }]);
       expect(store.latestKlineTime('SOLUSDT', '1h')).toBe(2000000);
     });
 
-    it('klineCount returns total across symbols', () => {
-      store.upsertKlines([kline, { ...kline, symbol: 'BTCUSDT', open_time: 1000001 }]);
+    it('klineCount returns total across symbols', async () => {
+      await store.upsertKlines([kline, { ...kline, symbol: 'BTCUSDT', open_time: 1000001 }]);
       expect(store.klineCount()).toBe(2);
       expect(store.klineCount('SOLUSDT')).toBe(1);
     });
@@ -126,32 +126,32 @@ describe('Store', () => {
       source: 'CoinDesk', domain: 'coindesk.com', relevance: 0.9, url: 'https://example.com',
     };
 
-    it('persists tickers from run result', () => {
-      store.persistRun({ tickers: [ticker], signals: [], newsMatches: [] });
+    it('persists tickers from run result', async () => {
+      await store.persistRun({ tickers: [ticker], signals: [], newsMatches: [] });
       const rows = store.getLatestTickers({ limit: 10 });
       expect(rows).toHaveLength(1);
       expect(rows[0]!.symbol).toBe('SOL');
       expect(rows[0]!.price).toBe(150);
     });
 
-    it('persists signals from run result', () => {
-      store.persistRun({ tickers: [], signals: [signal], newsMatches: [] });
+    it('persists signals from run result', async () => {
+      await store.persistRun({ tickers: [], signals: [signal], newsMatches: [] });
       const rows = store.getSignals({ limit: 10 });
       expect(rows).toHaveLength(1);
       expect(rows[0]!.composite_score).toBe(65);
     });
 
-    it('persists news from run result', () => {
-      store.persistRun({ tickers: [], signals: [], newsMatches: [news] });
+    it('persists news from run result', async () => {
+      await store.persistRun({ tickers: [], signals: [], newsMatches: [news] });
       const rows = store.getNews({ limit: 10 });
       expect(rows).toHaveLength(1);
       expect(rows[0]!.headline).toBe('Solana news');
     });
 
-    it('getSignals filters by minScore', () => {
+    it('getSignals filters by minScore', async () => {
       const s2 = { ...signal, symbol: 'BTC', compositeScore: 80, timestamp: '2026-07-07T12:01:00Z' };
       const s3 = { ...signal, symbol: 'ETH', compositeScore: 40, timestamp: '2026-07-07T12:02:00Z' };
-      store.persistRun({ tickers: [], signals: [signal, s2, s3], newsMatches: [] });
+      await store.persistRun({ tickers: [], signals: [signal, s2, s3], newsMatches: [] });
       const rows = store.getSignals({ minScore: 60, limit: 10 });
       expect(rows).toHaveLength(2); // SOL (65) + BTC (80), but not ETH (40)
     });
@@ -164,16 +164,16 @@ describe('Store', () => {
       quantity: 10, exit_price: null, exit_time: null, pnl: null, fees: null, status: 'open',
     };
 
-    it('upserts and retrieves', () => {
-      store.upsertPaperTrade(trade);
+    it('upserts and retrieves', async () => {
+      await store.upsertPaperTrade(trade);
       const rows = store.getPaperTrades('trader1');
       expect(rows).toHaveLength(1);
       expect(rows[0]!.symbol).toBe('SOL');
     });
 
-    it('filters by status', () => {
-      store.upsertPaperTrade(trade);
-      store.upsertPaperTrade({ ...trade, id: 'T2', status: 'closed', pnl: 50, exit_price: 160, exit_time: '2026-07-07T14:00:00Z' });
+    it('filters by status', async () => {
+      await store.upsertPaperTrade(trade);
+      await store.upsertPaperTrade({ ...trade, id: 'T2', status: 'closed', pnl: 50, exit_price: 160, exit_time: '2026-07-07T14:00:00Z' });
       expect(store.getPaperTrades('trader1', 'open')).toHaveLength(1);
       expect(store.getPaperTrades('trader1', 'closed')).toHaveLength(1);
     });
@@ -185,27 +185,27 @@ describe('Store', () => {
     const ls: LsRatioRow[] = [{ symbol: 'SOLUSDT', ts: 1000000, long_account: 55, short_account: 45, long_position: 60, short_position: 40 }];
     const liq: LiquidationRow[] = [{ id: 'L1', symbol: 'SOLUSDT', ts: 1000000, side: 'SELL', price: 145, qty: 100, usd: 14500 }];
 
-    it('upsertFunding and getFunding', () => {
-      expect(store.upsertFunding(funding)).toBe(1);
+    it('upsertFunding and getFunding', async () => {
+      expect(await store.upsertFunding(funding)).toBe(1);
       const rows = store.getFunding('SOLUSDT');
       expect(rows).toHaveLength(1);
       expect(rows[0]!.rate).toBe(0.0001);
     });
 
-    it('upsertOpenInterest and getOpenInterest', () => {
-      expect(store.upsertOpenInterest(oi)).toBe(1);
+    it('upsertOpenInterest and getOpenInterest', async () => {
+      expect(await store.upsertOpenInterest(oi)).toBe(1);
       const rows = store.getOpenInterest('SOLUSDT');
       expect(rows[0]!.open_interest).toBe(500000);
     });
 
-    it('upsertLsRatio and getLsRatio', () => {
-      expect(store.upsertLsRatio(ls)).toBe(1);
+    it('upsertLsRatio and getLsRatio', async () => {
+      expect(await store.upsertLsRatio(ls)).toBe(1);
       const rows = store.getLsRatio('SOLUSDT');
       expect(rows[0]!.long_account).toBe(55);
     });
 
-    it('upsertLiquidations and getLiquidations', () => {
-      expect(store.upsertLiquidations(liq)).toBe(1);
+    it('upsertLiquidations and getLiquidations', async () => {
+      expect(await store.upsertLiquidations(liq)).toBe(1);
       const rows = store.getLiquidations('SOLUSDT');
       expect(rows).toHaveLength(1);
       expect(rows[0]!.side).toBe('SELL');
@@ -215,8 +215,8 @@ describe('Store', () => {
   describe('fear & greed', () => {
     const fg: FearGreedRow = { ts: 1000000, value: 55, classification: 'Neutral' };
 
-    it('upserts and retrieves', () => {
-      store.upsertFearGreed(fg);
+    it('upserts and retrieves', async () => {
+      await store.upsertFearGreed(fg);
       const rows = store.getFearGreed();
       expect(rows).toHaveLength(1);
       expect(rows[0]!.value).toBe(55);
@@ -226,8 +226,8 @@ describe('Store', () => {
   describe('orderbook', () => {
     const ob: OrderBookRow = { symbol: 'SOLUSDT', ts: 1000000, spread_pct: 0.05, imbalance: 0.1, bids: '[[150,1]]', asks: '[[150.1,1]]' };
 
-    it('upserts and retrieves', () => {
-      store.upsertOrderBook(ob);
+    it('upserts and retrieves', async () => {
+      await store.upsertOrderBook(ob);
       const rows = store.getOrderBook('SOLUSDT');
       expect(rows).toHaveLength(1);
       expect(rows[0]!.spread_pct).toBe(0.05);
@@ -237,8 +237,8 @@ describe('Store', () => {
   describe('cross asset', () => {
     const ca: CrossAssetRow = { ts: 1000000, btc_dominance: 45, eth_dominance: 18, total_mcap: 2000000000000, total_mcap_change_24h: 2.5, market_cap_percentage_json: '{"btc":45,"eth":18}' };
 
-    it('upserts and retrieves', () => {
-      store.upsertCrossAsset(ca);
+    it('upserts and retrieves', async () => {
+      await store.upsertCrossAsset(ca);
       const rows = store.getCrossAsset();
       expect(rows).toHaveLength(1);
       expect(rows[0]!.btc_dominance).toBe(45);
@@ -246,7 +246,7 @@ describe('Store', () => {
   });
 
   describe('stats', () => {
-    it('returns zero counts for empty tables', () => {
+    it('returns zero counts for empty tables', async () => {
       const s = store.stats();
       expect(s.klines).toBe(0);
       expect(s.tickers).toBe(0);
@@ -254,7 +254,7 @@ describe('Store', () => {
   });
 
   describe('Store.open', () => {
-    it('creates database at dataDir/fileName', () => {
+    it('creates database at dataDir/fileName', async () => {
       const s = Store.open('/tmp', `crypto-radar-open-test-${Date.now()}.db`);
       s.migrate();
       expect(s.stats()).toHaveProperty('klines');
@@ -263,7 +263,7 @@ describe('Store', () => {
   });
 
   describe('Store constructor guards', () => {
-    it('throws DataError when createIfMissing is false and db absent', () => {
+    it('throws DataError when createIfMissing is false and db absent', async () => {
       const missing = resolve(tmpdir(), `crypto-radar-missing-${Date.now()}.db`);
       expect(existsSync(missing)).toBe(false);
       expect(() => new Store({ path: missing, createIfMissing: false })).toThrow();
@@ -275,8 +275,8 @@ describe('Store', () => {
       symbol: 'SOLUSDT', interval: '1h', open: 100, high: 105, low: 99, close: 104,
       volume: 5000, quote_volume: 520000, taker_buy_vol: 2500, taker_buy_quote_vol: 260000,
     };
-    it('orders ascending and respects limit', () => {
-      store.upsertKlines([
+    it('orders ascending and respects limit', async () => {
+      await store.upsertKlines([
         { ...base, open_time: 3000000, close: 300 },
         { ...base, open_time: 1000000, close: 100 },
         { ...base, open_time: 2000000, close: 200 },
@@ -296,24 +296,24 @@ describe('Store', () => {
       momentumScore: 60, technicalScore: 55, newsScore: 70, compositeScore: score,
       alerts: [dir], timestamp: ts, tokenId: sym.toLowerCase(), tokenName: sym,
     });
-    beforeEach(() => {
-      store.persistRun({
+    beforeEach(async () => {
+      await store.persistRun({
         tickers: [],
         signals: [sig('SOL', 65, 'bullish', '2026-07-07T12:00:00Z'), sig('BTC', 80, 'bearish', '2026-07-07T12:01:00Z')],
         newsMatches: [],
       });
     });
-    it('filters by symbol', () => {
+    it('filters by symbol', async () => {
       const rows = store.getSignals({ symbol: 'BTC' });
       expect(rows).toHaveLength(1);
       expect(rows[0]!.symbol).toBe('BTC');
     });
-    it('filters by direction', () => {
+    it('filters by direction', async () => {
       const rows = store.getSignals({ direction: 'bearish' });
       expect(rows).toHaveLength(1);
       expect(rows[0]!.symbol).toBe('BTC');
     });
-    it('getSignalHistory supports from/order/limit', () => {
+    it('getSignalHistory supports from/order/limit', async () => {
       const rows = store.getSignalHistory('SOL', { order: 'asc', limit: 1 });
       expect(rows).toHaveLength(1);
       const rowsDesc = store.getSignalHistory('SOL', { order: 'desc', limit: 1 });
@@ -333,50 +333,50 @@ describe('Store', () => {
       momentum: 0.8, alerts: '', source: 'binance',
       rsi: 55, macdHistogram: 0.5, bbWidth: 0.05, atrPct: 1.2, adx: 25, regime: 'neutral', compositeScore: 65,
     });
-    beforeEach(() => {
-      store.persistRun({ tickers: [ticker('SOL'), ticker('BTC')], signals: [], newsMatches: [] });
+    beforeEach(async () => {
+      await store.persistRun({ tickers: [ticker('SOL'), ticker('BTC')], signals: [], newsMatches: [] });
     });
-    it('getLatestTickers filters by symbol', () => {
+    it('getLatestTickers filters by symbol', async () => {
       const rows = store.getLatestTickers({ symbol: 'BTC' });
       expect(rows).toHaveLength(1);
       expect(rows[0]!.symbol).toBe('BTC');
     });
-    it('getTickerHistory returns time series', () => {
+    it('getTickerHistory returns time series', async () => {
       const rows = store.getTickerHistory('SOL', { limit: 1 });
       expect(rows).toHaveLength(1);
     });
   });
 
   describe('retention & pruning', () => {
-    it('enforceRetention deletes old history rows', () => {
+    it('enforceRetention deletes old history rows', async () => {
       const old = '2000-01-01T00:00:00Z';
       const recent = new Date().toISOString();
-      store.upsertKlines([{ symbol: 'SOLUSDT', interval: '1h', open_time: 1, open: 100, high: 105, low: 99, close: 104, volume: 5, quote_volume: 520, taker_buy_vol: 2, taker_buy_quote_vol: 260 }]);
-      store.persistRun({
+      await store.upsertKlines([{ symbol: 'SOLUSDT', interval: '1h', open_time: 1, open: 100, high: 105, low: 99, close: 104, volume: 5, quote_volume: 520, taker_buy_vol: 2, taker_buy_quote_vol: 260 }]);
+      await store.persistRun({
         tickers: [], signals: [],
         newsMatches: [{ runId: 'R1', tsUtc: old, symbol: 'SOL', headline: 'old', description: 'd', source: 'X', domain: 'x.com', relevance: 0.5, url: 'https://x.com' }],
       });
       // direct insert of history is via persistRun; just confirm retention runs without error
-      expect(() => store.enforceRetention(99999)).not.toThrow();
+      await expect(store.enforceRetention(99999)).resolves.not.toThrow();
       // with 0 days it is a no-op
-      expect(() => store.enforceRetention(0)).not.toThrow();
+      await expect(store.enforceRetention(0)).resolves.not.toThrow();
     });
 
-    it('prunePredictions removes old predictions', () => {
+    it('prunePredictions removes old predictions', async () => {
       const oldTs = String(Date.now() - 10_000);
-      store.upsertPrediction({ id: 'P1', symbol: 'SOL', ts: oldTs, direction: 'buy', confidence: 0.8, model_id: 'm1', horizon: '1h', ml_score: 0.7, features_hash: 'h' });
-      const removed = store.prunePredictions(Date.now() - 5000);
+      await store.upsertPrediction({ id: 'P1', symbol: 'SOL', ts: oldTs, direction: 'buy', confidence: 0.8, model_id: 'm1', horizon: '1h', ml_score: 0.7, features_hash: 'h' });
+      const removed = await store.prunePredictions(Date.now() - 5000);
       expect(removed).toBe(1);
       expect(store.getPredictions({})).toHaveLength(0);
     });
   });
 
   describe('predictions', () => {
-    beforeEach(() => {
-      store.upsertPrediction({ id: 'P1', symbol: 'SOL', ts: '1000000', direction: 'buy', confidence: 0.8, model_id: 'm1', horizon: '1h', ml_score: 0.7, features_hash: 'h' });
-      store.upsertPrediction({ id: 'P2', symbol: 'BTC', ts: '2000000', direction: 'sell', confidence: 0.6, model_id: 'm2', horizon: '4h', ml_score: 0.5, features_hash: 'h2' });
+    beforeEach(async () => {
+      await store.upsertPrediction({ id: 'P1', symbol: 'SOL', ts: '1000000', direction: 'buy', confidence: 0.8, model_id: 'm1', horizon: '1h', ml_score: 0.7, features_hash: 'h' });
+      await store.upsertPrediction({ id: 'P2', symbol: 'BTC', ts: '2000000', direction: 'sell', confidence: 0.6, model_id: 'm2', horizon: '4h', ml_score: 0.5, features_hash: 'h2' });
     });
-    it('getPredictions filters by symbol and model', () => {
+    it('getPredictions filters by symbol and model', async () => {
       expect(store.getPredictions({ symbol: 'SOL' })).toHaveLength(1);
       expect(store.getPredictions({ model_id: 'm2' })).toHaveLength(1);
       expect(store.getPredictions({ minConfidence: 0.7 })).toHaveLength(1);
@@ -384,8 +384,8 @@ describe('Store', () => {
   });
 
   describe('liquidations — no symbol', () => {
-    it('getLiquidations returns all when no symbol given', () => {
-      store.upsertLiquidations([
+    it('getLiquidations returns all when no symbol given', async () => {
+      await store.upsertLiquidations([
         { id: 'L1', symbol: 'SOLUSDT', ts: 1, side: 'SELL', price: 1, qty: 1, usd: 1 },
         { id: 'L2', symbol: 'BTCUSDT', ts: 2, side: 'BUY', price: 2, qty: 2, usd: 4 },
       ]);

@@ -2,12 +2,12 @@
 """
 Hermes Crypto Radar — Batch Prediction via Python Subprocess
 
-Reads CSV feature rows from stdin, loads a trained LightGBM model,
+Reads CSV feature rows from stdin, loads a trained CatBoost model,
 and writes JSON predictions to stdout.
 
 Usage (via Node subprocess):
     echo "rsi,macd_hist,bb_width,..." | python3 ml/predict.py \\
-        --model ml/models/model.joblib \\
+        --model ml/models/model.cbm \\
         --norm-stats data/ml/dataset_norm_abc123.json
 
 F3: Accepts multiple feature rows in a single CSV block (batch inference),
@@ -29,7 +29,6 @@ import signal
 import sys
 from pathlib import Path
 
-import joblib
 import numpy as np
 import pandas as pd
 
@@ -53,8 +52,18 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="LightGBM batch prediction")
-    parser.add_argument("--model", required=True, help="Path to .joblib model file")
+    parser = argparse.ArgumentParser(description="Batch prediction (CatBoost)")
+    parser.add_argument(
+        "--model",
+        required=True,
+        help="Path to model file (.cbm or .joblib, both CatBoost)",
+    )
+    parser.add_argument(
+        "--model-type",
+        choices=["auto", "catboost"],
+        default="auto",
+        help="Model type. auto=detect from file extension (.cbm → catboost, .joblib → catboost)",
+    )
     parser.add_argument(
         "--norm-stats",
         default=None,
@@ -79,7 +88,9 @@ def _load_norm_stats(path: str | None) -> dict | None:
         return None
     p = Path(path)
     if not p.exists():
-        logger.warning("norm-stats file not found at %s — falling back to fillna(0)", path)
+        logger.warning(
+            "norm-stats file not found at %s — falling back to fillna(0)", path
+        )
         return None
     try:
         with open(p) as f:
@@ -124,6 +135,42 @@ def _build_fill_values(
     return fills
 
 
+def load_model(model_path: str, model_type: str = "auto"):
+    """Load a CatBoost model (.cbm or .joblib).
+
+    Args:
+        model_path: Path to the serialized model file.
+        model_type: One of "auto", "catboost".
+            "auto" infers from the file extension:
+              .cbm -> catboost, .joblib -> catboost (training is CatBoost-only).
+
+    Returns:
+        Loaded model object with .predict() and .predict_proba() methods.
+    """
+    path = Path(model_path)
+    if not path.exists():
+        raise FileNotFoundError(f"Model not found: {model_path}")
+
+    # Auto-detect from extension — training is CatBoost-only, so both
+    # .cbm and .joblib are CatBoost models.
+    resolved = "catboost" if model_type == "auto" else model_type
+
+    if resolved == "catboost":
+        from catboost import CatBoostClassifier
+
+        model = CatBoostClassifier()
+        model.load_model(str(path))
+    else:
+        import joblib
+
+        model = joblib.load(str(path))
+
+    logger.info(
+        "Model loaded: %s (type=%s, classes=%s)", model_path, resolved, model.classes_
+    )
+    return model
+
+
 # ── Main ──
 
 
@@ -131,25 +178,24 @@ def predict(args: argparse.Namespace) -> None:
     setup_logging(args.verbose)
 
     # ── Load model ──
-    model_path = Path(args.model)
-    if not model_path.exists():
-        logger.error("Model not found: %s", model_path)
-        print(json.dumps({"error": f"Model not found: {model_path}"}))
-        sys.exit(1)
-
     try:
-        model = joblib.load(str(model_path))
+        model = load_model(str(args.model), args.model_type)
+    except FileNotFoundError as e:
+        logger.error("Model not found: %s", args.model)
+        print(json.dumps({"error": str(e)}))
+        sys.exit(1)
     except Exception as e:
         logger.error("Failed to load model: %s", e)
         print(json.dumps({"error": f"Model load failed: {e}"}))
         sys.exit(1)
 
-    logger.info("Model loaded: %s (classes=%s)", model_path, model.classes_)
-
     # ── Load normalization stats (optional, F5) ──
     norm_stats = _load_norm_stats(args.norm_stats)
     if norm_stats:
-        logger.info("Normalization stats loaded (%d features)", len(norm_stats.get("featureNames", [])))
+        logger.info(
+            "Normalization stats loaded (%d features)",
+            len(norm_stats.get("featureNames", [])),
+        )
 
     # ── Stdin read alarm: prevent hang if pipe not closed ──
     signal.signal(signal.SIGALRM, lambda _sig, _frame: sys.exit(2))
@@ -179,22 +225,30 @@ def predict(args: argparse.Namespace) -> None:
     # Data is typically already z-score normalized by the TS pipeline.
     # Any remaining NaN gets the training median's z-score when norm_stats
     # are available, or 0 as a safe fallback.
+    nan_count = int(df[feature_cols].isna().to_numpy().sum())
     fill_values = _build_fill_values(feature_cols, norm_stats)
     if fill_values:
-        # TODO:  Cannot access attribute "sum" for class "int" Attribute "sum" is unknown
-        nan_count = int(df[feature_cols].isna().sum().sum())
         X = df[feature_cols].fillna(value=fill_values).to_numpy(dtype=np.float64)
         if nan_count > 0:
-            logger.warning("Filled %d NaN value(s) using norm-stats median z-scores", nan_count)
+            logger.warning(
+                "Filled %d NaN value(s) using norm-stats median z-scores", nan_count
+            )
     else:
-        # TODO:  Cannot access attribute "sum" for class "int" Attribute "sum" is unknown
-        nan_count = int(df[feature_cols].isna().sum().sum())
         X = df[feature_cols].fillna(0).to_numpy(dtype=np.float64)
         if nan_count > 0:
-            logger.warning("Filled %d NaN value(s) with 0 (no norm-stats provided)", nan_count)
+            logger.warning(
+                "Filled %d NaN value(s) with 0 (no norm-stats provided)", nan_count
+            )
+
+    # ── Sanity-check model classes ──
+    if model.classes_ is None:
+        logger.error("Model has no classes_ attribute — was it trained?")
+        print(json.dumps({"error": "Model has no classes_ — model may not be trained"}))
+        sys.exit(1)
+    classes: list = list(model.classes_)
 
     # ── Pre-compute class→index mapping (avoids np.where per row) ──
-    class_to_idx: dict[int, int] = {int(cls): idx for idx, cls in enumerate(model.classes_)}
+    class_to_idx: dict[int, int] = {int(cls): idx for idx, cls in enumerate(classes)}
 
     # ── Predict ──
     try:
@@ -219,15 +273,17 @@ def predict(args: argparse.Namespace) -> None:
         # positions get 0 (graceful if the model never saw all 3 classes)
         probs_map: dict[int, float] = {
             int(cls): round(float(probabilities[i][j]), 4)
-            for j, cls in enumerate(model.classes_)
+            for j, cls in enumerate(classes)
         }
         ordered_probs = [probs_map.get(c, 0.0) for c in [-1, 0, 1]]
 
-        results.append({
-            "direction": pred_class,
-            "confidence": round(confidence, 4),
-            "probs": ordered_probs,
-        })
+        results.append(
+            {
+                "direction": pred_class,
+                "confidence": round(confidence, 4),
+                "probs": ordered_probs,
+            }
+        )
 
     print(json.dumps(results))
 

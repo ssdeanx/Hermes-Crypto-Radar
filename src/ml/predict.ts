@@ -11,6 +11,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import * as path from 'node:path';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -29,7 +30,7 @@ const __dirname = path.dirname(__filename);
 const PYTHON = process.env.RADAR__ML_PYTHON ?? 'python3';
 
 /** Default model path (relative to project root) */
-const DEFAULT_MODEL_PATH = path.resolve(__dirname, '../../ml/models/model.joblib');
+const DEFAULT_MODEL_PATH = resolveModelPath() ?? path.resolve(__dirname, '../../ml/models/model.joblib');
 
 /** Default predict script path — resolved relative to this module */
 const PREDICT_SCRIPT = path.resolve(__dirname, '../../ml/predict.py');
@@ -41,6 +42,37 @@ const PREDICT_SCRIPT = path.resolve(__dirname, '../../ml/predict.py');
  */
 const SUBPROCESS_TIMEOUT_MS = 60_000;
 
+/**
+ * Resolve the latest trained model file from ml/models/.
+ * Scans for model_*.joblib files, returns the newest by mtime.
+ * Falls back to model.joblib if no timestamped files exist.
+ * Returns null if no model files exist at all.
+ */
+export function resolveModelPath(modelsDir?: string): string | null {
+  const dir = modelsDir ?? path.resolve(__dirname, '../../ml/models');
+  if (!existsSync(dir)) return null;
+  const files = readdirSync(dir).filter(f => /^model_.*\.joblib$/.test(f));
+  if (files.length === 0) {
+    const legacy = path.resolve(dir, 'model.joblib');
+    return existsSync(legacy) ? legacy : null;
+  }
+  files.sort((a, b) => statSync(path.resolve(dir, b)).mtimeMs - statSync(path.resolve(dir, a)).mtimeMs);
+  return path.resolve(dir, files[0]!);
+}
+
+/**
+ * Resolve the latest normalization stats JSON from data/ml/.
+ * These are written by dataset.ts during training as: <prefix>_norm_<id>.json
+ * Returns null if no norm stats file exists.
+ */
+export function resolveNormStatsPath(dataDir?: string): string | null {
+  const dir = dataDir ?? path.resolve(__dirname, '../../data/ml');
+  if (!existsSync(dir)) return null;
+  const files = readdirSync(dir).filter(f => f.endsWith('_norm_.json') || /_norm_[a-f0-9]+\.json$/.test(f));
+  if (files.length === 0) return null;
+  files.sort((a, b) => statSync(path.resolve(dir, b)).mtimeMs - statSync(path.resolve(dir, a)).mtimeMs);
+  return path.resolve(dir, files[0]!);
+}
 /**
  * Escape a value for CSV — handles commas, newlines, quotes, and
  * leading whitespace for safe round-trip through pandas.read_csv.
@@ -279,14 +311,14 @@ async function runSubprocessInference(
  * @param results Prediction results to persist
  * @param modelId Model identifier to tag all rows
  */
-export function persistPredictions(
+export async function persistPredictions(
   store: Store,
   results: PredictionResult[],
   modelId: string,
-): void {
+): Promise<void> {
   for (const r of results) {
     const id = createHash('sha1').update(`${r.symbol}|${r.open_time}|${modelId}`).digest('hex');
-    store.upsertPrediction({
+    await store.upsertPrediction({
       id,
       symbol: r.symbol,
       ts: String(r.open_time),

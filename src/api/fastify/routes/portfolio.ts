@@ -160,7 +160,7 @@ export const portfolioRoutes: FastifyPluginAsync = async (app) => {
 
         // Close the buy trade (or reduce quantity)
         if (used >= buyQty) {
-          app.store.upsertPaperTrade({
+          await app.store.upsertPaperTrade({
             ...buy,
             exit_price: price,
             exit_time: now,
@@ -169,11 +169,11 @@ export const portfolioRoutes: FastifyPluginAsync = async (app) => {
           });
         } else {
           // Partial close: update existing trade quantity and create a closed trade
-          app.store.upsertPaperTrade({
+          await app.store.upsertPaperTrade({
             ...buy,
             quantity: buyQty - used,
           });
-          app.store.upsertPaperTrade({
+          await app.store.upsertPaperTrade({
             ...trade,
             id: tradeId + '-PARTIAL',
             quantity: used,
@@ -192,7 +192,7 @@ export const portfolioRoutes: FastifyPluginAsync = async (app) => {
       trade.status = 'closed';
     }
 
-    app.store.upsertPaperTrade(trade);
+    await app.store.upsertPaperTrade(trade);
 
     log.info('Paper trade executed', {
       profile,

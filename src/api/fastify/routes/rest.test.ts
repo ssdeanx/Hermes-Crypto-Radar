@@ -35,7 +35,7 @@ describe('Fastify REST routes', () => {
 
   describe('GET /api/portfolio/trades', () => {
     it('returns a { trades: [...] } envelope, not a raw array (F24)', async () => {
-      store.upsertPaperTrade({
+      await store.upsertPaperTrade({
         id: 'T1', profile: 'trader1', symbol: 'SOL', side: 'buy',
         entry_price: 150, entry_time: '2026-07-07T12:00:00Z',
         quantity: 10, exit_price: null, exit_time: null, pnl: null, fees: null, status: 'open',
@@ -64,7 +64,7 @@ describe('Fastify REST routes', () => {
         { id: 'T3', profile: 'trader1', symbol: 'BTC', side: 'buy', entry_price: 50000, entry_time: '2026-07-07T12:00:00Z', quantity: 1, exit_price: 52000, exit_time: '2026-07-07T14:00:00Z', pnl: 2000, fees: null, status: 'closed' },
         { id: 'T4', profile: 'trader1', symbol: 'BTC', side: 'buy', entry_price: 51000, entry_time: '2026-07-07T15:00:00Z', quantity: 0.5, exit_price: 49000, exit_time: '2026-07-07T16:00:00Z', pnl: -1000, fees: null, status: 'closed' },
       ];
-      for (const t of trades) store.upsertPaperTrade(t);
+      for (const t of trades) await store.upsertPaperTrade(t);
 
       const res = await app.inject({ method: 'GET', url: '/api/portfolio' });
       expect(res.statusCode).toBe(200);
