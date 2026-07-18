@@ -931,12 +931,15 @@ program
 // ── ml command ──
 program
   .command('ml')
-  .description('ML pipeline: train, predict, or check status')
-  .argument('<action>', 'train | predict | status')
+  .description('ML pipeline: train, predict, status, or drift')
+  .argument('<action>', 'train | predict | status | drift')
   .option('--symbols <syms...>', 'Filter to specific symbols')
   .option('--horizon <n>', 'Label horizon (1/5/20/60)', '5')
   .option('--lookback <days>', 'Training lookback days', '90')
   .option('--interval <i>', 'Kline interval for prediction', '1h')
+  .option('--model <m>', 'Drift detector model (ADWIN/PageHinkley/KSWIN)', 'ADWIN')
+  .option('--delta <n>', 'Drift detector significance delta', '0.002')
+  .option('--records <n>', 'Max records for drift detection', '500')
   .action(async (action, opts) => {
     try {
       const config = loadConfig();
@@ -946,14 +949,27 @@ program
       if (action === 'status') {
         const stats = store.stats();
         const predictions = store.getPredictions({ limit: 5 });
-        const hasModel = fs.existsSync('ml/models');
+        const modelsDir = 'ml/models';
+        const hasModelDir = fs.existsSync(modelsDir);
+        const manifestPath = path.resolve(modelsDir, 'MANIFEST.json');
+        const hasManifest = hasModelDir && fs.existsSync(manifestPath);
+
+        let activeModel = 'none';
+        if (hasManifest) {
+          try {
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+            activeModel = manifest.active_model ?? 'unknown';
+          } catch { activeModel = '(parse error)'; }
+        }
+
         logger.stdout('📊 ML Pipeline Status\n');
         logger.stdout(`  Enabled:       ${config.ml?.enabled ? '✅' : '❌'} (set RADAR__ML_ENABLED=true)`);
+        logger.stdout(`  Active model:  ${activeModel}`);
         logger.stdout(`  Store rows:    ${stats.tickers ?? 0} tickers, ${stats.klines ?? 0} klines`);
         logger.stdout(`  Predictions:   ${stats.predictions ?? 0} total`);
-        logger.stdout(`  Models dir:    ${hasModel ? '✅ exists' : '❌ not found'}`);
+        logger.stdout(`  Models dir:    ${hasModelDir ? '✅ exists' : '❌ not found'}`);
         if (predictions.length > 0) {
-          logger.stdout(`  Latest pred:   ${predictions[0]?.symbol ?? 'N/A'} → ${predictions[0]?.direction ?? 'N/A'} (${(predictions[0]?.confidence ?? 0 * 100).toFixed(0)}%)`);
+          logger.stdout(`  Latest pred:   ${predictions[0]?.symbol ?? 'N/A'} → ${predictions[0]?.direction ?? 'N/A'} (${((predictions[0]?.confidence ?? 0) * 100).toFixed(0)}%)`);
         }
         process.exit(0);
       }
@@ -1083,7 +1099,34 @@ program
         process.exit(0);
       }
 
-      logger.error(`Unknown action: ${action}. Use train, predict, or status.`);
+      if (action === 'drift') {
+        logger.info('Running drift detection...');
+        const { detectDrift } = await import('./ml/drift.js');
+        const report = await detectDrift(store, {
+          model: (opts.model as 'ADWIN' | 'PageHinkley' | 'KSWIN') || 'ADWIN',
+          delta: parseFloat(opts.delta) || 0.002,
+          maxRecords: parseInt(opts.records, 10) || 500,
+        });
+
+        logger.stdout('\n📊 Drift Detection Report\n');
+        logger.stdout(`  Drift detected: ${report.drift_detected ? '⚠️ YES' : '✅ No'}`);
+        logger.stdout(`  Observations:   ${report.detector_stats.total_observations}`);
+        logger.stdout(`  Detections:     ${report.detector_stats.total_detections}`);
+        logger.stdout(`  Detector:       ${report.detector_stats.model}`);
+
+        if (report.warnings.length > 0) {
+          logger.stdout(`\n  ⚠️  Warnings (${report.warnings.length}):`);
+          for (const w of report.warnings.slice(0, 10)) {
+            logger.stdout(`    • ${w.message}`);
+          }
+          if (report.warnings.length > 10) {
+            logger.stdout(`    ... and ${report.warnings.length - 10} more`);
+          }
+        }
+        process.exit(0);
+      }
+
+      logger.error(`Unknown action: ${action}. Use train, predict, status, or drift.`);
       process.exit(1);
     } catch (err) {
       logger.error('[ERROR] ML command failed:', { message: err instanceof Error ? err.message : err });

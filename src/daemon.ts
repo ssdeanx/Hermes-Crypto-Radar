@@ -27,7 +27,7 @@ import { Cache, getGlobalCache } from './core/cache.js';
 import { logWarn } from './core/errors.js';
 import { Store } from './store/db.js';
 import { createWsHub } from './api/ws.js';
-import { batchPredict, persistPredictions } from './ml/predict.js';
+import { batchPredict, persistPredictions, resolveActiveModel } from './ml/predict.js';
 import { assembleDataset } from './ml/dataset.js';
 import { buildFeatures } from './ml/features.js';
 import { computeLabels } from './ml/labels.js';
@@ -108,12 +108,13 @@ async function refreshAll(): Promise<void> {
   _refreshCount++;
   _ready = true;
 
-  // F8: Auto-retrain ML model if enabled and due
+  // F8: ML pipeline — train → predict → detect drift
   if (_store) {
     const config = loadConfig();
     if (config.ml?.enabled) {
       await autoRetrain(config);
       await runMlPrediction(config);
+      await runDriftDetection(config);
     }
   }
 
@@ -134,6 +135,12 @@ async function autoRetrain(config: ReturnType<typeof loadConfig>): Promise<void>
   }
 
   if (!_store) return;
+
+  // Verify Python environment exists before attempting
+  if (!fs.existsSync('ml/train.py')) {
+    log.warn('ML train script not found — skipping auto-retrain');
+    return;
+  }
 
   log.info('ML auto-retrain starting...');
   const start = Date.now();
@@ -169,7 +176,11 @@ async function autoRetrain(config: ReturnType<typeof loadConfig>): Promise<void>
         );
 
         const closes = klines.map(k => k.close);
-        const labels = computeLabels(closes, interval, { classHorizon: 5 });
+        const horizon = config.ml?.training?.labelHorizon ?? 5;
+        const labels = computeLabels(closes, interval, {
+          classHorizon: horizon,
+          useVolatilityThreshold: true,
+        }, klines);
 
         // Align labels with feature rows by open_time using a Map (avoids O(n²) findIndex)
         const labelByTime = new Map<number, import('./ml/types.js').LabelRow>();
@@ -196,7 +207,7 @@ async function autoRetrain(config: ReturnType<typeof loadConfig>): Promise<void>
 
     // Assemble dataset and train
     const dataset = assembleDataset(allFeatures, allLabels, {
-      labelHorizon: 5,
+      labelHorizon: config.ml?.training?.labelHorizon ?? 5,
       testSplit: 0.15,
       valSplit: 0.15,
       normalize: true,
@@ -207,15 +218,31 @@ async function autoRetrain(config: ReturnType<typeof loadConfig>): Promise<void>
     const { spawn } = await import('node:child_process');
     const python = process.env.RADAR__ML_PYTHON ?? 'python3';
 
+    // Build training args from config
+    const trainArgs: string[] = [
+      'ml/train.py',
+      '--data', dataset.trainPath,
+      '--output', 'ml/models',
+      '--class-weight', 'custom',
+      '--seed', '42',
+    ];
+    if (config.ml?.training?.optimize) {
+      trainArgs.push('--optimize', '--optuna-trials', String(config.ml.training.optunaTrials ?? 30));
+    }
+    if (config.ml?.training?.cvFolds && config.ml.training.cvFolds > 0) {
+      trainArgs.push('--cv-folds', String(config.ml.training.cvFolds));
+    }
+    if (config.ml?.training?.balance) {
+      trainArgs.push('--balance');
+    }
+    if (config.ml?.training?.shap) {
+      trainArgs.push('--shap');
+    }
+    // Always add TA features (they improve accuracy significantly)
+    trainArgs.push('--add-ta');
+
     await new Promise<void>((resolve, reject) => {
-      const proc = spawn(python, [
-        'ml/train.py',
-        '--data', dataset.trainPath,
-        '--output', 'ml/models',
-        '--class-weight', 'custom',
-        '--seed', '42',
-        '--verbose',
-      ], { stdio: ['ignore', 'pipe', 'pipe'] });
+      const proc = spawn(python, trainArgs, { stdio: ['ignore', 'pipe', 'pipe'] });
 
       let stdout = '';
       let stderr = '';
@@ -282,6 +309,64 @@ async function runMlPrediction(config: ReturnType<typeof loadConfig>): Promise<v
     _lastMlPredict = Date.now();
   } catch (err) {
     log.warn('ML prediction error', { error: String(err) });
+  }
+}
+
+// ── ML Drift Detection ──
+
+/**
+ * Run concept drift detection on recent predictions.
+ * If drift is detected and auto-retrain is not recently done,
+ * triggers an immediate retraining cycle.
+ */
+async function runDriftDetection(config: ReturnType<typeof loadConfig>): Promise<void> {
+  if (!_store) return;
+
+  // Only run drift detection if we have an active model and predictions
+  if (!_mlModelId) return;
+
+  try {
+    const { detectDrift } = await import('./ml/drift.js');
+    const report = await detectDrift(_store, {
+      model: 'ADWIN',
+      delta: 0.002,
+      maxRecords: 500,
+    });
+
+    if (report.drift_detected) {
+      log.warn(
+        `Concept drift detected: ${report.detector_stats.total_detections} events ` +
+        `out of ${report.detector_stats.total_observations} observations`
+      );
+
+      // Persist drift events to store
+      const now = new Date().toISOString();
+      for (const warning of report.warnings) {
+        await _store.insertDriftEvent({
+          id: `drift_${now}_${warning.index}`,
+          ts: now,
+          model_id: path.basename(_mlModelId),
+          detector: 'ADWIN',
+          index: warning.index,
+          symbol: undefined, // symbol is in the message
+          confidence: undefined,
+          message: warning.message,
+        });
+      }
+
+      // Auto-retrain trigger: if last train was >1h ago, retrain immediately
+      const retrainCooldownMs = 3_600_000; // 1 hour
+      if (Date.now() - _lastMlTrain > retrainCooldownMs) {
+        log.info('Drift detected and cooldown elapsed — triggering auto-retrain');
+        await autoRetrain(config);
+      } else {
+        log.info('Drift detected but within retrain cooldown — skipping auto-retrain');
+      }
+    } else {
+      log.debug('No drift detected');
+    }
+  } catch (err) {
+    log.warn('Drift detection error', { error: String(err) });
   }
 }
 
@@ -415,6 +500,15 @@ export async function runDaemon(): Promise<void> {
 
   writePid();
   _startTime = Date.now();
+
+  // ── Initialize ML model from MANIFEST (if available) ──
+  const activeModelPath = resolveActiveModel();
+  if (activeModelPath) {
+    _mlModelId = activeModelPath;
+    log.info(`ML model loaded from MANIFEST: ${path.basename(activeModelPath)}`);
+  } else {
+    log.info('No ML model found in MANIFEST — predictions disabled until first auto-retrain');
+  }
 
   // ── Start Fastify API server ──
   if (!_store) {

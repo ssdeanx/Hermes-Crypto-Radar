@@ -158,6 +158,16 @@ export function buildFeatures(
       const alignedF = findNearestBefore(sortedFunding, k.open_time, 'ts');
       if (alignedF) {
         row.funding_rate = alignedF.rate;
+        // Funding rate change: compare with previous funding snapshot
+        const fIdx = sortedFunding.indexOf(alignedF);
+        if (fIdx > 0) {
+          const prevF = sortedFunding[fIdx - 1];
+          if (prevF && prevF.rate !== null && prevF.rate !== undefined) {
+            row.funding_rate_change = alignedF.rate !== null && alignedF.rate !== undefined
+              ? alignedF.rate - prevF.rate
+              : null;
+          }
+        }
       }
     }
 
@@ -208,6 +218,21 @@ function addTechnicalFeatures(row: FeatureRow, techs: TechnicalIndicators): void
 
   // ATR
   row.atr_pct = techs.atrPct;
+  // Volatility ratio: current ATR vs SMA of ATR (rough market regime indicator)
+  row.volatility_ratio = techs.atrPct !== null && techs.atrPct !== undefined
+    ? techs.volTrend !== null && techs.volTrend !== undefined && techs.volTrend !== 0
+      ? techs.atrPct / techs.volTrend
+      : null
+    : null;
+
+  // Market regime: derived from ADX and BB width
+  row.regime = techs.adx !== null && techs.adx !== undefined
+    ? techs.adx >= 40 ? 2  // trending strongly
+      : techs.adx >= 25 ? 1  // trending weakly
+      : techs.bb && techs.bb.width !== null && techs.bb.width !== undefined && techs.bb.width > 0.05
+        ? 3  // volatile
+        : 0  // ranging
+    : null;
 
   // Volume
   row.vol_trend = techs.volTrend;

@@ -1,6 +1,6 @@
 {
   "name": "hermes-crypto-radar",
-  "version": "2.0.0",
+  "version": "2.3.0",
   "description": "Hermes Agent plugin for enterprise-grade multi-chain crypto market intelligence — tracks 49 tokens across 15+ chains with 26 technical indicators. RSS news aggregation from 11 feeds with 3-strategy signal engine (momentum, mean-reversion, trend-following), divergence detection, and ADX trend-strength filter. Binance data integration, DeFiLlama on-chain metrics, configurable token whitelists, XLSX/CSV/JSON/MD report export, SVG candlestick/dashboard charts, candlestick pattern recognition, volume profile analysis, support/resistance detection, market regime classification, N×N correlation engine, backtesting engine, Discord/Telegram webhook alerts, WebSocket real-time prices, and a warm daemon mode for continuous monitoring.",
   "type": "module",
   "main": "./dist/cli.js",
@@ -135,7 +135,9 @@
     "Education",
     "Data Science",
     "Visualization",
-    "Machine Learning"
+    "Machine Learning",
+    "Programming Languages",
+    "Testing"
   ],
   "dependencies": {
     "@fastify/compress": "^9.1.0",
@@ -155,7 +157,6 @@
     "picocolors": "^1.1.1",
     "rss-parser": "^3.13.0",
     "simple-statistics": "^7.9.3",
-    "technicalindicators": "^3.1.0",
     "ws": "^8.21.1",
     "zod": "^4.4.3"
   },

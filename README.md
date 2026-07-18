@@ -18,7 +18,7 @@
 
 <h1 align="center">🛰️ Hermes Crypto Radar</h1>
 <p align="center"><strong>Enterprise-grade multi-chain crypto market intelligence — Hermes Agent plugin</strong></p>
-<p align="center"><strong>49+ tokens across 31 chains with 26+ technical indicators</strong> — 3-strategy signal engine, DeFiLlama on-chain metrics, RSS news aggregation, SVG charts, and a warm daemon for sub-50ms tool calls. Built for <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a>.</p>
+<p align="center"><strong>68 tokens across 31 chains with 33 technical indicators</strong> — 3-strategy signal engine, DeFiLlama on-chain metrics, RSS news aggregation, SVG charts, CatBoost ML pipeline, and a warm daemon for sub-50ms tool calls. Built for <a href="https://hermes-agent.nousresearch.com/">Hermes Agent</a>.</p>
 
 <p align="center">
   <a href="#-features">Features</a> •
@@ -60,25 +60,25 @@ hermes plugins list
 
 | Area | Highlights |
 |------|-----------|
-| **🪙 Token Coverage** | **49+ tokens** across **31 chains** — Solana, Polygon, Ethereum, BNB, Bitcoin, XRP, Cardano, Dogecoin, Cosmos, Sui, Aptos, Sei, Celestia, Injective, Thorchain, NEAR, TRON, Stellar, Avalanche, Litecoin, Bitcoin Cash, Hedera, Bittensor, Polkadot, Filecoin, Zcash, Monero, Algorand, Tezos, Theta + dynamic top-50 volume detection |
-| **📊 Technical Indicators** | **26+ indicators**: RSI (14), MACD (12/26/9), Bollinger Bands (20/2), ATR (14), MFI (14), OBV, Stochastic (%K/%D), Ichimoku Cloud, Williams %R, CMF, TSI, SMA, EMA, ADX, Parabolic SAR, CCI, Keltner Channels, ROC, VWAP, Force Index, ADL, Chaikin Oscillator, StochRSI, TRIX, KST, Elder-Ray, Fisher Transform, Mass Index |
-| **🧠 Signal Engine** | 3 strategies: Momentum (40%), Mean Reversion (20%), Trend Following (40%) — weighted voting with confidence scoring, candlestick pattern recognition (16 patterns), market regime detection (ADX+BB+ATR) |
-|| **🧠 ML Pipeline** | LightGBM direction classifier — 80+ features, forward-return labels, auto-retrain daemon, batch inference via Python subprocess, predictions API | v2.1.0 ||
-|| **⏱️ Multi-Timeframe** | Parallel kline fetch across 15m, 1h, 4h, 1d intervals with weighted aggregation (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35) |
+| **🪙 Token Coverage** | **68 tokens** across **31 chains** — Solana, Polygon, Ethereum, BNB, Bitcoin, XRP, Cardano, Dogecoin, Cosmos, Sui, Aptos, Sei, Celestia, Injective, Thorchain, NEAR, TRON, Stellar, Avalanche, Litecoin, Bitcoin Cash, Hedera, Bittensor, Polkadot, Filecoin, Zcash, Monero, Algorand, Tezos, Theta + dynamic top-75 volume detection |
+| **📊 Technical Indicators** | **33 indicators**: RSI (14), MFI (14), MACD (12/26/9), Bollinger Bands (20/2), ATR (14), OBV, Stochastic (%K/%D), Ichimoku Cloud, Williams %R (14), CMF (20), TSI (25/13), SMA, EMA, ADX (14), Parabolic SAR, CCI (20), Keltner Channels (20/2), ROC (12), VWAP, Force Index (13), ADL, Chaikin Oscillator (3/10), StochRSI (14/14/3/3), TRIX (15), KST, Elder-Ray (13), Fisher Transform (10), Mass Index (14) |
+| **🧠 Signal Engine** | 3 strategies: Momentum (40%), Mean Reversion (20%), Trend Following (40%) — ADX-adjusted weighted voting (±15pp), divergence detection (regular/hidden/subtle), 16 candlestick patterns, regime-adaptive weights (Trending 45/10/45, Ranging 15/60/25, Volatile 30/35/35), timeframe aggregation (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35), on-chain TVL boost (0–15pp), volume profile confirmation |
+| **🧠 ML Pipeline** | **CatBoost direction classifier** — 80+ features, 12 TA indicators, forward-return labels, volatility-adjusted thresholds, SHAP feature attribution per prediction, ensemble voting (N models), automated feature selection, probability calibration, auto-retrain daemon, online learning layer (river), concept drift detection with auto-retrain trigger, model registry (MANIFEST.json) with production promotion gates |
+| **⏱️ Multi-Timeframe** | Parallel kline fetch across 15m, 1h, 4h, 1d intervals with weighted aggregation (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35) |
 | **⛓️ On-Chain Metrics** | DeFiLlama integration — protocol TVL, chain TVL, fees (1d/7d/30d) — boosts signal confidence 0–15% |
-| **📰 News Aggregation** | 11 RSS feeds with relevance scoring, dedup, poison-filtering via token headline/body matching, sentiment keyword analysis |
-| **🎯 Dynamic Scan** | `--dynamic` flag auto-detects top N tokens by 24h volume (configurable, default: 50) |
+| **📰 News Aggregation** | 28 RSS feeds (CoinTelegraph, CoinDesk, Decrypt, The Block, Blockworks, SolanaFloor, DL News + 21 more) with relevance scoring, 4-tier source weighting, sentiment keyword analysis, recency bonus, dedup with 1h sliding window, poison-filtering via token headline/body matching |
+| **🎯 Dynamic Scan** | `--dynamic` flag auto-detects top N tokens by 24h volume (configurable, default: 75) |
 | **📈 Charts** | SVG candlestick, line, multi-panel dashboard with CSS gradients, tooltips, crosshairs, responsive viewBox, accessibility; ASCII sparklines |
-| **💾 Export** | JSON, CSV, Markdown, terminal table, **XLSX** (Excel/Sheets with frozen headers + conditional formatting), **HTML/PDF** self-contained reports |
+| **💾 Export** | **JSONL** (ML-ready datasets), JSON, CSV, Markdown, terminal table, **XLSX** (Excel/Sheets with frozen headers + conditional formatting), **HTML/PDF** self-contained reports |
 | **🥇 Daemon Mode** | Warm HTTP daemon for sub-50ms tool calls, configurable cache refresh, health checks |
 | **🛡️ Enterprise** | Circuit breaker (CLOSED/OPEN/HALF-OPEN), token-bucket rate limiter, TTL cache, atomic writes, log rotation (10MB → gzip, 30-day retention), typed error classes, SHA-256 file checksums |
 | **⚙️ Configurable** | `radar.config.json` + `RADAR__*` env vars — strategy weights, timeframe weights, token whitelist, log level, data dir, cache TTL |
 | **🔌 Hermes Plugin** | 8 agent tools returning structured JSON for agent reasoning — scan, signals, news, tokens, chart, daemon, onchain, ws |
 | **📡 Real-Time** | WebSocket stream management for live price updates, Discord/Telegram webhook price alerts |
 | **📁 Data Directory** | Standardized to `~/.hermes/data/crypto-radar/` — logs, rotation, cross-session persistence |
-|| **🔬 Advanced Analytics** | Correlation engine (N×N Pearson matrix), backtesting engine with weight optimization, Volume Profile (POC/HVN/LVN), support/resistance detection | v1.3 |
-|| **📡 REST API** | 16+ REST endpoints under /api/* — tickers, signals, klines, news, tokens, regime, futures, orderbook, portfolio, predictions | v2.1.0 |
-||| **🧪 Test Coverage** | **1222 tests across 55 test files** — CLI layer, paper-trade CLI, collector, jupiter, support-resistance, and store at 90%+ lines. Overall lines 90.5%, statements 87.8%, functions 91.4%, branches 74.4% | v2.1.0 |
+| **🔬 Advanced Analytics** | Correlation engine (N×N Pearson matrix), backtesting engine with weight optimization, Volume Profile (POC/HVN/LVN), support/resistance detection
+| **📡 REST API** | 16+ REST endpoints under /api/* — tickers, signals, klines, news, tokens, regime, futures, orderbook, portfolio, predictions
+| **🧪 Test Coverage** | **1222 tests across 55 test files** — CLI layer, paper-trade CLI, collector, jupiter, support-resistance, and store at 90%+ lines. Overall lines 90.5%, statements 87.8%, functions 91.4%, branches 74.4% | v2.3.0 |
 
 > **Requirements:** Node.js >= 22, Hermes Agent (for plugin integration). No API keys required — uses public Binance REST API + RSS feeds + DeFiLlama (free).
 
@@ -129,7 +129,7 @@ crypto-radar scan --dynamic --format table
 crypto-radar scan --dynamic 20 --onchain --format json
 ```
 
-When `--dynamic` is used, the scan **auto-saves** all 5 output formats (`.txt`, `.json`, `.csv`, `.md`, `.xlsx`) to `~/.hermes/data/crypto-radar/` — no `--format` needed for archiving. The `.txt` file always contains the human-readable table, making it ideal for cron delivery.
+When `--dynamic` is used, the scan **auto-saves** all output formats (`.jsonl`, `.csv`, `.md`, `.xlsx`, `.txt`) to `~/.hermes/data/crypto-radar/` — no `--format` needed for archiving. Data is persisted as **JSONL** (JSON Lines — one JSON object per line) for ML-ready streaming datasets. The `.txt` file always contains the human-readable table, making it ideal for cron delivery.
 
 ```bash
 # Cron collector — auto-saves all formats, just declare the token count
@@ -176,10 +176,10 @@ ln -sf "$PWD" ~/.hermes/plugins/crypto-radar
 | Feature | Crypto Radar | CoinGecko CLI | Binance CLI | CoinMarketCap API |
 |---------|:------------:|:-------------:|:-----------:|:-----------------:|
 | **Multi-chain coverage** | ✅ 31 chains | ✅ 100+ chains | ❌ Binance only | ✅ 400+ |
-| **Technical indicators** | ✅ **26+** built-in | ❌ None | ❌ None | ❌ None |
+| **Technical indicators** | ✅ **33** built-in | ❌ None | ❌ None | ❌ None |
 | **Composite signal engine** | ✅ 3 strategies | ❌ | ❌ | ❌ |
 | **On-chain metrics** | ✅ DeFiLlama | ✅ Limited | ❌ | ✅ Limited |
-| **News aggregation** | ✅ 11 RSS feeds | ❌ | ❌ | ✅ |
+| **News aggregation** | ✅ 28 RSS feeds | ❌ | ❌ | ✅ |
 | **SVG charts** | ✅ Candlestick, line, dashboard | ❌ | ❌ | ❌ |
 | **XLSX/HTML/PDF export** | ✅ All formats | ❌ | ❌ | ✅ |
 | **Hermes Agent plugin** | ✅ Native | ❌ | ❌ | ❌ |
@@ -236,41 +236,50 @@ crypto-radar chart SOL --type candlestick --period 1h
 
 ```mermaid
 graph TB
-    subgraph "Hermes Agent"
-        A[Agent LLM] -->|tool calls| B[Plugin Bridge<br/>plugin/__init__.py]
+    subgraph Hermes["⚡ Hermes Agent"]
+        A[Agent LLM] ==>|tool calls| B{Plugin Bridge<br/>plugin/__init__.py}
     end
 
-    subgraph "Crypto Radar CLI"
-        B -->|spawn| C[CLI Entry<br/>dist/cli.js]
-        C --> D[Radar Engine<br/>src/radar.ts]
-        D --> E[Binance REST<br/>src/binance.ts]
-        D --> F[Jupiter DEX<br/>src/jupiter.ts]
+    subgraph Radar["🛰️ Crypto Radar CLI"]
+        B ==>|spawn| C[CLI Entry<br/>dist/cli.js]
+        C ==> D[Radar Engine<br/>src/radar.ts]
+
+        D ==> E[Binance REST<br/>src/binance.ts]
+        D ==> F[Jupiter DEX<br/>src/jupiter.ts]
         D --> G[DeFiLlama<br/>src/onchain.ts]
         D --> H[RSS News<br/>src/news.ts]
-        D --> I[CoinGecko<br/>src/coingecko.ts]
-        D --> J[Signal Engine<br/>src/analysis/]
+        D -.-> I[CoinGecko<br/>src/coingecko.ts]
+
+        D ==> J[Strategy Engine<br/>src/analysis/]
         J --> K[Momentum 40%]
         J --> L[Mean Reversion 20%]
         J --> M[Trend Following 40%]
-        D --> N[Indicators<br/>src/indicators.ts]
+
+        D ==> N[33 Indicators<br/>src/indicators.ts]
         D --> O[Charts<br/>src/io/charts.ts]
-        D --> P[Daemon<br/>src/daemon.ts]
+        D ==> P[Daemon<br/>src/daemon.ts]
         D --> Q[WebSocket<br/>src/ws.ts]
+
+        D ==> R{ML Pipeline<br/>src/ml/ + ml/}
+        R ==> S[(CatBoost<br/>Classifier)]
+        R ==> T[(River Online<br/>Learning)]
+        R ==> U[(Drift<br/>Detection)]
     end
 
-    subgraph "External APIs"
-        E --> R[Binance Exchange]
-        F --> S[Jupiter Aggregator]
-        G --> T[DeFiLlama]
-        I --> U[CoinGecko]
+    subgraph External["🌐 External APIs"]
+        E ==> V([Binance Exchange])
+        F ==> W([Jupiter Aggregator])
+        G ==> X([DeFiLlama])
+        I ==> Y([CoinGecko])
     end
 
-    subgraph "Output"
-        D --> V[JSON / CSV / XLSX / HTML]
-        D --> W[SQLite Export]
-        D --> X[SVG Charts]
-        D --> Y[Terminal Tables]
-        D --> Z[Discord/Telegram Alerts]
+    subgraph Output["📦 Output"]
+        D ==> Z[[JSONL / JSON / CSV<br/>XLSX / HTML]]
+        D ==> AA[[SQLite Store]]
+        D ==> AB[[SVG Charts]]
+        D ==> AC[[Terminal]]
+        D ==> AD[[WebSocket Push]]
+        D ==> AE[[Discord / Telegram]]
     end
 ```
 
@@ -284,62 +293,144 @@ sequenceDiagram
     participant Binance as Binance API
     participant Jupiter as Jupiter DEX
     participant DefiLlama as DeFiLlama
-    participant News as RSS Feeds
+    participant News as 28 RSS Feeds
 
     Agent->>Plugin: crypto_radar_scan()
     Plugin->>CLI: node dist/cli.js scan --format json
 
     par Parallel Fetch
-        CLI->>Binance: GET /ticker/24hr (49+ pairs)
-        CLI->>Binance: GET /klines (4 timeframes, parallel batches of 5)
+        CLI->>Binance: GET /ticker/24hr (68 pairs)
+        CLI->>Binance: GET /klines (4 timeframes, batches of 5, limit 200)
         CLI->>Jupiter: GET /price (Solana mints)
-        CLI->>DefiLlama: GET /protocols (TVL/fees)
-        CLI->>News: GET 11 RSS feeds (concurrency-4)
+        CLI->>DefiLlama: GET protocols TVL/fees
+        CLI->>News: GET 28 RSS feeds (concurrency-4, 15s timeout)
     end
 
-    CLI->>CLI: Compute 26+ indicators / token
-    CLI->>CLI: Market regime detection (ADX+BB+ATR)
-    CLI->>CLI: Run 3 strategies / timeframe
+    CLI->>CLI: Filter tokens by chain/config
+    CLI->>CLI: Enrich tickers (spread, VWAP dist, range, book imbalance)
+    CLI->>CLI: Compute 33 indicators / token
+    CLI->>CLI: Market regime detection (ADX+BB+ATR weighted vote)
     CLI->>CLI: Candlestick pattern recognition (16 patterns)
+    CLI->>CLI: Composite signal scoring (40% momentum + 40% tech + 20% news)
+    CLI->>CLI: Run 3 strategies / timeframe via engine.ts
+    CLI->>CLI: Regime-adaptive weight adjustment
+    CLI->>CLI: TF aggregation (15m=0.10, 1h=0.25, 4h=0.30, 1d=0.35)
 
-    Note over CLI: 15m, 1h, 4h, 1d aggregation with weighted voting
+    Note over CLI: Optional: persist to SQLite store + CSV logs with SHA-256
 
-    CLI-->>Plugin: JSON result (prices, signals, news, charts)
+    CLI-->>Plugin: JSON result (tickers, technicals, signals, news, onchain)
     Plugin-->>Agent: Structured response
     Agent->>Agent: Reason about signals
     Agent-->>User: Natural language response
 ```
 
-### Signal Pipeline
+### Signal Pipeline — Composite Scoring
 
 ```mermaid
 flowchart LR
-    A[Raw Ticker] --> B[Enrichment]
-    B --> C[Technical Indicators<br/>26+ indicators]
-    B --> D[News Scoring<br/>11 RSS feeds]
-    B --> E[On-Chain Metrics<br/>DeFiLlama]
-    B --> F[Market Regime<br/>ADX+BB+ATR]
-    B --> G[Candlestick Patterns<br/>16 patterns]
+    A[Raw Ticker] ==> B([Enrichment])
 
-    C --> H{Strategy Engine}
-    D --> H
-    E --> H
-    F --> H
-    G --> H
+    B ==> C[[33 Technical<br/>Indicators]]
+    B ==> D[[28 RSS News<br/>Feeds]]
+    B --> E[[On-Chain TVL<br/>0-15pp boost]]
+    B --> F[[Market Regime<br/>ADX+BB+ATR]]
+    B -.-> G[[16 Candlestick<br/>Patterns]]
 
-    H --> I[Momentum 40%]
-    H --> J[Mean Reversion 20%]
-    H --> K[Trend Following 40%]
+    C & D & E & F & G ==> H{Composite Score<br/>signals.ts}
 
-    I --> L[Weighted Voting]
-    J --> L
-    K --> L
+    H ==> I[Momentum 40%]
+    H ==> J[Technical 40%]
+    H ==> K[News 20%]
 
-    L --> M[Composite Signal]
-    M --> N{Confidence Threshold}
-    N -->|>80%| O[Strong Buy/Sell]
-    N -->|60-80%| P[Buy/Sell]
-    N -->|<60%| Q[Neutral]
+    I & J & K ==> L([ADX Adjustment<br/>0.6x - 1.1x])
+
+    L ==> M([Volume Adjustment<br/>-6 to +8])
+    M ==> N([Divergence<br/>Detection])
+    N ==> O([On-Chain Boost<br/>TVL trend-aware])
+    O ==> P([Confidence Calibration<br/>-15% conflict / +15% agree])
+
+    P ==> Q{Regime-Adaptive<br/>Voting}
+
+    Q ==> R{Strategy Engine<br/>engine.ts}
+    R ==> S[Momentum 40%<br/>ADX+MACD+Volume]
+    R ==> T[Mean Reversion 20%<br/>RSI+BB+Divergence]
+    R ==> U[Trend Following 40%<br/>EMA+Ichimoku+Chandelier]
+
+    S & T & U ==> V([TF Aggregation<br/>15m=0.10 1h=0.25<br/>4h=0.30 1d=0.35])
+
+    V ==> W[Composite Signal]
+    W ==>|"above 0.8"| X[[Strong Buy/Sell]]
+    W ==>|"0.6 to 0.8"| Y[[Buy/Sell]]
+    W -->|"below 0.6"| Z[[Neutral]]
+```
+
+### ML Pipeline
+
+```mermaid
+flowchart LR
+    subgraph Data[Data Layer]
+        A[Klines] --> B[Feature Engineering<br/>src/ml/features.ts]
+        C[Technical Indicators<br/>26 indicators] --> B
+        D[Cross-Asset<br/>Funding Rates<br/>Order Book] --> B
+        E[Forward Returns] --> F[Label Generation<br/>src/ml/labels.ts]
+        F --> G[Label Assembly<br/>src/ml/dataset.ts]
+        B --> G
+    end
+
+    subgraph Train[Training Pipeline]
+        G --> H[Chronological Split<br/>70/15/15]
+        H --> I[Feature Selection<br/>SelectKBest MI]
+        I --> J[Correlation Filter<br/>>0.98 dropped]
+        J --> K{BorderlineSMOTE?}
+        K -->|Yes| L[SMOTE Balancing]
+        K -->|No| M[Raw Data]
+        L --> N[CatBoost Training<br/>ml/train.py]
+        M --> N
+        N --> O[Optuna HPO<br/>ml/model.py]
+        N --> P[purgedcv<br/>Walk-Forward CV]
+        O --> Q[Model Ensemble<br/>N seeds → soft vote]
+        P --> Q
+        Q --> R[Calibration<br/>IsotonicRegression]
+        R --> S[SHAP Analysis<br/>Feature Importance]
+        S --> T[Model Registry<br/>MANIFEST.json]
+    end
+
+    subgraph Infer[Inference Pipeline]
+        U[Latest Klines] --> V[buildFeatures]
+        V --> W[Normalize<br/>z-score]
+        W --> X{explain?}
+        X -->|Yes| Y[SHAP Explainer<br/>ml/predict.py --explain]
+        X -->|No| Z[CatBoost Predict]
+        Y --> Z
+        Z --> AA["Prediction Result<br/>{direction, confidence, explanation}"]
+    end
+
+    subgraph Online[Online Learning]
+        AA --> AB["Store Predictions<br/>SQLite predictions table"]
+        AB --> AC["River Online Model<br/>ml/online.py"]
+        AC --> AD["Streaming Accuracy<br/>partial_fit → metrics"]
+    end
+
+    subgraph Monitor[Monitoring & Drift]
+        AB --> AE["Concept Drift<br/>ml/detect_drift.py"]
+        AE --> AF["Drift Events<br/>SQLite drift_events"]
+        AF --> AG{"Auto-Retrain?"}
+        AG -->|"Drift + cooldown"| H
+        AB --> AH["Calibration Monitor<br/>src/ml/monitor.ts"]
+        AH --> AI["ECE / Bucket Accuracy<br/>GET /api/ml/calibration"]
+    end
+
+    subgraph API[API & CLI]
+        AJ["GET /api/ml/status"] --> T
+        AK["GET /api/ml/models"] --> T
+        AL["GET /api/ml/drift"] --> AF
+        AM["GET /api/ml/predictions"] --> AB
+        AN["GET /api/ml/calibration"] --> AI
+        AO["GET /api/ml/online"] --> AD
+        AP["CLI: ml train|predict|status|drift"] --> Train
+        AP --> Infer
+        AP --> Monitor
+    end
 ```
 
 ### Project Structure
@@ -350,10 +441,10 @@ hermes-crypto-radar/
 │   ├── cli.ts              # CLI entry (Commander.js)
 │   ├── index.ts            # Public API exports
 │   ├── types.ts            # Type definitions (31 chains, 4 timeframes)
-│   ├── tokens.ts           # Token registry (49+ tokens, 31 chains)
+│   ├── tokens.ts           # Token registry (68 tokens, 31 chains)
 │   ├── binance.ts          # Binance REST client (ticker + klines)
 │   ├── coingecko.ts        # CoinGecko fallback price source
-│   ├── indicators.ts       # 26+ technical indicators (RSI, MACD, BB, ATR, MFI, OBV,
+│   ├── indicators.ts       # 33 technical indicators (RSI, MACD, BB, ATR, MFI, OBV,
 │   │                       #   Stochastic, Ichimoku, Williams %R, CMF, TSI, ADX,
 │   │                       #   Parabolic SAR, CCI, Keltner Channels, ROC, VWAP,
 │   │                       #   Force Index, ADL, Chaikin Oscillator, StochRSI,
@@ -361,7 +452,7 @@ hermes-crypto-radar/
 │   ├── onchain.ts          # DeFiLlama integration (TVL, fees, prices)
 │   ├── news.ts             # RSS news fetcher + relevance matcher
 │   ├── signals.ts          # Composite signal scoring + on-chain boost
-│   ├── output.ts           # Formatters (table, JSON, CSV, MD)
+│   ├── output.ts           # Formatters (table, JSONL, JSON, CSV, MD)
 │   ├── xlsx-export.ts      # Excel export via exceljs
 │   ├── html-report.ts      # HTML/PDF self-contained report generator
 │   ├── radar.ts            # Main enrichment pipeline
@@ -420,7 +511,7 @@ hermes-crypto-radar/
 | `search` | — | **Token search** — find tokens by symbol/name/chain | `--query` |
 | `report` | `r` | **Generate HTML/PDF report** | `--filter`, `--output` |
 | `collect` | — | **Historical collector** — backfill klines + Binance Futures data into the SQLite store | `--klines`, `--futures`, `--backfill`, `--symbol`, `--orderbook`, `--fear-greed`, `--cross-asset` |
-| `ml` | — | **ML pipeline** — train, predict, or check status | `train`, `predict`, `status`, `--symbols`, `--horizon`, `--lookback`, `--interval` |
+| `ml` | — | **ML pipeline** — train, predict, status, or drift detection | `train`, `predict`, `status`, `drift`, `--symbols`, `--horizon`, `--lookback`, `--interval`, `--model` (ADWIN/PageHinkley/KSWIN), `--delta`, `--records` |
 
 ### Data Store, REST API & Real-Time Push
 
@@ -447,49 +538,51 @@ crypto-radar collect --orderbook --fear-greed --cross-asset
 
 **Config (env overrides):** `RADAR__STORE_PATH`, `RADAR__SOURCES_FUTURES`, `RADAR__SOURCES_FEAR_GREED`, `RADAR__SOURCES_CROSS_ASSET`, `RADAR__API_TOKEN`, `RADAR__WS_PORT` (default 9878).
 
-### ML Pipeline (v2.1.0)
+### ML Pipeline (v2.3.0)
 
-Crypto Radar now includes a **machine learning pipeline** for price direction prediction using LightGBM. It collects features from the persistent store, trains a tri-class direction classifier, and runs predictions on every daemon refresh cycle.
+Crypto Radar includes an **enterprise-grade machine learning pipeline** for price direction prediction using **CatBoost** (gradient boosting) with a **River** online learning layer. It collects 80+ features from the persistent store, trains tri-class direction classifiers (-1/0/1), runs predictions on every daemon refresh cycle, and automatically detects concept drift to trigger retraining.
 
 **Prerequisites:**
 
 ```bash
-# Set up Python ML environment (creates .venv-ml/)
+# Set up Python ML environment (creates .venv-ml/ via uv)
 npm run ml:setup
-
-# Or manually: pip install -r ml/requirements.txt
 ```
 
 **Commands:**
 
 ```bash
-# Check pipeline status (store rows, model presence, latest prediction)
+# Check pipeline status (active model, store rows, predictions, drift events)
 npm run ml:status
 # or: node dist/cli.js ml status
 
-# Train a model from historical store data
+# Train a model from historical store data (with feature selection + ensemble)
 npm run ml:train
 # or: node dist/cli.js ml train --symbols SOL BTC --horizon 5 --lookback 90
 
-# Run prediction on latest data
+# Run prediction on latest data (with SHAP explanations)
 npm run ml:predict
 # or: node dist/cli.js ml predict --symbols SOL BTC --interval 1h
+
+# Run concept drift detection on recent predictions
+npm run ml:drift
+# or: node dist/cli.js ml drift --model ADWIN --delta 0.002 --records 500
 ```
 
 **Architecture:**
 
-- `src/ml/features.ts` — 80+ features: 26 technical indicators, rolling returns, cross-asset dominance, funding rates, temporal features. Includes kline gap detection and NaN sanitization.
-- `src/ml/labels.ts` — Forward-return labels at 1/5/20/60 horizons with asymmetric class weights (down trades weighted 1.5×).
-- `src/ml/dataset.ts` — Chronological train/val/test split (70/15/15), z-score normalization, CSV output with formula-injection protection.
-- `ml/train.py` — LightGBM classifier with early stopping, custom class weights, feature importance output.
-- `ml/predict.py` — Batch inference from stdin CSV.
-- `src/ml/predict.ts` — TypeScript orchestration: builds features for all symbols, sends as single CSV block to Python subprocess, validates and persists predictions.
-- `src/daemon.ts` — Auto-retrain (default: every 24h) and prediction on every daemon refresh cycle when `RADAR__ML_ENABLED=true`.
-- `ml/models/` — Serialized LightGBM booster files (`.txt`) written by `train.py`, loaded by `predict.py`. One model per symbol/interval combination. The directory is shipped empty; models are created on first `ml train`.
+- `ml/train.py` — CatBoost training orchestrator with early stopping, class weighting, Optuna HPO, purgedcv walk-forward CV, BorderlineSMOTE balancing, SHAP analysis, ensemble voting, and feature selection. Exports to `ml/models/` with MANIFEST.json registry.
+- `ml/predict.py` — Batch inference with optional `--explain` flag for SHAP per-prediction feature attribution. NaN fill via training-set median z-scores.
+- `ml/online.py` — River concurrent logistic regression with AdaptiveStandardScaler. Incrementally updates between full CatBoost retrains (~µs per row). Built-in ADWIN drift detection on prediction error. Atomic save with version-stamped serialization.
+- `ml/detect_drift.py` — Standalone drift detection (ADWIN/PageHinkley/KSWIN) on confidence values. Integrated into daemon cycle.
+- `ml/indicators.py` — 12 pandas-ta technical indicators (RSI, MACD, BB, Stochastic, ATR, OBV, Williams %R, CCI, ROC, EMA cross, CMF, MFI).
+- `ml/manifest.py` — Model registry with production promotion gates (only promotes if F1 ≥ current best + 1%).
+- `ml/model.py` — CatBoost model factory with GPU auto-detection, `model_size_reg`, `rsm` feature subsampling.
+- `src/ml/` — TypeScript orchestration: feature engineering (80+ features), label generation (volatility-adjusted), dataset assembly, batch inference, drift detection wrapper, online model wrapper, calibration monitoring.
+- `src/daemon.ts` — Auto-retrain (default: every 24h), prediction on every refresh, drift detection with auto-retrain trigger (1h cooldown).
+- `ml/models/MANIFEST.json` — Central model registry tracking all trained models, their F1/accuracy, and production promotion status.
 
-**Config (env overrides):** `RADAR__ML_ENABLED`, `RADAR__ML_LOOKBACK_DAYS` (default 90), `RADAR__ML_RETRAIN_HOURS` (default 24), `RADAR__ML_MIN_CONFIDENCE` (default 0.6).
-
-**Prediction persistence:** ML predictions are stored in the `predictions` table and queryable via the REST API: `GET /api/predictions`, `GET /api/predictions/:symbol`.
+**Config (env overrides):** `RADAR__ML_ENABLED`, `RADAR__ML_LOOKBACK_DAYS` (default 90), `RADAR__ML_RETRAIN_HOURS` (default 24), `RADAR__ML_MIN_CONFIDENCE` (default 0.6), `RADAR__ML_LABEL_HORIZON` (default 5), `RADAR__ML_OPTUNA_TRIALS` (default 30), `RADAR__ML_OPTIMIZE`, `RADAR__ML_CV_FOLDS`, `RADAR__ML_BALANCE`, `RADAR__ML_SHAP`.
 
 ### Common Flags
 
@@ -498,7 +591,7 @@ npm run ml:predict
 | `--filter <symbols...>` | `string[]` | scan, signals, news | Token symbols to include (e.g. `--filter SOL BTC`) |
 | `--dynamic [count]` | `number` | scan | Auto-detect top N tokens by 24h volume (default: 50); triggers auto-save of all 5 output formats to data dir |
 | `--chain <chain>` | `string` | scan, tokens | Chain filter: `solana`, `polygon`, `bnb`, `ethereum`, etc. |
-| `--format <fmt>` | `string` | scan | Output: `table` (default), `json`, `csv`, `md`, `xlsx`, `html` |
+| `--format <fmt>` | `string` | scan | Output: `table` (default), `json`, `jsonl`, `csv`, `md`, `xlsx`, `html` |
 | `--sort <mode>` | `string` | scan | Sort: `momentum` (default), `alpha`, `change`, `volume`, `signal` |
 | `--onchain` | `boolean` | scan | Include DeFiLlama on-chain metrics (TVL, fees) |
 | `--period <interval>` | `string` | scan | Kline interval: `15m`, `1h`, `4h`, `1d` (default: all) |
@@ -608,10 +701,11 @@ configure({
 
 | Format | Command | Description |
 |--------|---------|-------------|
-| `json` | `--format json` | Structured data for programmatic use |
+| `jsonl` | `--format jsonl` | **JSON Lines** — one JSON object per line, ML-ready streaming format (default for `--dynamic`) |
+| `json` | `--format json` | Structured JSON array for programmatic use |
 | `csv` | `--format csv` | Spreadsheet-compatible rows |
 | `md` | `--format md` | Markdown report |
-| `table` | `--format table` | Terminal table (default) |
+| `table` | `--format table` | Terminal table (default for direct CLI use) |
 | `xlsx` | `--format xlsx` | Excel workbook with frozen headers, auto-width, conditional coloring |
 | `html` | `--format html` | Self-contained dark-theme HTML report with interactive tables |
 
@@ -629,7 +723,7 @@ configure({
 | **Test coverage** | 332+ tests |
 | **Unit tests** | 1154+ tests across 53 files |
 | **Indicator fuzz tests** | 130 edge-case tests (NaN, Infinity, empty) |
-| **Supported token pairs** | 49+ (Binance USDT) |
+| **Supported token pairs** | 68 (Binance USDT) |
 | **Build time** | ~3s (TypeScript → dist) |
 
 ---
@@ -720,7 +814,7 @@ node dist/cli.js chart SOL --type candlestick --period 1h --width 800
 # System health
 node dist/cli.js health
 
-# Dynamic top-50 scan with on-chain metrics
+# Dynamic top-75 scan with on-chain metrics
 node dist/cli.js scan --dynamic --onchain --format table
 
 # Generate HTML report

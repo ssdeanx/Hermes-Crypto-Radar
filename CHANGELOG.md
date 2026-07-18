@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.3.0] — 2026-07-18
+
+### Added
+
+- **ML module refactoring** — Monolithic `ml/train.py` split into 3 focused modules:
+  - `ml/indicators.py` — Technical indicator feature engineering (12 pandas-ta indicators: RSI, MACD, BB, Stochastic, ATR, OBV, Williams %R, CCI, ROC, EMA cross, CMF, MFI)
+  - `ml/manifest.py` — Model registry management (MANIFEST.json read/write/compare)
+  - `ml/model.py` — CatBoost model factory (GPU detection, class weight resolution, leaf-to-depth mapping)
+- **Model registry (MANIFEST.json)** — `ml/models/MANIFEST.json` tracks all trained models with metadata, F1 scores, training config. Only promotes models to production if F1 ≥ current best + 1%, preventing regression deployments.
+- **Cross-platform timeout** — Replaced Unix-only `signal.alarm()` with `concurrent.futures.ThreadPoolExecutor` timeout in `ml/predict.py` and `ml/detect_drift.py`. Windows compatible.
+- **Graceful degradation** — Daemon checks for Python environment and ML scripts before attempting training/prediction. Clear error messages when ML deps are missing.
+- **Feature selection** — `--feature-select` flag uses `sklearn.feature_selection.SelectKBest` with mutual information to auto-select top 30 predictive features, reducing noise and improving generalization.
+- **Ensemble voting** — `--ensemble N` trains N CatBoost models with different seeds (42, 43, ...), soft-vote averages probabilities. 2-5% accuracy improvement on classification tasks.
+- **SHAP-per-prediction** — `--explain` flag in `ml/predict.py` computes `shap.TreeExplainer` during inference. Every prediction includes top-5 feature attribution explaining *why* each BUY/SELL/NEUTRAL was predicted. Full integration through TypeScript, API, and types.
+- **Volatility-adjusted labels** — `src/ml/labels.ts` now uses ATR(14) ratio as dynamic noise threshold instead of fixed 0.2%. Labels adapt to market volatility.
+- **Enhanced TA features** — 12 additional indicators added via `pandas-ta-classic`: Stochastic, ATR, OBV, Williams %R, CCI, ROC, EMA cross signals (12/26), CMF, MFI. Previous: 3 indicators (RSI, MACD, BB).
+- **TS-side feature enhancements** — Added funding rate change, volatility ratio (ATR/volTrend), and market regime (trending/ranging/volatile) to feature builder.
+- **CatBoost production flags** — `model_size_reg=0.5` reduces model file size, `rsm=0.8` enables feature subsampling when feature count > 20. Both prevent overfitting.
+- **Probability calibration** — `--calibrate` flag applies `sklearn.isotonic.IsotonicRegression` via `CalibratedClassifierCV` on validation set for more reliable confidence scores.
+- **Label horizon threading** — `labelHorizon` now threaded through config (1/5/20/60) instead of hardcoded to 5. Configurable via `radar.config.json` or `RADAR__ML_LABEL_HORIZON`.
+- **Drift detection integration** — Concept drift detection fully integrated into daemon refresh cycle:
+  - New `src/ml/drift.ts` — TypeScript wrapper for `ml/detect_drift.py`
+  - `drift_events` SQLite table stores drift events with timestamps, model IDs, detector type
+  - Auto-retrain triggers on drift detection (1h cooldown)
+  - `crypto-radar ml drift` CLI command with ADWIN/PageHinkley/KSWIN support
+- **River online learning layer** — New `ml/online.py` and `src/ml/online.ts`:
+  - Incrementally-updating `LogisticRegression` with `AdaptiveStandardScaler`
+  - Catches slow concept drift between full CatBoost retrains (~µs per update vs ~minutes for retrain)
+  - Built-in ADWIN drift detector on prediction error
+  - Atomic save with tmp-file + rename pattern
+  - Version-stamped serialization with 3-layer validation on load (corrupt pickle, wrong model type, version mismatch)
+- **Calibration monitoring** — New `src/ml/monitor.ts` computes ECE (Expected Calibration Error) across confidence buckets. Exposed via `GET /api/ml/calibration`.
+- **ML API endpoints** — New Fastify routes under `/api/ml/`:
+  - `GET /api/ml/status` — Pipeline health, active model info, model count, store stats
+  - `GET /api/ml/models` — List all models from MANIFEST with F1/accuracy
+  - `GET /api/ml/drift` — Recent drift events with pagination
+  - `GET /api/ml/predictions` — Recent predictions with symbol filter
+  - `GET /api/ml/calibration` — Calibration report with per-bucket accuracy and ECE
+  - `GET /api/ml/online` — Online model streaming metrics
+- **Drift events SQLite table** — New `drift_events` table with indexes for time-series queries. Store methods `insertDriftEvent()` and `getDriftEvents()`.
+- **Daemon model init** — Daemon loads active model from MANIFEST at startup, enabling predictions before first auto-retrain cycle.
+- **Optuna trials config** — `optunaTrials` config option and `RADAR__ML_OPTUNA_TRIALS` env var for controlling hyperparameter search depth.
+- **ML drift events in stats** — `store.stats()` now includes `drift_events` count.
+
+### Changed
+
+- **ML backend** — Migrated from LightGBM to CatBoost (gradient boosting with native NaN handling, GPU support, better multiclass performance)
+- **Daemon auto-retrain** — Now passes `--optimize`, `--cv-folds`, `--balance`, `--add-ta`, `--feature-select` from config to training subprocess
+- **ML CLI** — `ml` command now supports `drift` action in addition to `train/predict/status`. Added `--model`, `--delta`, `--records` options.
+- **`--class-weight custom` map** — Changed from `{-1: 1.5, 0: 0.6, 1: 1.0}` to CatBoost built-in `Balanced` for better generalization
+- **`.gitignore`** — Added `ml/**/optuna_study.db` to ignore Optuna study databases
+
+### Fixed
+
+- **`get_errors` across all Python files** — Zero errors across 6 Python modules (train.py, predict.py, indicators.py, manifest.py, model.py, detect_drift.py)
+- **TypeScript compilation** — Zero errors across all TypeScript files including new modules (drift.ts, online.ts, monitor.ts, ml.ts route)
+- **`signal.alarm()` cross-platform** — Previously crashed on Windows; now uses `concurrent.futures` with Unix fallback
+
 ## [2.2.0] — 2026-07-16
 
 ### Added

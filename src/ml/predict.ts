@@ -11,7 +11,7 @@
 // ═══════════════════════════════════════════════════════════════════════
 
 import * as path from 'node:path';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -30,7 +30,7 @@ const __dirname = path.dirname(__filename);
 const PYTHON = process.env.RADAR__ML_PYTHON ?? 'python3';
 
 /** Default model path (relative to project root) */
-const DEFAULT_MODEL_PATH = resolveModelPath() ?? path.resolve(__dirname, '../../ml/models/model.joblib');
+const DEFAULT_MODEL_PATH = resolveActiveModel() ?? resolveModelPath() ?? path.resolve(__dirname, '../../ml/models/model.joblib');
 
 /** Default predict script path — resolved relative to this module */
 const PREDICT_SCRIPT = path.resolve(__dirname, '../../ml/predict.py');
@@ -41,6 +41,28 @@ const PREDICT_SCRIPT = path.resolve(__dirname, '../../ml/predict.py');
  * subprocess (e.g. model load deadlock, stdin pipe stall).
  */
 const SUBPROCESS_TIMEOUT_MS = 60_000;
+
+/**
+ * Resolve the active model from MANIFEST.json.
+ * Reads ml/models/MANIFEST.json and returns the full path to the active model.
+ * Falls back to null if MANIFEST doesn't exist or is unreadable.
+ */
+export function resolveActiveModel(modelsDir?: string): string | null {
+  const dir = modelsDir ?? path.resolve(__dirname, '../../ml/models');
+  const manifestPath = path.resolve(dir, 'MANIFEST.json');
+  if (!existsSync(manifestPath)) return null;
+  try {
+    const raw = readFileSync(manifestPath, 'utf-8');
+    const manifest = JSON.parse(raw) as { active_model?: string };
+    if (manifest.active_model) {
+      const modelPath = path.resolve(dir, manifest.active_model);
+      if (existsSync(modelPath)) return modelPath;
+    }
+  } catch {
+    log.warn('Failed to parse MANIFEST.json — falling back to glob-based model resolution');
+  }
+  return null;
+}
 
 /**
  * Resolve the latest trained model file from ml/models/.
@@ -106,12 +128,17 @@ export async function batchPredict(
     modelPath?: string;
     normalizationStats?: NormalizationStats;
     minConfidence?: number;
+    horizon?: number;
+    /** Compute SHAP feature attribution for each prediction */
+    explain?: boolean;
   } = {},
 ): Promise<PredictionResult[]> {
   const {
     modelPath = DEFAULT_MODEL_PATH,
     normalizationStats,
     minConfidence = 0,
+    horizon = 5,
+    explain = false,
   } = opts;
 
   const results: PredictionResult[] = [];
@@ -163,10 +190,9 @@ export async function batchPredict(
 
   // F3: Send all rows as a single CSV block to the subprocess
   const modelId = path.basename(modelPath);
-  const horizon = 5; // default horizon
 
   try {
-    const predictionRows = await runSubprocessInference(featureRows, modelPath);
+    const predictionRows = await runSubprocessInference(featureRows, modelPath, { explain });
 
     for (const pred of predictionRows) {
       if (pred.confidence >= minConfidence) {
@@ -197,6 +223,7 @@ function validateDirection(v: unknown): -1 | 0 | 1 {
 async function runSubprocessInference(
   rows: FeatureRow[],
   modelPath: string,
+  opts?: { explain?: boolean },
 ): Promise<PredictionResult[]> {
   return new Promise((resolve, reject) => {
     if (rows.length === 0) {
@@ -224,7 +251,11 @@ async function runSubprocessInference(
     // Symbol map for matching results back to input rows
     const symbolMap = rows.map(r => r.symbol);
     // Spawn Python subprocess
-    const proc = spawn(PYTHON, [PREDICT_SCRIPT, '--model', modelPath], {
+    const predictArgs = [PREDICT_SCRIPT, '--model', modelPath];
+    if (opts?.explain) {
+      predictArgs.push('--explain');
+    }
+    const proc = spawn(PYTHON, predictArgs, {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 

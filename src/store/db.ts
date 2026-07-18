@@ -775,6 +775,58 @@ export class Store {
     });
   }
 
+  // ── Drift Events ──
+
+  /** Insert a drift event */
+  async insertDriftEvent(event: {
+    id: string;
+    ts: string;
+    model_id: string;
+    detector: string;
+    index: number;
+    symbol?: string;
+    confidence?: number;
+    message: string;
+  }): Promise<void> {
+    await this.withWrite(() => {
+      this.prep(`
+        INSERT INTO drift_events (id, ts, model_id, detector, "index", symbol, confidence, message)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        event.id,
+        event.ts,
+        event.model_id,
+        event.detector,
+        event.index,
+        event.symbol ?? null,
+        event.confidence ?? null,
+        event.message,
+      );
+    });
+  }
+
+  /** Get recent drift events */
+  getDriftEvents(filter?: { limit?: number }): Array<{
+    id: string;
+    ts: string;
+    model_id: string;
+    detector: string;
+    symbol?: string;
+    confidence?: number;
+    message: string;
+  }> {
+    let sql = "SELECT * FROM drift_events ORDER BY ts DESC";
+    const params: SQLInputValue[] = [];
+    if (filter?.limit !== undefined) {
+      sql += " LIMIT ?";
+      params.push(filter.limit);
+    } else {
+      sql += " LIMIT 50";
+      params.push(50);
+    }
+    return this.queryAll(sql, params);
+  }
+
   // ── Meta ──
 
   stats(): Record<string, number> {
@@ -794,6 +846,7 @@ export class Store {
       "orderbook",
       "cross_asset",
       "predictions",
+      "drift_events",
     ];
     const result: Record<string, number> = {};
     for (const t of tables) {

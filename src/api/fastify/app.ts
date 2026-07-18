@@ -28,6 +28,7 @@ import swaggerUi from '@fastify/swagger-ui';
 import type { Store } from '../../store/db.js';
 import type { PaperTrader } from '../../paper-trade.js';
 import { authRoutes } from './routes/auth.js';
+import { mlRoutes } from './routes/ml.js';
 import { portfolioRoutes } from './routes/portfolio.js';
 import { restRoutes } from './routes/rest.js';
 import { logger } from '../../core/logger.js';
@@ -195,6 +196,7 @@ export async function createApp(opts: FastifyAppOptions): Promise<FastifyInstanc
   await app.register(restRoutes);                                    // Existing REST API routes (ported)
   await app.register(authRoutes, { prefix: '/api/auth' });          // Auth routes (login, signup, me)
   await app.register(portfolioRoutes, { prefix: '/api/portfolio' }); // Portfolio routes (trade, history)
+  await app.register(mlRoutes);                                      // ML pipeline routes
 
   // ── Enterprise: 404 handler ──
   app.setNotFoundHandler((_request, reply) => {

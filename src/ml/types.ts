@@ -42,6 +42,8 @@ export interface MLConfig {
     modelType?: 'catboost';
     /** Run Optuna hyperparameter search (default false) */
     optimize?: boolean;
+    /** Number of Optuna trials (default 30) */
+    optunaTrials?: number;
     /** purgedcv walk-forward CV folds; 0 = off (default 0) */
     cvFolds?: number;
     /** Apply BorderlineSMOTE to training data only (default false) */
@@ -64,6 +66,8 @@ export interface PredictionResult {
   probs?: number[];
   horizon: number;
   modelId: string;
+  /** Feature attribution from SHAP (feature_name → importance), present when --explain is used */
+  explanation?: Record<string, number>;
 }
 
 /** Normalization statistics computed during dataset assembly */

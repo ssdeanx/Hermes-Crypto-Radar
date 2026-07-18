@@ -40,8 +40,8 @@ F5: Missing or non-numeric `confidence` is a data error (exit 1), not silently
 import argparse
 import json
 import logging
-import signal
 import sys
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -167,17 +167,18 @@ def detect_drift(args: argparse.Namespace) -> None:
         print(json.dumps({"error": str(e)}))
         sys.exit(1)
 
-    # ── Read stdin with alarm guard (prevent hang if pipe not closed) ──
-    signal.signal(signal.SIGALRM, lambda _sig, _frame: sys.exit(2))
-    signal.alarm(60)
+    # ── Read stdin with timeout (prevent hang if pipe not closed) ──
     try:
-        records = _load_records()
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_load_records)
+            records = future.result(timeout=60)
+    except TimeoutError:
+        logger.error("stdin read timed out after 60s")
+        sys.exit(2)
     except ValueError as e:
         logger.error("Failed to read records: %s", e)
         print(json.dumps({"error": str(e)}))
         sys.exit(1)
-    finally:
-        signal.alarm(0)  # disarm alarm
 
     if not records:
         logger.info("No records received on stdin — reporting empty stats")

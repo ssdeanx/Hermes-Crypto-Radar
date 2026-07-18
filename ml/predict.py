@@ -23,10 +23,11 @@ Exit codes:
 """
 
 import argparse
+import io
 import json
 import logging
-import signal
 import sys
+from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from pathlib import Path
 
 import numpy as np
@@ -74,6 +75,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         type=float,
         default=0.0,
         help="Minimum confidence threshold (0 = no filter — all predictions returned)",
+    )
+    parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="Compute SHAP feature attribution for each prediction (slower, requires shap)",
     )
     parser.add_argument("--verbose", action="store_true", help="Debug logging")
     return parser.parse_args(argv)
@@ -197,18 +203,19 @@ def predict(args: argparse.Namespace) -> None:
             len(norm_stats.get("featureNames", [])),
         )
 
-    # ── Stdin read alarm: prevent hang if pipe not closed ──
-    signal.signal(signal.SIGALRM, lambda _sig, _frame: sys.exit(2))
-    signal.alarm(60)
-
+    # ── Stdin read with timeout: prevent hang if pipe not closed ──
     try:
-        df = pd.read_csv(sys.stdin)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(sys.stdin.buffer.read)
+            raw_data = future.result(timeout=60)
+        df = pd.read_csv(io.BytesIO(raw_data))
+    except TimeoutError:
+        logger.error("stdin read timed out after 60s")
+        sys.exit(2)
     except Exception as e:
         logger.error("Failed to parse CSV from stdin: %s", e)
         print(json.dumps({"error": f"CSV parse error: {e}"}))
         sys.exit(1)
-    finally:
-        signal.alarm(0)  # disarm alarm
 
     if df.empty:
         print("[]")
@@ -259,6 +266,30 @@ def predict(args: argparse.Namespace) -> None:
         print(json.dumps({"error": f"Prediction failed: {e}"}))
         sys.exit(1)
 
+    # ── Optional: SHAP explanation ──
+    shap_values: np.ndarray | None = None
+    feature_names: list[str] = feature_cols
+    if args.explain:
+        try:
+            import shap as shap_lib
+            explainer = shap_lib.TreeExplainer(model)
+            shap_vals = explainer.shap_values(X)
+            # shap_vals shape depends on model type:
+            # binary: (n_samples, n_features)
+            # multiclass: (n_samples, n_features, n_classes) or list of arrays
+            if isinstance(shap_vals, list):
+                # List of per-class arrays → take absolute mean across classes
+                shap_values = np.mean([np.abs(a) for a in shap_vals], axis=0)
+            elif shap_vals.ndim == 3:
+                # (n_samples, n_features, n_classes) → mean |SHAP| across classes
+                shap_values = np.mean(np.abs(shap_vals), axis=2)
+            else:
+                shap_values = np.abs(shap_vals)
+            logger.info("SHAP explanations computed for %d samples", len(X))
+        except Exception as e:
+            logger.warning("SHAP explanation failed — proceeding without: %s", e)
+            shap_values = None
+
     # ── Build results ──
     results: list[dict] = []
     for i in range(len(predictions)):
@@ -269,21 +300,28 @@ def predict(args: argparse.Namespace) -> None:
         confidence = float(probabilities[i][cls_idx]) if cls_idx is not None else 0.0
 
         # Build ordered probability array: [-1, 0, 1]
-        # Only includes classes the model actually knows about; unknown
-        # positions get 0 (graceful if the model never saw all 3 classes)
         probs_map: dict[int, float] = {
             int(cls): round(float(probabilities[i][j]), 4)
             for j, cls in enumerate(classes)
         }
         ordered_probs = [probs_map.get(c, 0.0) for c in [-1, 0, 1]]
 
-        results.append(
-            {
-                "direction": pred_class,
-                "confidence": round(confidence, 4),
-                "probs": ordered_probs,
+        result: dict = {
+            "direction": pred_class,
+            "confidence": round(confidence, 4),
+            "probs": ordered_probs,
+        }
+
+        # Attach SHAP feature attribution if computed
+        if shap_values is not None and i < shap_values.shape[0]:
+            top_shap_idx = np.argsort(shap_values[i])[::-1][:5]  # top 5 features
+            result["explanation"] = {
+                feature_names[j]: round(float(shap_values[i][j]), 6)
+                for j in top_shap_idx
+                if float(shap_values[i][j]) > 0.001
             }
-        )
+
+        results.append(result)
 
     print(json.dumps(results))
 

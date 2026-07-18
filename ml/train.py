@@ -9,17 +9,16 @@ Reads a CSV dataset produced by src/ml/dataset.ts, trains a CatBoost
 classifier with early stopping and class weighting, and writes the model
 (`.cbm` + `.joblib`) plus metrics + feature importance to the output directory.
 
-Optional capabilities (off by default to preserve existing behavior):
+Optional capabilities:
     --optimize                          run Optuna hyperparameter search
     --optuna-trials N                   number of Optuna trials (default 25)
     --cv-folds N                        purgedcv walk-forward CV (0 = off)
     --balance                           BorderlineSMOTE on training data only
     --shap                              SHAP feature-importance analysis
     --add-ta                            append pandas-ta indicators to features
-
-The JSON written to stdout is consumed by src/ml/predict.ts (model_path),
-src/cli.ts and src/daemon.ts (model_path, accuracy). The contract fields
-(model_path, accuracy, and the full metrics dict) must remain stable.
+    --calibrate                         apply probability calibration
+    --ensemble N                        train N models with different seeds (ensemble)
+    --feature-select                    auto-select best features via mutual information
 
 Exit codes:
     0 — success (or skipped gracefully)
@@ -29,7 +28,6 @@ Exit codes:
 import argparse
 import json
 import logging
-import math
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -45,6 +43,11 @@ from sklearn.metrics import (
     f1_score,
     roc_auc_score,
 )
+
+# Local module imports
+from indicators import _add_ta_features, _feature_correlation_filter, _derive_cadence
+from manifest import update_manifest
+from model import build_catboost, check_gpu, resolve_class_weight, num_leaves_to_depth
 
 logger = logging.getLogger(__name__)
 
@@ -92,9 +95,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Early stopping rounds (0 = disable)",
     )
     parser.add_argument("--learning-rate", type=float, default=0.03)
-    # Leaf-count CLI alias kept for compatibility; mapped to CatBoost depth.
-    parser.add_argument("--num-leaves", type=int, default=31)
-    parser.add_argument("--num-leaves", type=int, default=31)
+    # Leaf-count mapped to CatBoost depth via int(round(log2(num_leaves))).
     parser.add_argument("--num-leaves", type=int, default=31)
     parser.add_argument("--n-estimators", type=int, default=1000)
     parser.add_argument(
@@ -135,197 +136,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Append pandas-ta indicators to feature set",
     )
+    parser.add_argument(
+        "--calibrate",
+        action="store_true",
+        help="Apply probability calibration via IsotonicRegression on validation set",
+    )
+    parser.add_argument(
+        "--ensemble",
+        type=int,
+        default=0,
+        help="Train N models with different seeds and ensemble (0 = single model)",
+    )
+    parser.add_argument(
+        "--feature-select",
+        action="store_true",
+        help="Auto-select best features via mutual information before training",
+    )
 
     return parser.parse_args(argv)
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────
-
-
-def _check_gpu() -> bool:
-    """Return True if CatBoost GPU device is functional on this system."""
-    try:
-        probe = CatBoostClassifier(
-            iterations=1,
-            depth=2,
-            learning_rate=0.1,
-            task_type="GPU",
-            verbose=False,
-            random_seed=0,
-        )
-        rng = np.random.default_rng(0)
-        probe.fit(
-            rng.random((10, 2)),
-            rng.integers(0, 2, 10),
-        )
-        return True
-    except Exception:
-        return False
-
-
-def _resolve_class_weight(cli_value: str) -> str | None:
-    """Map the CLI --class-weight string to the CatBoost auto_class_weights value.
-
-    "balanced" -> "Balanced" (CatBoost built-in balanced weighting)
-    "None"     -> None (no weighting)
-    "custom"   -> None here; per-sample weights are applied via fit(sample_weight)
-    """
-    if cli_value == "None":
-        return None
-    if cli_value == "balanced":
-        return "Balanced"
-    # "custom" — handled through sample_weight in train(), not auto_class_weights
-    return None
-
-
-def _num_leaves_to_depth(num_leaves: int) -> int:
-    """Map a leaf count to a CatBoost tree depth."""
-    if num_leaves <= 1:
-        return 6
-    return max(2, int(round(math.log2(num_leaves))))
-
-
-def _feature_correlation_filter(
-    df: pd.DataFrame,
-    feature_cols: list[str],
-    threshold: float = 0.98,
-) -> list[str]:
-    """Drop highly-correlated features (> threshold) to reduce redundancy."""
-    if threshold <= 0 or len(feature_cols) < 2:
-        return feature_cols
-
-    sub = pd.DataFrame(df[feature_cols])
-
-    # Drop constant (zero-variance) features to avoid NaN correlations
-    variances = sub.var()
-    constant_cols = variances[variances == 0].index.tolist()
-    if constant_cols:
-        logger.info(
-            "Removing %d constant features: %s", len(constant_cols), constant_cols
-        )
-        feature_cols = [c for c in feature_cols if c not in constant_cols]
-        if len(feature_cols) < 2:
-            return feature_cols
-        sub = pd.DataFrame(df[feature_cols])
-
-    corr: pd.DataFrame = sub.corr()
-    upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
-    to_drop = {col for col in upper.columns if (upper[col] > threshold).any()}
-    if to_drop:
-        logger.info(
-            "Dropping %d highly-correlated features (>%.2f): %s",
-            len(to_drop),
-            threshold,
-            sorted(to_drop),
-        )
-    return [c for c in feature_cols if c not in to_drop]
-
-
-def _derive_cadence(open_time: pd.Series) -> pd.Timedelta:
-    """Derive the data cadence (median spacing) from open_time values (ms epoch)."""
-    ts = pd.to_datetime(open_time, unit="ms")
-    diffs = ts.diff().dropna()
-    if len(diffs) == 0:
-        return pd.Timedelta(days=1)
-    median = diffs.median()
-    if median is None or pd.isna(median) or median == pd.Timedelta(0):
-        return pd.Timedelta(days=1)
-    return median
-
-
-def _add_ta_features(df: pd.DataFrame, feature_cols: list[str]) -> list[str]:
-    """Append pandas-ta indicators for OHLC-like columns; return extended feature_cols."""
-    try:
-        import pandas_ta_classic as ta  # type: ignore
-    except Exception as e:
-        logger.error("pandas-ta requested (--add-ta) but not installed: %s", e)
-        print(json.dumps({"error": f"pandas-ta not available: {e}"}))
-        sys.exit(1)
-
-    # Identify OHLC-like columns by name (case-insensitive substring match)
-    ohlc_keys = ("open", "high", "low", "close", "volume")
-    ta_cols: list[str] = []
-    for base in feature_cols:
-        low = base.lower()
-        if not any(k in low for k in ohlc_keys):
-            continue
-        series = df[base]
-        # RSI
-        try:
-            rsi = ta.rsi(series, length=14)
-            name = f"{base}_rsi_14"
-            df[name] = rsi
-            ta_cols.append(name)
-        except Exception as e:  # pragma: no cover - defensive per-indicator
-            logger.warning("TA RSI failed for %s: %s", base, e)
-        # MACD (returns a DataFrame of MACD, MACD_H, MACD_S, or None)
-        try:
-            macd = ta.macd(series, fast=12, slow=26, signal=9)
-            if macd is not None:
-                for col in macd.columns:
-                    name = f"{base}_{col}"
-                    df[name] = macd[col]
-                    ta_cols.append(name)
-        except Exception as e:  # pragma: no cover
-            logger.warning("TA MACD failed for %s: %s", base, e)
-        # Bollinger Bands
-        try:
-            bb = ta.bbands(series, length=20, std=2)
-            if bb is not None:
-                for col in bb.columns:
-                    name = f"{base}_{col}"
-                    df[name] = bb[col]
-                    ta_cols.append(name)
-        except Exception as e:  # pragma: no cover
-            logger.warning("TA BBANDS failed for %s: %s", base, e)
-    logger.info("Added %d pandas-ta indicator columns", len(ta_cols))
-    return feature_cols + [c for c in ta_cols if c not in feature_cols]
-
-
-def _build_catboost(args: argparse.Namespace, params: dict | None = None):
-    """Build and return a configured CatBoost classifier.
-
-    `params` (optional) overrides learning_rate / depth / l2_leaf_reg — used by
-    the Optuna objective to inject trial-suggested values.
-
-    CLI mapping:
-      --learning-rate -> learning_rate (CatBoost native)
-      --num-leaves    -> depth via int(round(log2(num_leaves)))
-      --n-estimators  -> iterations
-    """
-    lr = args.learning_rate
-    depth = _num_leaves_to_depth(args.num_leaves)
-    l2 = 3
-
-    if params:
-        lr = params.get("learning_rate", lr)
-        depth = params.get("depth", depth)
-        l2 = params.get("l2_leaf_reg", l2)
-
-    auto_class_weights = _resolve_class_weight(args.class_weight)
-
-    task_type = "CPU"
-    if args.gpu:
-        if _check_gpu():
-            task_type = "GPU"
-            logger.info("GPU training enabled")
-        else:
-            logger.warning(
-                "GPU training requested but not available — falling back to CPU"
-            )
-
-    return CatBoostClassifier(
-        iterations=args.n_estimators,
-        learning_rate=lr,
-        depth=depth,
-        l2_leaf_reg=l2,
-        nan_mode="Min",  # CatBoost handles NaN natively
-        auto_class_weights=auto_class_weights,
-        random_seed=args.seed,
-        early_stopping_rounds=args.early_stopping if args.early_stopping > 0 else None,
-        task_type=task_type,
-        verbose=args.verbose,
-    )
+# ── Feature importance ─────────────────────────────────────────────────────
 
 
 def _feature_importance(model, feature_cols: list[str]) -> dict:
@@ -421,8 +252,30 @@ def train(args: argparse.Namespace) -> None:
         )
         return
 
-    # ── Feature correlation filter (optional) ──
+    # ── Feature correlation filter ──
     feature_cols = _feature_correlation_filter(df, feature_cols, threshold=0.98)
+
+    # ── Optional: Feature selection via mutual information ──
+    if args.feature_select and len(feature_cols) > 10:
+        try:
+            from sklearn.feature_selection import SelectKBest, mutual_info_classif
+            # Use training portion for selection (before split to keep it simple)
+            n_select = min(30, max(10, int(len(feature_cols) * 0.75)))
+            selector = SelectKBest(score_func=mutual_info_classif, k=n_select)
+            # Fit on full dataset (fast operation)
+            X_all = df[feature_cols].to_numpy(dtype=np.float64)
+            y_all = df["label_class"].to_numpy(dtype=np.int64)
+            selector.fit(X_all, y_all)
+            selected_mask = selector.get_support()
+            selected = [c for c, keep in zip(feature_cols, selected_mask) if keep]
+            dropped = [c for c in feature_cols if c not in selected]
+            logger.info(
+                "Feature selection reduced %d → %d features (dropped: %s)",
+                len(feature_cols), len(selected), dropped[:10],
+            )
+            feature_cols = selected
+        except Exception as e:
+            logger.warning("Feature selection failed — proceeding with all features: %s", e)
 
     # ── Chronological split ──
     val_idx = int(n * (1 - args.test_split - args.val_split))
@@ -511,11 +364,47 @@ def train(args: argparse.Namespace) -> None:
         logger.info("Optuna best params: %s", best_params)
 
     # ── Build + train model ──
-    model = _build_catboost(args, params=best_params)
+    model = build_catboost(
+        learning_rate=args.learning_rate,
+        num_leaves=args.num_leaves,
+        n_estimators=args.n_estimators,
+        seed=args.seed,
+        class_weight=args.class_weight,
+        early_stopping=args.early_stopping,
+        gpu=args.gpu,
+        add_ta=args.add_ta,
+        verbose=args.verbose,
+        params=best_params,
+    )
     fit_kwargs: dict = {}
     if sample_weight is not None:
         fit_kwargs["sample_weight"] = sample_weight
     model.fit(X_train, y_train, eval_set=(X_val, y_val), **fit_kwargs)
+
+    # ── Optional: Ensemble training ──
+    ensemble_models: list = [model]
+    if args.ensemble > 1:
+        logger.info("Training ensemble of %d models...", args.ensemble)
+        for i in range(1, args.ensemble):
+            ens_seed = args.seed + i
+            ens_model = build_catboost(
+                learning_rate=args.learning_rate,
+                num_leaves=args.num_leaves,
+                n_estimators=args.n_estimators,
+                seed=ens_seed,
+                class_weight=args.class_weight,
+                early_stopping=args.early_stopping,
+                gpu=args.gpu,
+                add_ta=args.add_ta,
+                verbose=False,
+                params=best_params,
+            )
+            ens_kwargs: dict = {}
+            if sample_weight is not None:
+                ens_kwargs["sample_weight"] = sample_weight
+            ens_model.fit(X_train, y_train, eval_set=(X_val, y_val), **ens_kwargs)
+            ensemble_models.append(ens_model)
+            logger.info("Ensemble model %d/%d trained (seed=%d)", i + 1, args.ensemble, ens_seed)
 
     # ── Optional: purgedcv walk-forward CV ──
     cv_scores: list[float] = []
@@ -524,17 +413,23 @@ def train(args: argparse.Namespace) -> None:
     if args.cv_folds > 0:
         cv_scores, cv_mean, cv_std = _run_purged_cv(args, feature_cols)
 
-    # ── Evaluate on test set ──
-    y_pred = model.predict(X_test)
-    y_proba = model.predict_proba(X_test)
-
-    if model.classes_ is None:
+    # ── Evaluate on test set (supports ensemble averaging) ──
+    # Collect probability predictions from all ensemble models
+    all_probas: list[np.ndarray] = []
+    for m in ensemble_models:
+        all_probas.append(m.predict_proba(X_test))
+    # Average probabilities across ensemble (soft voting)
+    y_proba = np.mean(all_probas, axis=0) if len(all_probas) > 1 else all_probas[0]
+    # Predicted class: argmax of averaged probabilities
+    classes_known = ensemble_models[0].classes_
+    if classes_known is None:
         n_classes = 0
     else:
-        n_classes = len(model.classes_)
+        n_classes = len(classes_known)
+    y_pred = np.array([classes_known[int(np.argmax(p))] for p in y_proba])
 
-    # Feature importance
-    importance = _feature_importance(model, feature_cols)
+    # Feature importance (from the first model)
+    importance = _feature_importance(ensemble_models[0], feature_cols)
     top_features = sorted(importance.items(), key=lambda x: -x[1])[:10]
     logger.info("Top 10 features by importance: %s", top_features)
 
@@ -587,26 +482,63 @@ def train(args: argparse.Namespace) -> None:
         "Accuracy=%.4f  F1_weighted=%.4f", metrics["accuracy"], metrics["f1_weighted"]
     )
 
+    # Save reference to raw model before optional calibration
+    _raw_model = model
+
+    # ── Optional: Probability calibration ──
+    if args.calibrate and n_classes == 3:
+        try:
+            from sklearn.calibration import CalibratedClassifierCV
+
+            # Save underlying model before wrapping with calibrator
+            _raw_model = model
+            calibrated = CalibratedClassifierCV(
+                _raw_model, method="isotonic", cv="prefit"  # type: ignore[arg-type]
+            )
+            calibrated.fit(X_val, y_val)
+            # CalibratedClassifierCV delegates predict/predict_proba to base estimator
+            model = calibrated  # type: ignore[assignment]
+            logger.info("Probability calibration applied (isotonic, validation set)")
+        except Exception as e:
+            logger.warning("Calibration failed — proceeding without: %s", e)
+
     # ── Optional: SHAP analysis ──
     shap_path: str | None = None
     if args.shap:
         shap_path = _run_shap(args, model, X_test, feature_cols, output_dir)
         metrics["shap_path"] = shap_path
 
-    # ── Save model (.cbm + .joblib) ──
+    # ── Save model(s) (.cbm + .joblib) ──
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     model_path_cbm = output_dir / f"model_{timestamp}.cbm"
     model_path_joblib = output_dir / f"model_{timestamp}.joblib"
+
+    # Save the primary model (first ensemble member)
+    save_target = _raw_model if args.calibrate else ensemble_models[0]
     try:
-        model.save_model(str(model_path_cbm))
+        save_target.save_model(str(model_path_cbm))  # type: ignore[union-attr]
         joblib.dump(model, str(model_path_joblib))
     except Exception as e:
         logger.error("Failed to save model: %s", e)
         print(json.dumps({"error": f"Model save failed: {e}"}))
         sys.exit(1)
-    # Primary model_path is the .cbm (predict.py auto-detects by extension)
     model_path = model_path_cbm
     logger.info("Model saved: %s (and %s)", model_path_cbm, model_path_joblib)
+
+    # Save additional ensemble models
+    ensemble_paths: list[str] = [str(model_path)]
+    if len(ensemble_models) > 1:
+        for i, m in enumerate(ensemble_models[1:], 1):
+            ens_path = output_dir / f"model_{timestamp}_ens{i:02d}.cbm"
+            try:
+                m.save_model(str(ens_path))
+                ensemble_paths.append(str(ens_path))
+            except Exception as e:
+                logger.warning("Failed to save ensemble model %d: %s", i, e)
+        logger.info("Ensemble: saved %d models (%d members)", len(ensemble_paths), args.ensemble)
+        metrics["ensemble"] = True
+        metrics["ensemble_count"] = args.ensemble
+        metrics["ensemble_paths"] = ensemble_paths
 
     metrics["model_path"] = str(model_path)
 
@@ -620,6 +552,30 @@ def train(args: argparse.Namespace) -> None:
 
     metrics["metrics_path"] = str(metrics_path)
     logger.info("Metrics saved: %s", metrics_path)
+
+    # ── Update model MANIFEST ──
+    update_manifest(
+        output_dir=output_dir,
+        model_path=str(model_path),
+        joblib_path=str(model_path_joblib),
+        metrics_path=str(metrics_path),
+        metrics=metrics,
+        training_config={
+            "class_weight": args.class_weight,
+            "learning_rate": args.learning_rate,
+            "num_leaves": args.num_leaves,
+            "n_estimators": args.n_estimators,
+            "seed": args.seed,
+            "optimize": args.optimize,
+            "cv_folds": args.cv_folds,
+            "balance": args.balance,
+            "add_ta": args.add_ta,
+            "shap": args.shap,
+            "calibrate": args.calibrate,
+            "ensemble": args.ensemble,
+            "feature_select": args.feature_select,
+        },
+    )
 
     # Emit JSON to stdout for programmatic consumers (daemon.ts / CLI)
     print(json.dumps(metrics, indent=2, default=str))
@@ -733,7 +689,7 @@ def _run_purged_cv(
         m = CatBoostClassifier(
             iterations=300,
             learning_rate=args.learning_rate,
-            depth=_num_leaves_to_depth(args.num_leaves),
+            depth=num_leaves_to_depth(args.num_leaves),
             l2_leaf_reg=3,
             nan_mode="Min",
             random_seed=args.seed,

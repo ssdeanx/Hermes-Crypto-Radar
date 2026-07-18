@@ -7,17 +7,53 @@
 // thresholds and class weights.
 // ═══════════════════════════════════════════════════════════════════════
 
+import type { KlineRow } from '../types.js';
 import type { LabelRow } from './types.js';
 
 /** Default noise threshold — returns within ±this are labeled neutral (0) */
 const DEFAULT_NOISE_THRESHOLD = 0.002; // 0.2%
 
+/** Minimum ATR ratio for volatility adjustment (avoids division by zero) */
+const MIN_ATR_RATIO = 0.0001;
+
 export interface LabelOpts {
-  /** Noise threshold for tri-class labeling (default 0.002 = 0.2%) */
+  /** Noise threshold for tri-class labeling (default 0.002 = 0.2%).
+   *  When klines are provided and useVolatilityThreshold is true,
+   *  this becomes a multiplier of ATR/close. */
   noiseThreshold?: number;
   /** Label horizon to use for tri-class label_class (default 5).
    *  Must match one of: 1 | 5 | 20 | 60. */
   classHorizon?: 1 | 5 | 20 | 60;
+  /** Use volatility-adjusted threshold instead of fixed percentage.
+   *  When enabled, noiseThreshold acts as a multiplier of ATR/close ratio. */
+  useVolatilityThreshold?: boolean;
+}
+
+/**
+ * Compute ATR(14) from kline data for volatility adjustment.
+ */
+function computeAtr14(klines: KlineRow[]): number[] {
+  const atrs: number[] = [];
+  for (let i = 0; i < klines.length; i++) {
+    if (i < 14) {
+      atrs.push(0);
+      continue;
+    }
+    const ranges: number[] = [];
+    for (let j = i - 13; j <= i; j++) {
+      const k = klines[j]!;
+      const prev = klines[j - 1]!;
+      const tr = Math.max(
+        k.high - k.low,
+        Math.abs(k.high - prev.close),
+        Math.abs(k.low - prev.close),
+      );
+      ranges.push(tr);
+    }
+    const atr = ranges.reduce((a, b) => a + b, 0) / ranges.length;
+    atrs.push(atr);
+  }
+  return atrs;
 }
 
 /**
@@ -30,15 +66,29 @@ export interface LabelOpts {
  * @param closes - Sorted array of closing prices (oldest first)
  * @param interval - Kline interval string
  * @param opts - Label options
+ * @param klines - Optional full kline data for volatility-adjusted thresholds
  * @returns Array of LabelRow with computed forward returns
  */
 export function computeLabels(
   closes: number[],
   interval: string,
   opts: LabelOpts = {},
+  klines?: KlineRow[],
 ): LabelRow[] {
   const noiseThreshold = opts.noiseThreshold ?? DEFAULT_NOISE_THRESHOLD;
   const actualClassHorizon = opts.classHorizon ?? 5;
+  const useVolatility = opts.useVolatilityThreshold ?? false;
+
+  // Pre-compute ATR for volatility adjustment if klines are provided
+  const atrRatios: number[] = [];
+  if (useVolatility && klines && klines.length >= 14) {
+    const atrs = computeAtr14(klines);
+    for (let i = 0; i < klines.length; i++) {
+      const close = klines[i]?.close ?? 0;
+      const ratio = close > 0 ? (atrs[i] ?? 0) / close : MIN_ATR_RATIO;
+      atrRatios.push(Math.max(ratio, MIN_ATR_RATIO));
+    }
+  }
 
   const labels: LabelRow[] = [];
 
@@ -51,6 +101,11 @@ export function computeLabels(
     const ret20 = i + 20 < closes.length ? (closes[i + 20]! - currentClose) / currentClose : null;
     const ret60 = i + 60 < closes.length ? (closes[i + 60]! - currentClose) / currentClose : null;
 
+    // Volatility-adjusted threshold: noiseThreshold × (ATR/close)
+    const adjustedThreshold = useVolatility && i < atrRatios.length
+      ? Math.max(noiseThreshold * atrRatios[i]!, MIN_ATR_RATIO)
+      : noiseThreshold;
+
     const row: LabelRow = {
       symbol: '',
       interval,
@@ -59,10 +114,10 @@ export function computeLabels(
       label_return_5: ret5,
       label_return_20: ret20,
       label_return_60: ret60,
-      label_direction_1: ret1 !== null ? (ret1 > noiseThreshold ? 1 : ret1 < -noiseThreshold ? -1 : 0) : null,
-      label_direction_5: ret5 !== null ? (ret5 > noiseThreshold ? 1 : ret5 < -noiseThreshold ? -1 : 0) : null,
-      label_direction_20: ret20 !== null ? (ret20 > noiseThreshold ? 1 : ret20 < -noiseThreshold ? -1 : 0) : null,
-      label_direction_60: ret60 !== null ? (ret60 > noiseThreshold ? 1 : ret60 < -noiseThreshold ? -1 : 0) : null,
+      label_direction_1: ret1 !== null ? (ret1 > adjustedThreshold ? 1 : ret1 < -adjustedThreshold ? -1 : 0) : null,
+      label_direction_5: ret5 !== null ? (ret5 > adjustedThreshold ? 1 : ret5 < -adjustedThreshold ? -1 : 0) : null,
+      label_direction_20: ret20 !== null ? (ret20 > adjustedThreshold ? 1 : ret20 < -adjustedThreshold ? -1 : 0) : null,
+      label_direction_60: ret60 !== null ? (ret60 > adjustedThreshold ? 1 : ret60 < -adjustedThreshold ? -1 : 0) : null,
       label_class: null,
     };
 
@@ -73,7 +128,7 @@ export function computeLabels(
       : ret60;
 
     row.label_class = classReturn !== null
-      ? (classReturn > noiseThreshold ? 1 : classReturn < -noiseThreshold ? -1 : 0)
+      ? (classReturn > adjustedThreshold ? 1 : classReturn < -adjustedThreshold ? -1 : 0)
       : null;
 
     labels.push(row);

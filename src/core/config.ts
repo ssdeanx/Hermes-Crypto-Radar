@@ -80,7 +80,9 @@ export interface RadarConfig {
       intervals?: string[];
       lookbackDays?: number; // default 90
       retrainIntervalHours?: number;
+      labelHorizon?: 1 | 5 | 20 | 60; // forward-return horizon (default 5)
       optimize?: boolean; // opt-in hyperparameter optimization
+      optunaTrials?: number; // number of Optuna trials (default 30)
       cvFolds?: number; // opt-in cross-validation folds
       balance?: boolean; // opt-in class balancing
       shap?: boolean; // opt-in SHAP feature importance
@@ -281,6 +283,11 @@ export function loadConfig(configPath?: string): RadarConfig {
     base.ml ??= {};
     base.ml.training ??= {};
     base.ml.training.optimize = envMap.ml_optimize === "true";
+  }
+  if (envMap.ml_optuna_trials) {
+    base.ml ??= {};
+    base.ml.training ??= {};
+    base.ml.training.optunaTrials = parseInt(envMap.ml_optuna_trials, 10);
   }
   if (envMap.ml_cv_folds) {
     base.ml ??= {};

@@ -1,18 +1,19 @@
 ---
 name: crypto-radar
-version: 2.0.0
 description: "🛰️ Enterprise-grade multi-chain crypto market intelligence for Hermes Agent — tracks 49 tokens across 31 chains with 26 technical indicators, divergence detection, ADX trend filter, RSS news aggregation from 11 feeds, DeFiLlama on-chain metrics, WebSocket real-time prices, warm daemon for sub-50ms tool calls, SVG candlestick/dashboard charts, and XLSX/CSV/JSON/MD/HTML export. 8 full-spectrum agent tools for token scanning, signal generation, news analysis, chart rendering, daemon management, on-chain queries, and real-time price streams."
-author: Sam
-tags: [crypto, trading, binance, defi, signals, technical-analysis, hermes-plugin, market-intelligence, enterprise]
-install:
-  type: plugin
-  requires:
-    - hermes >= 0.1.0
-    - node >= 22.0.0
-  steps:
-    - npm install
-    - npm run build
-    - ln -sf "$PWD" ~/.hermes/plugins/crypto-radar
+context: This is an enterprise-grade multi-chain crypto market intelligence plugin for Hermes Agent, providing comprehensive tools for token scanning, signal generation, news analysis, chart rendering, daemon management, on-chain queries, and real-time price streams. It tracks 49 tokens across 31 chains with 26 technical indicators, divergence detection, ADX trend filter, RSS news aggregation from 11 feeds, DeFiLlama on-chain metrics, WebSocket real-time prices, warm daemon for sub-50ms tool calls, SVG candlestick/dashboard charts, and XLSX/CSV/JSON/MD/HTML export.
+argument-hint: crypto-radar <tool> [options]
+metadata: 
+  keywords: [crypto, trading, binance, defi, signals, technical-analysis, hermes-plugin, market-intelligence, enterprise]
+  name: Hermes Crypto Radar
+  author: Sam
+  version: 2.3.0
+user-invocable: true
+compatibility:
+  hermes: ">=0.1.0"
+  node: ">=22.0.0"
+  uv: ">=0.0.0"
+disable-model-invocation: false
 ---
 
 # 🛰️ Hermes Crypto Radar
@@ -26,14 +27,17 @@ install:
 ```
 📊  49 tokens  ·  31 chains  ·  26 technical indicators
 🧠  3-strategy signal engine with divergence detection + ADX trend filter
+🤖  CatBoost ML direction classifier with SHAP explanations + ensemble voting
 📰  11 RSS news feeds with relevance scoring + sentiment analysis
 ⛓️  DeFiLlama on-chain metrics (protocol TVL, chain TVL, DEX fees)
 📈  SVG candlestick/dashboard charts with shared-svg.ts rendering engine
 💾  XLSX/CSV/JSON/MD/HTML export with frozen headers + conditional formatting
 🥇  Warm daemon for sub-50ms tool calls with TCP keep-alive
+🔄  Concept drift detection with auto-retrain trigger (ADWIN/PageHinkley/KSWIN)
+⚡  River online learning layer for real-time model updates
 🔬  Backtesting engine, correlation matrix, candlestick pattern recognition
 🛡️  Circuit breaker, rate limiter, log rotation, SHA-256 checksums
-🔌  8 full-spectrum agent tools returning structured JSON for agent reasoning
+🔌  8 full-spectrum agent tools + ML API returning structured JSON for agent reasoning
 ```
 
 ## 🛠️ Tools (8 agent tools)
@@ -52,6 +56,71 @@ install:
 ---
 
 ## 📦 Installation
+
+### ML Pipeline Architecture
+
+```mermaid
+flowchart TB
+    subgraph Data["Data Layer"]
+        A[Klines<br/>Binance] --> B[Feature Engineering<br/>80+ features]
+        C[26 Indicators<br/>+ 12 TA indicators] --> B
+        D[Cross-Asset<br/>Funding Rate<br/>Order Book] --> B
+        E[Forward Returns] --> F[Label Generation<br/>Volatility-adjusted]
+        F --> G[Dataset Assembly<br/>Z-score normalization]
+        B --> G
+    end
+
+    subgraph Train["Training Pipeline"]
+        G --> H[Feature Selection<br/>SelectKBest MI]
+        H --> I[Correlation Filter<br/>>0.98 dropped]
+        I --> J[CatBoost Training<br/>GPU auto-detect]
+        J --> K[Optuna HPO<br/>TPE sampler]
+        J --> L[purgedcv CV<br/>Purge + embargo]
+        K --> M[Ensemble Voting<br/>N seeds → soft vote]
+        L --> M
+        M --> N[Calibration<br/>Isotonic Regression]
+        N --> O[SHAP Analysis<br/>Per-feature importance]
+        O --> P[MANIFEST.json<br/>Model registry]
+    end
+
+    subgraph Infer["Inference Pipeline"]
+        Q[Latest Klines] --> R[buildFeatures]
+        R --> S[Z-score Normalize]
+        S --> T{--explain?}
+        T -->|Yes| U[SHAP Explainer]
+        T -->|No| V[CatBoost Predict]
+        U --> V
+        V --> W[Prediction Result<br/>direction, confidence, explanation]
+    end
+
+    subgraph Online["Online Learning"]
+        W --> X[SQLite predictions]
+        X --> Y[River LogisticRegression<br/>AdaptiveStandardScaler]
+        Y --> Z[Streaming Accuracy<br/>partial_fit / metrics]
+    end
+
+    subgraph Drift["Drift Detection"]
+        X --> AA[ADWIN / PageHinkley / KSWIN]
+        AA --> AB[Drift Events<br/>SQLite drift_events]
+        AB --> AC{Auto-Retrain?}
+        AC -->|Drift + 1h cooldown| H
+        X --> AD[Calibration Monitor<br/>ECE per bucket]
+    end
+
+    subgraph API["API & CLI"]
+        P --> AE[GET /api/ml/status]
+        P --> AF[GET /api/ml/models]
+        AB --> AG[GET /api/ml/drift]
+        X --> AH[GET /api/ml/predictions]
+        AD --> AI[GET /api/ml/calibration]
+        Z --> AJ[GET /api/ml/online]
+        AK[CLI: ml train|predict|status|drift] --> Train
+        AK --> Infer
+        AK --> Drift
+    end
+```
+
+### Linux / macOS (one-liner)
 
 ### Linux / macOS (one-liner)
 ```bash
@@ -116,6 +185,10 @@ crypto-radar backtest      # Strategy backtesting
 crypto-radar search        # Token search
 crypto-radar benchmark     # Performance benchmark
 crypto-radar export        # XLSX/CSV/JSON export
+crypto-radar ml train      # Train CatBoost direction classifier
+crypto-radar ml predict    # Run inference with optional SHAP explanations
+crypto-radar ml status     # Pipeline health, active model, drift events
+crypto-radar ml drift      # Detect concept drift (ADWIN/PageHinkley/KSWIN)
 ```
 
 ---

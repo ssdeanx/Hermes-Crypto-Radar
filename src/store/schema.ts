@@ -122,6 +122,19 @@ CREATE TABLE IF NOT EXISTS predictions (
   features_hash TEXT
 );
 
+-- F5: Drift events table (concept drift detection)
+CREATE TABLE IF NOT EXISTS drift_events (
+  id          TEXT PRIMARY KEY,
+  ts          TEXT NOT NULL,
+  model_id    TEXT NOT NULL,
+  detector    TEXT NOT NULL,
+  "index"       INTEGER NOT NULL,
+  symbol      TEXT,
+  confidence  REAL,
+  message     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_drift_events_ts ON drift_events(ts);
+
 -- Users table for auth
 CREATE TABLE IF NOT EXISTS users (
   id            TEXT PRIMARY KEY,
